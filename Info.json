@@ -2,7 +2,7 @@
   "Id": "Bismuth",
   "DisplayName": "Bismuth",
   "Author": "sbrothers7",
-  "Version": "1.0.1",
+  "Version": "1.1.0",
   "ManagerVersion": "0.32.4.0",
   "AssemblyName": "Bismuth.dll",
   "EntryMethod": "Bismuth.Startup.Load",

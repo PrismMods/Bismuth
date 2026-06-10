@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
+using Bismuth.UI;
 using HarmonyLib;
 using UnityEngine;
 
@@ -10,6 +11,9 @@ namespace Bismuth
     {
         private static readonly HashSet<KeyCode> _allowed = new HashSet<KeyCode>();
         private static bool _active;
+
+        // Block all game inputs while the Bismuth menu is open.
+        private static bool _blockWhileOpen;
 
         // Chatter blocker state
         private static bool  _chatterActive;
@@ -84,6 +88,7 @@ namespace Bismuth
         internal static void Apply(Settings settings)
         {
             _active = settings.KeyLimiterEnabled;
+            _blockWhileOpen = settings.BlockInputsWhileMenuOpen;
             _chatterActive = settings.ChatterBlockerEnabled;
             _chatterThresholdSec = Mathf.Max(0, settings.ChatterThresholdMs) / 1000f;
             _allowed.Clear();
@@ -280,6 +285,9 @@ namespace Bismuth
 
             public static void Postfix(int __0, ref int __result)
             {
+                // While the Bismuth menu is open, no gameplay inputs register. Acts on the
+                // main port only (__0==0); leaves multiplayer slots untouched.
+                if (_blockWhileOpen && __0 == 0 && UICore.IsOpen) { __result = 0; return; }
                 // Skip when re-entering (GetStateKeys calls GetMain internally)
                 if ((!_active && !_chatterActive && _ghosts.Count == 0) || __result == 0 || __0 != 0 || _inCount) return;
                 __result = Mathf.Min(__result, CountAllowedInPressedKeys());
@@ -292,6 +300,8 @@ namespace Bismuth
         {
             public static bool Prefix()
             {
+                // While the menu is open, no hits register — same gate as the GetMain block.
+                if (_blockWhileOpen && UICore.IsOpen) return false;
                 if (!_active) return true;
                 if (!Input.anyKeyDown) return true;
                 // GetKey (not GetKeyDown) tolerates the 1-frame async delay here

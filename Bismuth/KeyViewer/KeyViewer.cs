@@ -21,6 +21,10 @@ namespace Bismuth
         private Canvas _canvas;
         private RectTransform _handPanel;
         private RectTransform _footPanel;
+
+        // Draggable panel rects for the location editor.
+        internal RectTransform HandPanel => _handPanel;
+        internal RectTransform FootPanel => _footPanel;
         private Font _font;
 
         // Persistent across rebuilds
@@ -179,7 +183,7 @@ namespace Bismuth
         }
 
         // Move a cell's persisted press count from its old key to the new one when the user
-        // rebinds a KV cell. Called by SettingsGui before the rebuild so the freshly-built
+        // rebinds a KV cell. Called by the settings UI before the rebuild so the freshly-built
         // cell picks up the carried-over count from _counts. Old key is only forgotten if no
         // other cell in the same preset still uses it (otherwise that other cell would zero
         // out on the next rebuild).

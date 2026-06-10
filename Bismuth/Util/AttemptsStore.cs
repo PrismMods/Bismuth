@@ -8,6 +8,10 @@ namespace Bismuth
         private static Dictionary<string, int> _data;
         private static string FilePath => Path.Combine(MainClass.ModPath, "BismuthAttempts.txt");
 
+        // Full-attempt entries share the same file via a non-colliding key prefix. Level
+        // names/paths never start with "F::" on any real ADOFAI install.
+        private const string FullPrefix = "F::";
+
         private static void EnsureLoaded()
         {
             if (_data != null) return;
@@ -37,6 +41,17 @@ namespace Bismuth
             EnsureLoaded();
             _data[key] = value;
             Save();
+        }
+
+        public static int GetFull(string key)
+        {
+            return key == null ? 0 : Get(FullPrefix + key);
+        }
+
+        public static void SetFull(string key, int value)
+        {
+            if (key == null) return;
+            Set(FullPrefix + key, value);
         }
 
         public static void ClearAll()

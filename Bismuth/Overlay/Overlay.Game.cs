@@ -94,6 +94,11 @@ namespace Bismuth
         public void OnLevelStart(bool isRestart)
         {
             string key = GetLevelKey();
+            // Full attempts only count starts from 0% (no checkpoint loaded). Regular
+            // attempts count every attempt — including checkpoint restarts.
+            bool atCp = false;
+            try { atCp = GCS.checkpointNum > 0; } catch { }
+
             if (isRestart && !RDC.auto)
             {
                 // scnGame.Play(isRestart=true): in-game retry.
@@ -101,6 +106,11 @@ namespace Bismuth
                 {
                     _attempts++;
                     AttemptsStore.Set(_currentLevelKey, _attempts);
+                    if (!atCp)
+                    {
+                        _fullAttempts++;
+                        AttemptsStore.SetFull(_currentLevelKey, _fullAttempts);
+                    }
                 }
             }
             else if (!inLevel && !RDC.auto)
@@ -110,11 +120,17 @@ namespace Bismuth
                 {
                     _attempts++;
                     AttemptsStore.Set(_currentLevelKey, _attempts);
+                    if (!atCp)
+                    {
+                        _fullAttempts++;
+                        AttemptsStore.SetFull(_currentLevelKey, _fullAttempts);
+                    }
                 }
                 else
                 {
                     _currentLevelKey = key;
                     _attempts = AttemptsStore.Get(_currentLevelKey);
+                    _fullAttempts = AttemptsStore.GetFull(_currentLevelKey);
                 }
             }
             _currentLevelKey = key ?? _currentLevelKey;
@@ -122,6 +138,7 @@ namespace Bismuth
             // Reuse OnAttempt so the checkpoint sync from Awake_Rewind isn't wiped here.
             OnAttempt();
             if (attemptsValue != null) attemptsValue.text = _attempts.ToString();
+            if (attemptsFullValue != null) attemptsFullValue.text = _fullAttempts.ToString();
             ShowOrHideElements();
         }
 
@@ -141,6 +158,7 @@ namespace Bismuth
             var dim = new Color(0.7f, 0.7f, 0.7f);
             if (progressValue != null)  { progressValue.text  = "--.--%"; progressValue.color  = dim; }
             if (attemptsValue != null)  { attemptsValue.color = Color.white; }
+            if (attemptsFullValue != null) { attemptsFullValue.color = Color.white; }
             _combo = 0;
             if (comboDisplayValue != null)  { comboDisplayValue.text = "0"; }
             if (comboDisplayLabel != null)  { comboDisplayLabel.color = Color.white; }
@@ -158,9 +176,11 @@ namespace Bismuth
         public void ResetAttempts()
         {
             _attempts = 0;
+            _fullAttempts = 0;
             AttemptsStore.Set(_currentLevelKey, 0);
-            if (attemptsValue != null)
-                attemptsValue.text = "0";
+            AttemptsStore.SetFull(_currentLevelKey, 0);
+            if (attemptsValue != null) attemptsValue.text = "0";
+            if (attemptsFullValue != null) attemptsFullValue.text = "0";
         }
 
         public void SetFont(Font font)
@@ -170,6 +190,8 @@ namespace Bismuth
             if (progressValue != null)  progressValue.font  = font;
             if (attemptsLabel != null)  attemptsLabel.font  = font;
             if (attemptsValue != null)  attemptsValue.font  = font;
+            if (attemptsFullLabel != null) attemptsFullLabel.font = font;
+            if (attemptsFullValue != null) attemptsFullValue.font = font;
             if (accLabel != null)       accLabel.font       = font;
             if (accValue != null)       accValue.font       = font;
             if (xaccLabel != null)      xaccLabel.font      = font;

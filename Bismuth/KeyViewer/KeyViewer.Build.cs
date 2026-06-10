@@ -20,6 +20,20 @@ namespace Bismuth
 
             _lastKps = -1;
             _lastTotalPerPreset.Clear();
+
+            // Seed Total cells from loaded counts so the displayed total isn't empty until
+            // the first keypress. Without this, the rain.cs Update loop only fires the dirty
+            // check on keydown, so a freshly built layout sits at empty / 0 until input.
+            foreach (var st in _totalCells)
+            {
+                if (st?.Preset == null || st.Value == null) continue;
+                string pn = st.Preset.Name ?? "";
+                int total = 0;
+                if (_counts.TryGetValue(pn, out var pc))
+                    foreach (var v in pc.Values) total += v;
+                _lastTotalPerPreset[pn] = total;
+                st.Value.text = total.ToString();
+            }
         }
 
         private RectTransform BuildPresetPanel(KeyViewerPreset preset, int sortBase, string panelName)

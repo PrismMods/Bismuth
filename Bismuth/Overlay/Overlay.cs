@@ -15,6 +15,28 @@ namespace Bismuth
         public static Overlay Instance { get; private set; }
         public bool InLevel => inLevel;
 
+        // Location-edit mode (Locations tab). Forces the canvas visible so elements can
+        // be dragged outside a level; ShowEmpty() supplies placeholder values.
+        private bool _editMode;
+        internal bool EditMode
+        {
+            get { return _editMode; }
+            set
+            {
+                _editMode = value;
+                if (value && !inLevel) ShowEmpty();
+            }
+        }
+
+        // Draggable element rects for the location editor.
+        internal RectTransform LeftPanelRect  => leftContainer as RectTransform;
+        internal RectTransform RightPanelRect => rightContainer as RectTransform;
+        internal RectTransform ComboRect      => comboDisplayContainer;
+        internal RectTransform JudgementsRect  => judgementsContainer;
+        internal RectTransform AttemptsRect    => attemptsContainer;
+        internal RectTransform TimingScaleRect => timingScaleContainer;
+        internal RectTransform ComboLabelRect  => _comboLabelWrapper;
+
         private Canvas canvas;
         private Transform leftContainer;
         private Transform rightContainer;
@@ -23,6 +45,7 @@ namespace Bismuth
         private RectTransform attemptsContainer;
 
         private int _attempts;
+        private int _fullAttempts;
         private string _currentLevelKey;
         private int _combo;
         private float _comboPulseT;
@@ -36,6 +59,9 @@ namespace Bismuth
         private GameObject attemptsRow;
         private Text attemptsLabel;
         private Text attemptsValue;
+        private GameObject attemptsFullRow;
+        private Text attemptsFullLabel;
+        private Text attemptsFullValue;
         private GameObject accRow;
         private Text accLabel;
         private Text accValue;

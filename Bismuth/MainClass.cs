@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using Bismuth.UI;
+using Bismuth.UI.Pages;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -33,6 +35,10 @@ namespace Bismuth
             modEntry.OnToggle = OnToggle;
             modEntry.OnGUI = OnGUI;
             modEntry.OnSaveGUI = OnSaveGUI;
+            modEntry.OnUpdate = (_, __) => UICore.HandleUpdate();
+            // Opting into OnUnload makes the mod hot-reloadable: UMM watches the dll and
+            // reloads in-place when it changes, instead of requiring a game restart.
+            modEntry.OnUnload = OnUnload;
         }
 
         private static bool OnToggle(UnityModManager.ModEntry modEntry, bool value)
@@ -45,22 +51,26 @@ namespace Bismuth
 
         private static void OnGUI(UnityModManager.ModEntry modEntry)
         {
-            SettingsGui.Draw(Settings,
-                onChanged: () =>
-                {
-                    overlay?.ApplySettings(Settings);
-                    keyViewer?.ApplySettings(Settings);
-                    KeyLimiter.Apply(Settings);
-                },
-                onFontChanged: ApplySelectedFont,
-                onKeyViewerRebuild: () => keyViewer?.Rebuild(Settings),
-                onKeyViewerReset: () => keyViewer?.ResetCounts());
+            GUILayout.Label("Settings live in the in-game panel (Ctrl+B).");
+            if (GUILayout.Button("Open Settings Panel", GUILayout.ExpandWidth(false)))
+                UICore.Open();
         }
 
         private static void OnSaveGUI(UnityModManager.ModEntry modEntry)
         {
             keyViewer?.SaveCounts();
             Settings.Save(modEntry);
+        }
+
+        // Tear everything down so the freshly loaded assembly starts from a clean slate.
+        // The old assembly stays in memory (Mono can't unload it), but nothing of ours
+        // may survive in the scene: DDOL GameObjects, Harmony patches, scene callbacks.
+        private static bool OnUnload(UnityModManager.ModEntry modEntry)
+        {
+            if (LocationEditor.IsActive) LocationEditor.Close();
+            OnSaveGUI(modEntry);
+            if (IsEnabled) StopMod(modEntry);
+            return true;
         }
 
         private static UnityModManager.ModEntry _modEntry;
@@ -98,9 +108,23 @@ namespace Bismuth
                 if (keyViewer == null) keyViewer = KeyViewer.Create(Settings);
 
                 availableFonts = FontLoader.ScanFonts(_modEntry.Path);
-                SettingsGui.SetFonts(availableFonts);
                 ApplySelectedFont();
                 KeyLimiter.Apply(Settings);
+
+                UICore.Initialize(_modEntry, Settings, () =>
+                {
+                    overlay?.ApplySettings(Settings);
+                    keyViewer?.ApplySettings(Settings);
+                    KeyLimiter.Apply(Settings);
+                }, availableFonts);
+                UICore.OnKeyViewerRebuild = () => keyViewer?.Rebuild(Settings);
+                UICore.Tabs.AddTab("Overlay", PageOverlay.Build);
+                UICore.Tabs.AddTab("Key Viewer", PageKeyViewer.Build);
+                UICore.Tabs.AddTab("Input", PageInput.Build);
+                UICore.Tabs.AddTab("Hide UI", PageHideUi.Build);
+                UICore.Tabs.AddTab("Locations", PageLocations.Build);
+                UICore.Tabs.AddTab("UI", PageUI.Build);
+                UICore.Tabs.AddTab("Misc", PageMisc.Build);
                 return true;
             }
             catch (Exception ex)
@@ -143,9 +167,10 @@ namespace Bismuth
             Resources.UnloadUnusedAssets();
             long after = UnityEngine.Profiling.Profiler.GetTotalAllocatedMemoryLong();
             LastUnloadSavingsBytes = before - after;
+            PageMisc.RefreshSavings();
         }
 
-        private static void ApplySelectedFont()
+        internal static void ApplySelectedFont()
         {
             if (overlay == null || availableFonts.Count == 0) return;
 
@@ -179,6 +204,7 @@ namespace Bismuth
                 UnityEngine.Object.Destroy(keyViewer.gameObject);
                 keyViewer = null;
             }
+            UICore.Dispose();
         }
     }
 }

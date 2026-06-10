@@ -3,19 +3,43 @@
 A HarmonyX / UnityModManager overlay mod for **A Dance of Fire and Ice (ADOFAI)**.  
 Build: `xbuild Bismuth.sln` (Mono, .NET 4.8). Three expected warnings (toolset version, TextCoreModule ref).
 
+Project philosophy: Minimal and lightweight, but highly customizable.
+
 ---
 
 ## Log locations
+
+Bismuth can run under two loader stacks. The log paths differ — check the right one for the current install.
+
+### Native UMM (UnityModManager directly)
 
 | Log | Path |
 | --- | ---- |
 | UMM log (`modEntry.Logger.Log`) | `…/ADanceOfFireAndIce.app/Contents/Resources/Data/Managed/UnityModManager/Log.txt` |
 | Unity player log (`Debug.Log`) | `~/Library/Logs/7th Beat Games/A Dance of Fire and Ice/Player.log` |
-| Bismuth log (`BismuthLog.Log`) | `<ModPath>/BismuthLog.txt` (mod folder; e.g. `…/Mods/Bismuth/BismuthLog.txt`) |
+| Bismuth log (`BismuthLog.Log`) | `<ModPath>/BismuthLog.txt` → `…/Mods/Bismuth/BismuthLog.txt` |
 
 Full UMM path: `/Users/preluminance/Library/Application Support/Steam/steamapps/common/A Dance of Fire and Ice/ADanceOfFireAndIce.app/Contents/Resources/Data/Managed/UnityModManager/Log.txt`
 
-`BismuthLog.txt` is cleared and re-created each session (on `StartMod`). Call `BismuthLog.Log("message")` from anywhere — swallows IO errors silently.
+### MelonLoader + UMMCompat plugin
+
+UMMCompat loads UMM-style mods from `UMMMods/` (not `Mods/`), and `modEntry.Path` resolves there — so `BismuthLog.txt` follows the dll into `UMMMods/Bismuth/`.
+
+| Log | Path |
+| --- | ---- |
+| MelonLoader log | `…/A Dance of Fire and Ice/MelonLoader/Logs/<YY-M-D_H-M-S>.log` (one file per launch; latest = most recently modified) |
+| UMMCompat / per-mod console output | Mixed into the MelonLoader log, prefixed `[UMMCompat]` / `[<ModName>]` |
+| Unity player log (`Debug.Log`) | `~/Library/Logs/7th Beat Games/A Dance of Fire and Ice/Player.log` |
+| Bismuth log (`BismuthLog.Log`) | `<ModPath>/BismuthLog.txt` → `…/UMMMods/Bismuth/BismuthLog.txt` |
+
+Full MelonLoader log dir: `/Users/preluminance/Library/Application Support/Steam/steamapps/common/A Dance of Fire and Ice/MelonLoader/Logs/`  
+Full UMMMods Bismuth log: `/Users/preluminance/Library/Application Support/Steam/steamapps/common/A Dance of Fire and Ice/UMMMods/Bismuth/BismuthLog.txt`
+
+`deploy.sh` writes to `Mods/Bismuth/`, but UMMCompat appears to sweep mods into `UMMMods/` on startup — so the live dll, settings, and log all end up there. If `Mods/Bismuth/BismuthLog.txt` is stale or missing, check `UMMMods/Bismuth/BismuthLog.txt` instead.
+
+### Log lifecycle
+
+`BismuthLog.txt` is cleared and re-created each session (on `StartMod`). Call `BismuthLog.Log("message")` from anywhere — swallows IO errors silently. If `StartMod` never runs (mod disabled in the manager UI, or load failure), the log keeps its previous-session contents and won't reflect the current launch — so a stale-looking log usually means "mod didn't start," not "logger broke."
 
 ---
 
@@ -57,6 +81,20 @@ Bismuth/
 ├── Patches/
 │   ├── Patches.cs            HarmonyX prefix/postfix patches for overlay/judgement/UI hooks
 │   └── Optimizations.cs      Performance tweak patches (texture, physics, DOTween, etc.)
+├── UI/                       UGUI settings shell — in-progress replacement for IMGUI SettingsGui
+│   ├── UICore.cs             Root canvas + panel + titlebar + footer + body layout + hotkey + open/close + UI scale
+│   ├── Theme.cs              Color palette + runtime accent system (AccentFill/AccentBorder markers) + lazy OS-font + 2×2 white sprite
+│   ├── UIBuilder.cs          Static widget factory: Rect/Label/SectionHeader(+WithHelp)/Toggle/Collapsible/Slider/Button/DangerButton/ColorPicker/TextInput/Segmented/CycleSelector/ExpandSection/GradientEditor/AccentSwatches + ClickHandler/HoverHandler
+│   ├── DragHandle.cs         Titlebar drag: re-parents pointer events to the panel RectTransform
+│   ├── ResizeHandle.cs       8 edge/corner resize handles — BR corner 22px (visible grip), others 12px
+│   ├── TabRail.cs            Left-rail tab nav; auto-wraps each page in a ScrollRect/Viewport/Content
+│   └── Pages/
+│       ├── KeyTokens.cs      Shared TokenFromKeyCode / PrettyTokenLabel helpers (mirrors SettingsGui table)
+│       ├── PageOverlay.cs    Overlay stats, combo display, attempts (+ full attempts), song title
+│       ├── PageKeyViewer.cs  Preset lists + full preset editor (row grid, drag-reorder, rebind, submenus)
+│       ├── PageInput.cs      Menu input-block toggle + Key Limiter (chip editor + listen) + Chatter Blocker
+│       ├── PageHideUi.cs     Hide UI toggles with conditional sub-container
+│       └── PageUI.cs         Panel scale slider, font cycle, accent color (swatches or custom picker)
 └── Util/
     ├── AttemptsStore.cs      Persists per-level attempt counts to `BismuthAttempts.txt`
     ├── BismuthLog.cs         File-based session logger → `BismuthLog.txt`
@@ -64,6 +102,54 @@ Bismuth/
 ```
 
 When adding a new section to the settings GUI, follow the partial-file pattern: put state-fields/Draw entry calls in the section partial, expose a `Draw<Name>Section(settings, ref changed)` helper, and call it from `Draw()` in `SettingsGui.cs`. The class shell in each partial uses `internal static partial class SettingsGui` (or `internal/public partial class …` for `KeyViewer` / `Overlay`).
+
+---
+
+## UI shell (`UI/`)
+
+Bismuth is mid-migration from UMM's IMGUI settings panel to a self-owned UGUI canvas — same loader (UMM-style entry point, UMMCompat-compatible), different render path. Both run in parallel during the port; the IMGUI panel will be removed once feature parity is reached.
+
+### Architecture
+
+Modeled on KorenResourcePack v2's UI structure, stripped to the minimum:
+
+- **No dependencies added** — uses `UnityEngine.UI.Text` (legacy), reuses `RoundedRectGraphic`, no TMP, no tween library, no asset bundles. Arial via `Font.CreateDynamicFontFromOSFont`; a 2×2 white texture generated once at runtime is the only sprite.
+- **Static-only** — `UICore` is a static class, not a MonoBehaviour. UMM's `modEntry.OnUpdate` drives `UICore.HandleUpdate()` every frame. `UICore.Initialize(modEntry, settings, onChanged)` builds the canvas; `UICore.Dispose()` tears it down on mod disable.
+- **Sharp/minimal aesthetic** — flat rectangles, 1px hairline borders (`UIBuilder.AddBorder`), no rounded panels, no fades. The only rounded geometry is the radio-button widget via `RoundedRectGraphic`.
+
+### Widget conventions
+
+- Toggle = **classic radio button**: outer ring + filled inner dot when on (not a square checkbox).
+- Row height: `UIBuilder.RowHeight = 32f`; sections use `UIBuilder.SectionHeader` (small caps bold, muted color).
+- Section spacing: `UIBuilder.Spacer(content)` between groups.
+- All widgets register a `ClickHandler` (lightweight `IPointerClickHandler`) — no `Selectable`/`Button` state machine.
+- Hover tinting uses `HoverHandler` (enter/exit only), **never** `EventTrigger` — EventTrigger implements `IScrollHandler` and silently eats mouse-wheel events, breaking ScrollRect scrolling whenever the cursor is over the widget.
+- Destructive actions use `UIBuilder.DangerButton` — red-tinted bg, two-click confirm ("Click again to confirm"), 3s auto-revert timer.
+- Section help uses `UIBuilder.SectionHeaderWithHelp(parent, title, helpText)` — a 14px `[?]` icon after the header label; hovering shows a tooltip popup parented to the canvas root (so it renders above the scroll viewport instead of being clipped by its RectMask2D). The header's HLG needs `childControlWidth = true` so the icon's `LayoutElement.preferredWidth` is honored.
+
+### Tab + page layout (`TabRail.cs`)
+
+`TabRail` owns the left rail and the page host. Each page registered via `Tabs.AddTab(name, buildPage)` gets:
+
+1. A page `RectTransform` filling the page host, `SetActive(false)` by default.
+2. A `ScrollRect` on the page, with a `Viewport` (RectMask2D + transparent raycast-target Image) and a `Content` child (VerticalLayoutGroup + ContentSizeFitter).
+3. The `buildPage(Content)` callback runs once at registration to populate widgets.
+
+**Scrolling gotcha:** `VerticalLayoutGroup.childControlHeight` must be `true` so VLG honors each row's `LayoutElement.preferredHeight`. With it off, VLG reads the bare `RectTransform.sizeDelta.y` (which is 0 for all rows) and the content collapses to zero height — `ContentSizeFitter` then sets content height to 0 and there's nothing to scroll. The viewport also needs a raycast-target Graphic (transparent Image) so the scroll wheel has a handler to land on when the cursor is between rows.
+
+### Hotkey
+
+Toggle: **Ctrl + B** only, in `UICore.HandleUpdate`.
+
+**macOS dead-key gotcha:** the original `Alt + B` binding does not work on macOS. Option (Unity's `LeftAlt`) is a system-level dead-key modifier — Option+B is reserved for typing `∫`, and the B keystroke is swallowed before reaching `Input.GetKeyDown(KeyCode.B)`. Diagnosed via `Input.anyKeyDown` logging: Alt-alone fired, Space fired, but a B keydown was never observed during Option+B chords. Cmd and Ctrl have no such behavior. Function keys (F1–F12) bypass the issue entirely since no modifier is held.
+
+This applies to all future hotkeys: **never bind Option + letter on macOS.** Cmd, Ctrl, Shift, or single function keys only.
+
+### Loader-loop driver
+
+`MainClass.Setup` assigns `modEntry.OnUpdate = (_, __) => UICore.HandleUpdate();` — fires every frame the mod is enabled. Verified under MelonLoader + UMMCompat on Unity 6 (6000.3.10f1); periodic "[UI] HandleUpdate alive frame=N" log entries confirm continuous ticking past startup.
+
+`UICore.Initialize(...)` is called from `MainClass.TryEagerInit`, which is itself gated by `IsEngineReady()` and retried on first scene load when the engine wasn't ready at toggle-on. This shares the same deferred-init mechanism as Overlay / KeyViewer construction — necessary because `koren UMM` / UMMCompat can load mods before game statics are alive (calling asset APIs that early crashes the engine, uncatchable).
 
 ---
 
@@ -82,6 +168,7 @@ When adding a new section to the settings GUI, follow the partial-file pattern: 
 | `ShowTimingScale` | `true` | Show timing scale row |
 | `ShowJudgements` | `true` | Show hit-margin count row |
 | `ShowAttempts` | `false` | Show attempts counter |
+| `ShowFullAttempts` | `false` | Show full-attempts counter (attempts started at 0% — checkpoint restarts excluded). Renders as a second row under Attempts in the same container |
 | `Scale` | `1.0` | Scale applied to left/right overlay columns |
 | `FontName` | `"Maplestory Bold"` | Font used for all overlay text |
 
@@ -102,6 +189,8 @@ When adding a new section to the settings GUI, follow the partial-file pattern: 
 | `AttemptsX` | `0.77` | Normalized screen X anchor of the attempts container (0 = left, 1 = right) |
 | `AttemptsY` | `0.05` | Normalized screen Y anchor of the attempts container (0 = bottom, 1 = top) |
 
+The attempts container is a VLG holding both the Attempts row and the Full Attempts row — `AttemptsX`/`AttemptsY` move both together; each row's visibility is gated independently (`ShowAttempts` / `ShowFullAttempts`).
+
 ### Timing Scale sub-settings
 
 | Field | Default | Purpose |
@@ -113,8 +202,9 @@ When adding a new section to the settings GUI, follow the partial-file pattern: 
 
 | Field | Default | Purpose |
 | ----- | ------- | ------- |
-| `JudgementsY` | `8` | Y offset of the judgements container (px) |
+| `JudgementsY` | `0` | Y offset of the judgements container (px) |
 | `JudgementsSize` | `0.9` | Scale of the judgements container |
+| `JudgementsGap` | `12` | HLG spacing between judgement count texts (px) |
 
 ### Combo display
 
@@ -153,7 +243,7 @@ Two independent panels — **Hand** and **Foot** — each driven by its own acti
 | Field | Default | Purpose |
 | ----- | ------- | ------- |
 | `KvHandPresets` | 10k / 12k / 16k | Hand preset list |
-| `KvFootPresets` | 2k | Foot preset list |
+| `KvFootPresets` | 2k / 4k / 8k / 16k | Foot preset list |
 | `KvActiveHand` | `1` (12k) | Index into `KvHandPresets` |
 | `KvActiveFoot` | `0` | Index into `KvFootPresets` |
 | `ShowKeyViewer` | `true` | Top-level master toggle — when off, the KV canvas deactivates regardless of hand/foot flags. Toggle lives next to the "Key Viewer" section header (mirrors Key Limiter / Chatter Blocker pattern) |
@@ -215,17 +305,20 @@ Token parsing: `KeyViewer.TryParseKey` maps friendly names (`Tab`, `LShift`, `LC
 
 | Field | Default | Purpose |
 | ----- | ------- | ------- |
+| `BlockInputsWhileMenuOpen` | `true` | While the Bismuth UGUI menu is open, no gameplay inputs register at all (both `GetMain` and `AddHit` paths short-circuit on `UICore.IsOpen`). Toggle lives at the top of the Input page |
 | `KeyLimiterEnabled` | `true` | Master toggle for the allowed-key filter |
 | `KeyLimiterUseKvKeys` | `true` | If true, allowed set = union of active hand + foot preset keys; else parse `KeyLimiterCustomKeys` |
 | `KeyLimiterCustomKeys` | `""` | Space/comma-separated key tokens (same parser as KeyViewer) |
 | `ChatterBlockerEnabled` | `false` | Master toggle for chatter suppression |
-| `ChatterThresholdMs` | `30` | If a press fires within this many milliseconds of the same key's previous accepted press, it is silently dropped |
+| `ChatterThresholdMs` | `50` | If a press fires within this many milliseconds of the same key's previous accepted press, it is silently dropped |
 
 Implementation: `KeyLimiter.Apply(settings)` populates `_allowed: HashSet<KeyCode>` and `_allowedLabels: HashSet<ushort>` (SkyHook `KeyLabel` enum values, obtained via reflection on `SkyHook.AsyncKeyMapper.UnityKeyToAsyncKey`).
 
 The KeyLimiter, ChatterBlocker, and Ghost-key suppression all share a single press-list iteration in `CountAllowedInPressedKeys` and a single `RDInput.GetMain` postfix.
 
 **Ghost-key suppression** is collected at `Apply` time from the active hand preset's `GhostKeys` into `_ghosts: HashSet<KeyCode>`. It always applies — independent of the limiter / chatter toggles — so pressing a ghost key never registers as a tile hit. The postfix gate fires when any of `_active`, `_chatterActive`, or `_ghosts.Count > 0` is true.
+
+**Menu input block**: when `BlockInputsWhileMenuOpen` is set and `UICore.IsOpen`, the `GetMain` postfix zeroes `__result` (main port only, `__0 == 0`) and the `AddHit` prefix returns `false` — before any limiter/chatter logic runs. The flag is cached as `_blockWhileOpen` in `Apply`.
 
 1. **`RDInput.GetMain(int state)` postfix** — fires when either filter is enabled (`_active || _chatterActive`), state = `ButtonState.Down`, and we're not re-entering. Clamps `__result` to `CountAllowedInPressedKeys()`, which iterates `RDInput.GetStateKeys(Down)` (via reflection), resolves each press to a Unity `KeyCode` (direct, async label via `AsyncKeyToUnityKey`, or HID fallback), then applies: **limiter** (drop if `_active && !allowed`) and **chatter** (drop if `_chatterActive` and the key's previous accepted-press time is within `_chatterThresholdSec`). On accept, the key's `_lastPressTime` is updated. P/Space pass when `scrController.state != PlayerControl` (death screen, pause menu, between tiles).
 2. **`scrMistakesManager.AddHit(HitMargin)` prefix** — fallback that returns `false` (suppressing the hit) if no allowed key is currently held (tolerant to 1-frame async delay using `Input.GetKey`).
@@ -256,7 +349,17 @@ The `0xE1`/`0xE5` codes were confirmed via diagnostic logging — earlier guesse
 | Field | Default | Purpose |
 | ----- | ------- | ------- |
 | `LevelNameScale` | `0.5` | `localScale` applied to `txtLevelName.rectTransform` |
-| `LevelNameY` | `45` | Additive Y offset from `_levelNameOrigPos` (px) |
+| `LevelNameY` | `40` | Additive Y offset from `_levelNameOrigPos` (px) |
+
+### UGUI panel preferences (UI shell)
+
+| Field | Default | Purpose |
+| ----- | ------- | ------- |
+| `UiScale` | `1.0` | Panel UI scale (0.5–2). Implemented by shrinking the CanvasScaler reference resolution; panel sizeDelta is counter-scaled so on-screen size stays constant |
+| `UiFontName` | `""` | Selected panel font (from `FontLoader` scan); empty = OS Arial fallback |
+| `UiAccentCustom` | `false` | If true, the accent color picker is shown instead of preset swatches |
+| `UiAccentR/G/B` | periwinkle | Saved accent color, applied via `Theme.ApplyAccent` on init |
+| `UiPanelWidth` / `UiPanelHeight` | `840` / `540` | Panel dimensions in canonical scale-1.0 units, saved on Close. Position is **not** saved — the panel always re-centers on Open |
 
 ---
 
@@ -286,7 +389,7 @@ Canvas (ScreenSpaceOverlay, sortingOrder 999)
 ├── RightContainer     — VLG, top-right, holds Right-position stat rows
 ├── TimingScaleContainer — VLG, anchor (0.5, 0.12) + Y offset, holds TimingScale row
 ├── JudgementsContainer— HLG, anchor (0.5, 0.0) + Y offset, holds 9 margin count texts
-├── AttemptsContainer  — VLG, anchor (AttemptsX, AttemptsY), holds attempts row
+├── AttemptsContainer  — VLG, anchor (AttemptsX, AttemptsY), holds attempts row + full-attempts row
 └── ComboDisplay       — anchor (0.5, 0.87) + Y offset from settings
     ├── ComboLabelWrapper  (ignoreLayout=true, positioned by _comboLabelWrapper.anchoredPosition)
     │   └── ComboLabel  (Text — the "Perfect Combo" line)
@@ -298,6 +401,7 @@ Canvas (ScreenSpaceOverlay, sortingOrder 999)
 | Field | Type | Purpose |
 | ----- | ---- | ------- |
 | `_attempts` | `int` | Attempt count for current level; loaded from `AttemptsStore` on level start |
+| `_fullAttempts` | `int` | Full-attempt count (starts from 0% only — incremented only when `GCS.checkpointNum == 0` at level start); loaded via `AttemptsStore.GetFull` |
 | `_currentLevelKey` | `string` | Level key (file path for custom, level code for official); null between scenes |
 | `_combo` | `int` | Current perfect-combo streak |
 | `_comboPulseT` | `float` | 1 → 0 over `ComboPulseDuration` seconds; drives label Y-offset animation |
@@ -317,7 +421,7 @@ Canvas (ScreenSpaceOverlay, sortingOrder 999)
 | Method | Called by | Action |
 | ------ | --------- | ------ |
 | `OnAttempt()` | `MistakesResetPatch` | `ShowEmpty()` only — `scrMistakesManager.Reset` fires during `scrController.Awake` (init) and `scnEditor.SwitchToEditMode`, not during in-game retries |
-| `OnLevelStart(isRestart)` | `ScnGamePlayPatch` / `PressToStartPatch` | `isRestart=true` → in-game retry → `_attempts++`; `isRestart=false && !inLevel && same key` → exit+re-enter → `_attempts++`; `isRestart=false && new key` → load from store. Then `inLevel = true`; `ShowEmpty()`; sets `attemptsValue.text`; `ShowOrHideElements()` |
+| `OnLevelStart(isRestart)` | `ScnGamePlayPatch` / `PressToStartPatch` | `isRestart=true` → in-game retry → `_attempts++`; `isRestart=false && !inLevel && same key` → exit+re-enter → `_attempts++`; `isRestart=false && new key` → load from store. `_fullAttempts++` alongside `_attempts++` only when `GCS.checkpointNum == 0` (start from 0%). Then `inLevel = true`; `ShowEmpty()`; sets both attempts texts; `ShowOrHideElements()` |
 | `OnLevelEnd()` | Various patches (wipe, load, ESC) | `inLevel = false` — does **not** reset `_attempts` or `_currentLevelKey` |
 | `OnSceneUnloaded()` | `SceneManager.sceneUnloaded` | `inLevel = false`; `RDC.noHud = false`; `_levelNameOrigPos = null` |
 | `ShowEmpty()` | After each attempt | Resets displayed values to `--` / `0`; attempts color stays white |
@@ -339,6 +443,7 @@ canvas.active    = inLevel && !paused && !HideAllUI && (showOverlayStats || Show
 ``` docs
 overlayRow.SetActive(ShowOverlay && ShowXxx)   — all stat rows gated on both flags
 attemptsRow.SetActive(ShowOverlay && ShowAttempts)
+attemptsFullRow.SetActive(ShowOverlay && ShowFullAttempts)
 comboDisplayContainer.SetActive(ShowComboDisplay)   — no ShowOverlay gate
 ```
 
@@ -506,8 +611,8 @@ The shadow body's rect height is `bodyH + ShadowSize` (with sharp-top) or `bodyH
 | `scrPlanet.MoveToNextFloor` | Postfix | Hides error meter (`HideAllUI` or `HideHitmeter`) |
 | `scrController.paused` (setter) | Postfix | Hides error meter (`HideAllUI` or `HideHitmeter`) |
 | `OttoButtonController.Update` | Postfix | Hides Otto debug button (`HideAllUI`) |
-| `RDInput.GetMain(int)` | Postfix | Key Limiter — clamps press count to allowed-key count when state=Down |
-| `scrMistakesManager.AddHit(HitMargin)` | Prefix | Key Limiter — suppresses hit if no allowed key currently held |
+| `RDInput.GetMain(int)` | Postfix | Key Limiter — clamps press count to allowed-key count when state=Down; zeroes it entirely while the Bismuth menu is open (`BlockInputsWhileMenuOpen`) |
+| `scrMistakesManager.AddHit(HitMargin)` | Prefix | Key Limiter — suppresses hit if no allowed key currently held, or unconditionally while the menu is open |
 
 ### Optimizations (`Optimizations.cs`)
 
@@ -604,7 +709,8 @@ scrController.ResetCustomLevel(isRestart)  [coroutine]
 | ------ | ------- | ------- |
 | `Get(key)` | `int` | Returns stored count for key, or 0 if not found |
 | `Set(key, value)` | `void` | Stores count and immediately writes the file |
-| `ClearAll()` | `void` | Empties all stored counts and overwrites the file |
+| `GetFull(key)` / `SetFull(key, value)` | `int` / `void` | Full-attempt counterpart — same file, key prefixed `F::` (level names/paths never start with that) |
+| `ClearAll()` | `void` | Empties all stored counts (regular + full) and overwrites the file |
 
 Loads lazily on first call. `Get`/`Set` are no-ops when `key` is null (handles the between-scenes window).
 

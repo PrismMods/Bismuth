@@ -95,6 +95,7 @@ namespace Bismuth
         public bool ShowJudgements = true;
         public float JudgementsSize = 0.9f;
         public float JudgementsY = 0f;
+        public float JudgementsGap = 12f;
         public float Scale = 1.0f;
         public int Precision = 2;
         public string FontName = "Maplestory Bold";
@@ -107,6 +108,7 @@ namespace Bismuth
         public bool OptUnloadAssets = true;
         public bool OptVolumeTrackDOTween = true;
         public bool ShowAttempts = false;
+        public bool ShowFullAttempts = false;
 
         public List<KeyViewerPreset> KvHandPresets = null;
         public List<KeyViewerPreset> KvFootPresets = null;
@@ -148,6 +150,8 @@ namespace Bismuth
         public KvColor ComboLabelShadowColor = new KvColor { R = 0f, G = 0f, B = 0f, A = 0.5f };
         public bool ComboCountAuto = false;
 
+        public bool BlockInputsWhileMenuOpen = true;
+
         public bool KeyLimiterEnabled = true;
         public bool KeyLimiterUseKvKeys = true;
         public string KeyLimiterCustomKeys = "";
@@ -178,13 +182,6 @@ namespace Bismuth
         [System.Xml.Serialization.XmlIgnore] public bool ActiveHideLevelName         => HideUiEnabled && HideLevelName;
         [System.Xml.Serialization.XmlIgnore] public bool ActiveHideBetaBuild         => HideUiEnabled && HideBetaBuild;
 
-        public bool  TweaksEnabled   = true;
-        public float LevelNameScale  = 0.5f;
-        public float LevelNameY      = 40f;
-
-        [System.Xml.Serialization.XmlIgnore] public float ActiveLevelNameScale => TweaksEnabled ? LevelNameScale : 1f;
-        [System.Xml.Serialization.XmlIgnore] public float ActiveLevelNameY     => TweaksEnabled ? LevelNameY     : 0f;
-
         public OverlayPosition ProgressPosition  = OverlayPosition.Left;
         public OverlayPosition AccPosition       = OverlayPosition.Left;
         public OverlayPosition XAccPosition      = OverlayPosition.Left;
@@ -194,12 +191,52 @@ namespace Bismuth
         public float TimingScaleSize = 0.75f;
         public float AttemptsX = 0.77f;
         public float AttemptsY = 0.05f;
+        public float LevelNameScale = 0.5f;
+        public float LevelNameY     = 40f;
+
+        // Normalized screen anchors for the draggable elements (Locations tab). Defaults
+        // reproduce the historical fixed placements at the 1920×1080 reference resolution
+        // (status panels: 10px inset from the top corners).
+        public float StatusLeftX  = 0.0052f;
+        public float StatusLeftY  = 0.9907f;
+        public float StatusRightX = 0.9948f;
+        public float StatusRightY = 0.9907f;
+        public float ComboDisplayX       = 0.5f;
+        public float ComboDisplayAnchorY = 0.85f;
+        public float JudgementsX         = 0.5f;
+        public float JudgementsAnchorY   = 0f;
+        public float TimingScaleX        = 0.5f;
+        public float TimingScaleAnchorY  = 0.12f;
 
         public ColorGradient ProgressGradient;
         public ColorGradient AccGradient;
         public ColorGradient BpmGradient;
         public ColorGradient ComboGradient;
         public float ComboGradientMax = 1000f;
+
+        // X-Accuracy and Tile BPM inherit from Acc/Bpm by default. Toggle off to give them
+        // their own gradient. The standalone gradients persist either way so users don't
+        // lose work when toggling back and forth.
+        public bool XAccUseAccGradient = true;
+        public ColorGradient XAccGradient;
+        public bool TileBpmUseBpmGradient = true;
+        public ColorGradient TileBpmGradient;
+
+        [System.Xml.Serialization.XmlIgnore]
+        public ColorGradient ActiveXAccGradient => XAccUseAccGradient ? AccGradient : XAccGradient;
+        [System.Xml.Serialization.XmlIgnore]
+        public ColorGradient ActiveTileBpmGradient => TileBpmUseBpmGradient ? BpmGradient : TileBpmGradient;
+
+        // UGUI settings panel preferences (new shell — see UI/).
+        public float UiScale = 1.0f;
+        public string UiFontName = "";
+        public bool UiAccentCustom = false;
+        public float UiAccentR = 0.604f;
+        public float UiAccentG = 0.706f;
+        public float UiAccentB = 1.0f;
+        // Panel dimensions are saved across sessions; position is not (always re-centered).
+        public float UiPanelWidth = 840f;
+        public float UiPanelHeight = 540f;
 
         public void EnsureDefaults()
         {
@@ -211,6 +248,10 @@ namespace Bismuth
                 BpmGradient = MakeBpmDefault();
             if (ComboGradient == null || ComboGradient.Stops.Count == 0)
                 ComboGradient = MakeComboDefault();
+            if (XAccGradient == null || XAccGradient.Stops.Count == 0)
+                XAccGradient = MakeAccDefault();
+            if (TileBpmGradient == null || TileBpmGradient.Stops.Count == 0)
+                TileBpmGradient = MakeBpmDefault();
             if (KvHandPresets == null || KvHandPresets.Count == 0)
             {
                 KvHandPresets = new List<KeyViewerPreset>

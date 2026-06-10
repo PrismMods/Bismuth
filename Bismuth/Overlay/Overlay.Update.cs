@@ -11,11 +11,12 @@ namespace Bismuth
 
             var settings = MainClass.Settings;
             bool showOverlayStats = settings.ShowOverlay &&
-                (settings.ShowProgress || settings.ShowAttempts ||
+                (settings.ShowProgress || settings.ShowAttempts || settings.ShowFullAttempts ||
                  settings.ShowAcc || settings.ShowXAcc || settings.ShowBpm || settings.ShowTileBpm ||
                  settings.ShowTimingScale || settings.ShowJudgements);
             bool paused = scrController.instance?.paused ?? false;
-            bool show = inLevel && !paused && !settings.ActiveHideAllUI && (showOverlayStats || settings.ShowComboDisplay);
+            bool show = _editMode ||
+                (inLevel && !paused && !settings.ActiveHideAllUI && (showOverlayStats || settings.ShowComboDisplay));
             if (canvas.gameObject.activeSelf != show)
                 canvas.gameObject.SetActive(show);
 
@@ -120,7 +121,7 @@ namespace Bismuth
                     {
                         _lastTileBpmVal = _lastTileBpm;
                         tileBpmValue.text = TrimZeros(_lastTileBpm.ToString(fmt));
-                        tileBpmValue.color = settings.BpmGradient?.Evaluate(_lastTileBpm / 10000f) ?? Color.white;
+                        tileBpmValue.color = settings.ActiveTileBpmGradient?.Evaluate(_lastTileBpm / 10000f) ?? Color.white;
                     }
                 }
             }
@@ -219,7 +220,7 @@ namespace Bismuth
                         float x = trackers[i]?.percentXAcc ?? 0f;
                         bool alive = players != null && i < players.Length && players[i] != null && players[i].alive;
                         bool dead = mixedState && !alive;
-                        Color c = dead ? deadColor : (s.AccGradient?.Evaluate(x) ?? Color.white);
+                        Color c = dead ? deadColor : (s.ActiveXAccGradient?.Evaluate(x) ?? Color.white);
                         sb.Append("<color=#").Append(ColorUtility.ToHtmlStringRGBA(c)).Append('>');
                         sb.Append(x >= 1f ? "100" : (x * 100f).ToString(fmt)).Append('%');
                         if (dead) sb.Append(" (dead)");
@@ -232,7 +233,7 @@ namespace Bismuth
                 {
                     float x = trackers[0]?.percentXAcc ?? 0f;
                     xaccValue.text = x >= 1f ? "100%" : (x * 100f).ToString(fmt) + "%";
-                    xaccValue.color = s.AccGradient?.Evaluate(x) ?? Color.white;
+                    xaccValue.color = s.ActiveXAccGradient?.Evaluate(x) ?? Color.white;
                 }
             }
 

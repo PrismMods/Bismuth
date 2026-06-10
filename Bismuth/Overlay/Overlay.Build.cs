@@ -25,6 +25,10 @@ namespace Bismuth
             attemptsLabel.fontSize = 20;
             attemptsValue.fontSize = 20;
             attemptsRow.transform.SetParent(attemptsContainer, false);
+            (attemptsFullRow, attemptsFullLabel, attemptsFullValue) = MakeRow("AttemptsFull", "Full Attempts: ");
+            attemptsFullLabel.fontSize = 20;
+            attemptsFullValue.fontSize = 20;
+            attemptsFullRow.transform.SetParent(attemptsContainer, false);
             (accRow,         accLabel,         accValue)         = MakeRow("Acc",         "Accuracy | ");
             (xaccRow,        xaccLabel,        xaccValue)        = MakeRow("XAcc",        "XAccuracy | ");
             (bpmRow,         bpmLabel,         bpmValue)         = MakeRow("Bpm",         "BPM | ");
