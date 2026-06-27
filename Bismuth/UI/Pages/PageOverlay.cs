@@ -257,11 +257,10 @@ namespace Bismuth.UI.Pages
             UIBuilder.GradientEditor(body, "Color", s.ComboGradient, () => notify?.Invoke());
         }
 
-        // ── Per-part font weight overrides ───────────────────────────────────
-        // Each AddWeightRow call plants a self-rebuilding row whose option set tracks
-        // the overlay font family. Pages are built once, but the family can change
-        // from the UI tab — PageUI invokes RefreshFontWeightRows after a font change.
-        // The row only exists while the family has more than one weight.
+        // ── Per-part font weight overrides ─────────────────────────────────
+        // Each AddWeightRow plants a self-rebuilding row whose options track the overlay
+        // font family (PageUI calls RefreshFontWeightRows after a font change). The row
+        // only exists while the family has multiple weights.
 
         internal static Action RefreshFontWeightRows;
 

@@ -130,7 +130,7 @@ namespace Bismuth
         private static readonly Dictionary<string, RectTransform> _wrappers =
             new Dictionary<string, RectTransform>();
 
-        // ── Overrides storage ────────────────────────────────────────────────
+        // ── Overrides storage ──────────────────────────────────────────────
 
         internal static GameUiOverride GetOverride(string key, bool create)
         {
@@ -163,6 +163,7 @@ namespace Bismuth
             o.OffX = d.OffX;
             o.OffY = d.OffY;
             o.Scale = d.Scale;
+            o.Hidden = false; // reset un-hides
             ApplyOne(key);
         }
 
@@ -199,7 +200,7 @@ namespace Bismuth
             S != null && (S.GameErrorMeterOverride ||
                           (S.GameUiOverrides != null && S.GameUiOverrides.Count > 0));
 
-        // ── Apply ────────────────────────────────────────────────────────────
+        // ── Apply ──────────────────────────────────────────────────────────
 
         /* Delayed re-applies after controller state changes (death/results screens
            activate elements after the level-start pass). Ticked from Overlay.Update. */
@@ -295,9 +296,28 @@ namespace Bismuth
             w.anchoredPosition = new Vector2(o.OffX, o.OffY);
             float sc = Mathf.Clamp(o.Scale, 0.1f, 5f);
             w.localScale = new Vector3(sc, sc, 1f);
+
+            ApplyVisibility(w, o.Hidden);
         }
 
-        // ── Text alignment (autoplay label, etc.) ────────────────────────────
+        /* Hide/show via a CanvasGroup on the (persistent) wrapper. Because the wrapper outlives
+           the game activating/deactivating the element, the element stays hidden without us
+           fighting its active-state — and the alpha covers its TMP shadow child too. */
+        private static void ApplyVisibility(RectTransform wrapper, bool hidden)
+        {
+            var cg = wrapper.GetComponent<CanvasGroup>();
+            if (!hidden)
+            {
+                if (cg != null) { cg.alpha = 1f; cg.interactable = true; cg.blocksRaycasts = true; }
+                return;
+            }
+            if (cg == null) cg = wrapper.gameObject.AddComponent<CanvasGroup>();
+            cg.alpha = 0f;
+            cg.interactable = false;
+            cg.blocksRaycasts = false;
+        }
+
+        // ── Text alignment (autoplay label, etc.) ──────────────────────────
         // Caches each element's original alignment the first time we touch it (or when
         // the game swaps the component instance), so inherit (-1) and RestoreAll revert.
         private struct AlignState
@@ -332,18 +352,27 @@ namespace Bismuth
                 txt.alignment = st.Orig;
                 txt.horizontalOverflow = st.OrigWrap;
                 SetPivotX(trt, st.OrigPivotX);
-                return;
+            }
+            else
+            {
+                /* The label's rect is sized to its content, so Text.alignment alone can't move
+                   it — the element's pivot.x decides which edge stays put as the text grows
+                   (Left=0, Center=0.5, Right=1), exactly like the attempts block. Overflow keeps
+                   it on one line so content changes grow about that pivot, not wrap off-center. */
+                float pivotX = align == (int)TextAlign.Left ? 0f
+                             : align == (int)TextAlign.Right ? 1f : 0.5f;
+                SetPivotX(trt, pivotX);
+                txt.alignment = MapAlign(align, st.Orig);
+                txt.horizontalOverflow = HorizontalWrapMode.Overflow;
             }
 
-            /* The label's rect is sized to its content, so Text.alignment alone can't move
-               it — the element's pivot.x decides which edge stays put as the text grows
-               (Left=0, Center=0.5, Right=1), exactly like the attempts block. Overflow keeps
-               it on one line so content changes grow about that pivot, not wrap off-center. */
-            float pivotX = align == (int)TextAlign.Left ? 0f
-                         : align == (int)TextAlign.Right ? 1f : 0.5f;
-            SetPivotX(trt, pivotX);
-            txt.alignment = MapAlign(align, st.Orig);
-            txt.horizontalOverflow = HorizontalWrapMode.Overflow;
+            /* Settle the content-sized rect NOW. Changing pivot/alignment/overflow leaves the
+               rect's size dirty until the next layout pass, so ApplyOne's WorldCenter measure
+               (called right after) would read the stale geometry and land a "centered" element
+               off — fixable only by toggling align + re-centering. Forcing the rebuild here
+               makes centering correct on the first apply. */
+            LayoutRebuilder.ForceRebuildLayoutImmediate(trt);
+            if (rt != trt) LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
         }
 
         private static void SetPivotX(RectTransform rt, float x)
@@ -368,7 +397,7 @@ namespace Bismuth
             return (corners[0] + corners[2]) * 0.5f;
         }
 
-        // ── Wrappers ─────────────────────────────────────────────────────────
+        // ── Wrappers ───────────────────────────────────────────────────────
 
         private static RectTransform EnsureWrapper(string key, RectTransform rt)
         {
@@ -449,7 +478,7 @@ namespace Bismuth
             RestoreErrorMeter();
         }
 
-        // ── Error meter ──────────────────────────────────────────────────────
+        // ── Error meter ────────────────────────────────────────────────────
 
         private struct MeterState
         {

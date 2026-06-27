@@ -113,16 +113,10 @@ namespace Bismuth
         private float _lastTileBpmTime = -1f;
         private float _lastTileBpm;
         private Vector2? _levelNameOrigPos;
-        /* txtLevelName is legacy uGUI Text, so this is the bundled legacy Font of the
-           selected overlay entry (set by MainClass), not a TMP asset. Original game font
-           is cached per scene so toggle can restore it */
-        private Font _levelNameFont;
-        private Font _levelNameOrigFont;
-        /* Bismuth drop shadow on txtLevelName (legacy Shadow, that text never went TMP),
-           plus game own enabled Shadow/Outline effects, suspended while Bismuth shadow
-           shows. All per-scene, like the font cache above */
-        private Shadow _levelNameShadow;
-        private Shadow[] _levelNameGameEffects;
+        /* txtLevelName is the game's legacy uGUI Text. We render it in our TMP font via a
+           GameTextShadow (hides the original, draws a TMP child with our font + drop shadow);
+           no Bismuth legacy Font is involved. This is the chosen overlay TMP weight. */
+        private TMP_FontAsset _levelNameFont;
 
         // Cached values to avoid per-frame string allocation when display unchanged
         private float _lastProgressT = -1f;
@@ -160,9 +154,6 @@ namespace Bismuth
             RDC.noHud = false;
             _levelNameOrigPos = null;
             _levelNameOrigFontSize = null;
-            _levelNameOrigFont = null;
-            _levelNameShadow = null;
-            _levelNameGameEffects = null;
         }
 
         private void OnActiveSceneChanged(Scene _, Scene __)

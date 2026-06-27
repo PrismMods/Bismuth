@@ -1,3 +1,4 @@
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -8,10 +9,8 @@ namespace Bismuth.UI
     internal static class LogViewer
     {
         private static GameObject _canvasGo;
-        private static Text _text;
+        private static TextMeshProUGUI _text;
         private static ScrollRect _scroll;
-        private static Text _debugBtnLabel;
-        private static bool _showDebug;
 
         public static void Show()
         {
@@ -76,14 +75,7 @@ namespace Bismuth.UI
             cr.offsetMin = new Vector2(8f, 0f);
             cr.offsetMax = new Vector2(-8f, 0f);
 
-            _text = contentGo.AddComponent<Text>();
-            _text.font = Theme.Font;
-            _text.fontSize = 13;
-            _text.color = Theme.Text;
-            _text.alignment = TextAnchor.UpperLeft;
-            _text.horizontalOverflow = HorizontalWrapMode.Wrap;
-            _text.verticalOverflow = VerticalWrapMode.Overflow;
-            _text.raycastTarget = false;
+            _text = UIBuilder.Tmp(contentGo, "", 13, TextAnchor.UpperLeft, Theme.Text, wrap: true);
             var csf = contentGo.AddComponent<ContentSizeFitter>();
             csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
@@ -95,12 +87,12 @@ namespace Bismuth.UI
             _scroll.movementType = ScrollRect.MovementType.Clamped;
             _scroll.scrollSensitivity = 30f;
 
-            UpdatePopup.MakeButton(panel.transform, "Refresh", -268f, 110f, 14f, Refresh);
-            UpdatePopup.MakeButton(panel.transform, "Open in File Manager", -101f, 200f, 14f,
+            UpdatePopup.MakeButton(panel.transform, "Refresh", -210f, 110f, 14f, Refresh);
+            UpdatePopup.MakeButton(panel.transform, "Clear", -95f, 100f, 14f,
+                () => { BismuthLog.Clear(); Refresh(); });
+            UpdatePopup.MakeButton(panel.transform, "Open in File Manager", 65f, 200f, 14f,
                 () => OsShell.OpenFolder(MainClass.ModPath));
-            var dbgBtn = UpdatePopup.MakeButton(panel.transform, "Debug: off", 66f, 110f, 14f, ToggleDebug);
-            _debugBtnLabel = dbgBtn.GetComponentInChildren<Text>();
-            UpdatePopup.MakeButton(panel.transform, "Close", 176f, 90f, 14f, Close);
+            UpdatePopup.MakeButton(panel.transform, "Close", 220f, 90f, 14f, Close);
 
             // Resize handles go last so they sit above everything in sibling order
             // (same ordering requirement as the settings panel).
@@ -109,18 +101,12 @@ namespace Bismuth.UI
             Refresh();
         }
 
-        private static void ToggleDebug()
-        {
-            _showDebug = !_showDebug;
-            if (_debugBtnLabel != null) _debugBtnLabel.text = _showDebug ? "Debug: on" : "Debug: off";
-            Refresh();
-        }
-
         public static void Refresh()
         {
             if (_text == null) return;
             string raw = BismuthLog.ReadTail();
-            if (!_showDebug)
+            // [dbg] lines show only in debug mode (Misc → Debug mode).
+            if (!(MainClass.Settings != null && MainClass.Settings.DebugMode))
             {
                 var sb = new System.Text.StringBuilder(raw.Length);
                 foreach (var line in raw.Split('\n'))
@@ -139,7 +125,6 @@ namespace Bismuth.UI
             _canvasGo = null;
             _text = null;
             _scroll = null;
-            _debugBtnLabel = null;
         }
     }
 }

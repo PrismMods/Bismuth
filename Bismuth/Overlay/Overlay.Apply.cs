@@ -347,49 +347,35 @@ namespace Bismuth
             ctrl.txtLevelName.horizontalOverflow = HorizontalWrapMode.Overflow;
             ctrl.txtLevelName.verticalOverflow = VerticalWrapMode.Overflow;
 
-            if (_levelNameOrigFont == null) _levelNameOrigFont = ctrl.txtLevelName.font;
-            bool styled = settings.LevelNameUseOverlayFont;
-            var wantFont = styled ? (_levelNameFont ?? _levelNameOrigFont) : _levelNameOrigFont;
-            if (wantFont != null && ctrl.txtLevelName.font != wantFont)
-                ctrl.txtLevelName.font = wantFont;
-
-            /* Bismuth-style drop shadow, swapped in with the font. Game own Shadow/Outline
-               are suspended so effects don't stack; offset is divided by LevelNameScale
-               because localScale shrinks the whole subtree, landing at the same ~2px screen
-               offset as the overlay rows */
+            /* Render the level name in our TMP font via a GameTextShadow (hides the legacy
+               original, draws a TMP child). The shadow's alpha-0 hide also suppresses the
+               game's own Shadow/Outline, so no effect juggling is needed — we hand the TMP an
+               explicit Bismuth drop shadow. owned:true keeps GameFontApplier's sweep/Restore
+               from detaching it. */
+            bool styled = settings.LevelNameUseOverlayFont && _levelNameFont != null;
             if (styled)
             {
-                if (_levelNameShadow == null)
-                {
-                    var existing = ctrl.txtLevelName.GetComponents<Shadow>();
-                    var enabledFx = new System.Collections.Generic.List<Shadow>();
-                    foreach (var fx in existing)
-                        if (fx != null && fx.enabled) enabledFx.Add(fx);
-                    _levelNameGameEffects = enabledFx.ToArray();
-
-                    _levelNameShadow = ctrl.txtLevelName.gameObject.AddComponent<Shadow>();
-                    _levelNameShadow.effectColor = new Color(0f, 0f, 0f, 0.5f);
-                }
-                if (_levelNameGameEffects != null)
-                    foreach (var fx in _levelNameGameEffects)
-                        if (fx != null) fx.enabled = false;
-                _levelNameShadow.enabled = settings.OverlayShadowEnabled;
-                _levelNameShadow.effectColor = settings.OverlayShadowColor?.ToColor() ?? new Color(0f, 0f, 0f, 0.5f);
+                var sh = GameTextShadow.Attach(ctrl.txtLevelName, owned: true);
+                // collapseNewlines keeps the speed-trial multiplier ("…\n(1.1배)") inline.
+                sh.Configure(_levelNameFont, FontStyles.Normal, 1f, collapseNewlines: true);
+                // Offset divided by LevelNameScale: localScale shrinks the whole subtree, so
+                // this lands at the same ~2px screen offset as the overlay rows.
                 float inv = settings.LevelNameScale > 0.01f ? 1f / settings.LevelNameScale : 1f;
-                _levelNameShadow.effectDistance = new Vector2(ShadowBaseOffset, -ShadowBaseOffset) * inv;
+                var col = settings.OverlayShadowColor?.ToColor() ?? new Color(0f, 0f, 0f, 0.5f);
+                sh.SetShadow(settings.OverlayShadowEnabled, col,
+                    new Vector2(ShadowBaseOffset, -ShadowBaseOffset) * inv);
             }
             else
             {
-                if (_levelNameShadow != null) _levelNameShadow.enabled = false;
-                if (_levelNameGameEffects != null)
-                    foreach (var fx in _levelNameGameEffects)
-                        if (fx != null) fx.enabled = true;
+                // Drop the shadow so the original shows with the game's own font + effects.
+                var sh = ctrl.txtLevelName.GetComponent<GameTextShadow>();
+                if (sh != null) sh.Detach();
             }
 
             ctrl.txtLevelName.gameObject.SetActive(!settings.ActiveHideAllUI && !settings.ActiveHideLevelName);
         }
 
-        internal void SetLevelNameFont(Font font)
+        internal void SetLevelNameFont(TMP_FontAsset font)
         {
             _levelNameFont = font;
             ApplyLevelNameTransform();

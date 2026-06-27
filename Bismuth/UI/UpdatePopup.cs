@@ -1,4 +1,5 @@
 using System;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -9,7 +10,7 @@ namespace Bismuth.UI
     internal static class UpdatePopup
     {
         private static GameObject _canvasGo;
-        private static Text _status;
+        private static TextMeshProUGUI _status;
         private static GameObject _updateBtn;
 
         public static void Show(string current, string latest, string releasesUrl, Action updateNow)
@@ -68,7 +69,7 @@ namespace Bismuth.UI
             if (_status != null) _status.text = msg;
             if (_updateBtn == null) return;
             _updateBtn.SetActive(true);
-            var label = _updateBtn.GetComponentInChildren<Text>();
+            var label = _updateBtn.GetComponentInChildren<TextMeshProUGUI>();
             if (label != null) label.text = "Close";
             ClickHandler.Attach(_updateBtn, Close);
         }
@@ -81,7 +82,7 @@ namespace Bismuth.UI
             _updateBtn = null;
         }
 
-        internal static Text MakeText(Transform parent, string name, string text,
+        internal static TextMeshProUGUI MakeText(Transform parent, string name, string text,
             int size, FontStyle style, Color color, float top, float height)
         {
             var go = UIBuilder.Rect(name, parent);
@@ -91,14 +92,11 @@ namespace Bismuth.UI
             rt.pivot = new Vector2(0.5f, 1f);
             rt.anchoredPosition = new Vector2(0f, top);
             rt.sizeDelta = new Vector2(-24f, height);
-            var t = go.AddComponent<Text>();
-            t.font = Theme.Font;
-            t.fontSize = size;
-            t.fontStyle = style;
-            t.color = color;
-            t.text = text;
-            t.alignment = TextAnchor.MiddleCenter;
-            t.raycastTarget = false;
+            var t = UIBuilder.Tmp(go, text, size, TextAnchor.MiddleCenter, color);
+            t.fontStyle = style == FontStyle.Bold ? FontStyles.Bold
+                        : style == FontStyle.Italic ? FontStyles.Italic
+                        : style == FontStyle.BoldAndItalic ? (FontStyles.Bold | FontStyles.Italic)
+                        : FontStyles.Normal;
             return t;
         }
 
@@ -135,16 +133,16 @@ namespace Bismuth.UI
         }
     }
 
-    // Shown when both <game>/Mods/Bismuth and <game>/UMMMods/Bismuth exist. Step 1
-    // asks which loader is in use. Step 2 offers deleting the unused copy (persistent
-    // data is carried over when the deleted copy is the running one). "Keep both"
-    // remembers the choice via Settings.IgnoreDuplicateInstall. onClosed always fires
-    // exactly once so UpdateChecker can continue with the version check.
+    // Shown when both <game>/Mods/Bismuth and <game>/UMMMods/Bismuth exist. Step 1 asks
+    // which loader is in use; step 2 offers deleting the unused copy (persistent data is
+    // carried over if the deleted copy is the running one). "Keep both" remembers via
+    // Settings.IgnoreDuplicateInstall. onClosed always fires exactly once so UpdateChecker
+    // can continue the version check.
     internal static class DuplicateInstallPopup
     {
         private static GameObject _canvasGo;
         private static GameObject _panel;
-        private static Text _body;
+        private static TextMeshProUGUI _body;
         private static readonly System.Collections.Generic.List<GameObject> _buttons
             = new System.Collections.Generic.List<GameObject>();
         private static Action _onClosed;

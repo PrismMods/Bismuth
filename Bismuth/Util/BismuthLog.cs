@@ -24,6 +24,14 @@ namespace Bismuth
             catch { }
         }
 
+        // Truncate the log file (Clear button in the log viewer).
+        internal static void Clear()
+        {
+            if (_path == null) return;
+            try { File.WriteAllText(_path, $"[{DateTime.Now:HH:mm:ss}] log cleared\n"); }
+            catch { }
+        }
+
         /* High-frequency diagnostics: hook traces, per-attempt dumps. Written to file
            like everything else, but in-game viewer hides [dbg] lines unless Debug
            toggle on */

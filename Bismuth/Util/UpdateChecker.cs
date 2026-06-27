@@ -90,7 +90,7 @@ namespace Bismuth
             _inst = null;
         }
 
-        // ── Async fetches: thread pool to fields to Update drain ──────────────
+        // ── Async fetches: thread pool to fields to Update drain ───────────
 
         private void StartCheck()
         {
@@ -226,7 +226,7 @@ namespace Bismuth
             }
         }
 
-        // ── Version check ─────────────────────────────────────────────────────
+        // ── Version check ──────────────────────────────────────────────────
 
         private void ParseAndMaybePrompt(string json)
         {
@@ -268,7 +268,7 @@ namespace Bismuth
                 () => StartDownload());
         }
 
-        // ── Install ───────────────────────────────────────────────────────────
+        // ── Install ────────────────────────────────────────────────────────
 
         private void Install(byte[] zipBytes)
         {
@@ -329,7 +329,7 @@ namespace Bismuth
             BismuthLog.Log("Updated file: " + dest);
         }
 
-        // ── Duplicate install handling ────────────────────────────────────────
+        // ── Duplicate install handling ─────────────────────────────────────
 
         private void DetectInstalls()
         {

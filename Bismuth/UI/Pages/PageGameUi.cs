@@ -40,7 +40,7 @@ namespace Bismuth.UI.Pages
         {
             var s = UICore.Settings;
 
-            // ── Layout ───────────────────────────────────────────────────────
+            // ── Layout ─────────────────────────────────────────────────────
             UIBuilder.SectionHeader(content, "Layout");
             UIBuilder.Description(content,
                 "Drag and resize elements directly on screen. Precise controls can be done using menus below.");
@@ -58,7 +58,7 @@ namespace Bismuth.UI.Pages
                 UICore.OnSettingsChanged?.Invoke();
             });
 
-            // ── Game text ────────────────────────────────────────────────────
+            // ── Game text ──────────────────────────────────────────────────
             UIBuilder.Spacer(content);
             UIBuilder.SectionHeader(content, "Game text");
 
@@ -122,7 +122,7 @@ namespace Bismuth.UI.Pages
 
             optionsHost.SetActive(s.GameTextUseOverlayFont);
 
-            // ── Elements ─────────────────────────────────────────────────────
+            // ── Elements ───────────────────────────────────────────────────
             UIBuilder.Spacer(content);
             UIBuilder.SectionHeader(content, "Elements");
             _elementsHost = UIBuilder.Rect("ElementsHost", content);
@@ -149,7 +149,17 @@ namespace Bismuth.UI.Pages
             foreach (var (key, label, text) in LayoutElements)
             {
                 string k = key; bool t = text; var w = weights;
-                UIBuilder.ExpandSection(_elementsHost.transform, label, body => BuildLayoutBody(body, k, t, w));
+                // Header radio = visible. Off hides the element (CanvasGroup on its wrapper);
+                // the title still expands the position/scale/weight/align controls below.
+                bool visible = !(GameUiLayout.GetOverride(k, false)?.Hidden ?? false);
+                UIBuilder.Collapsible(_elementsHost.transform, label, visible,
+                    v =>
+                    {
+                        GameUiLayout.GetOverride(k, true).Hidden = !v;
+                        GameUiLayout.ApplyOne(k);
+                        UICore.OnSettingsChanged?.Invoke();
+                    },
+                    body => BuildLayoutBody(body, k, t, w));
             }
             // Judgements (size + weight) and Level Name (Bismuth-owned X/Y/Scale + weight)
             // have no GameUiOverride transform, so they get their own bodies.

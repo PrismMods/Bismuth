@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -13,6 +14,63 @@ namespace Bismuth.UI
         public const float LabelFontSize = 15;
         public const float HeaderFontSize = 16;
         public const float SmallCapsFontSize = 12;
+
+        // ── TMP helpers ─────────────────────────────────────────────────────
+        // The panel is built entirely from TextMeshPro. These map the legacy uGUI
+        // vocabulary the builders were written against onto TMP equivalents.
+
+        // uGUI TextAnchor → TMP alignment. TMP's Left/Center/Right are the
+        // vertically-centered ("Middle*") variants.
+        public static TextAlignmentOptions Align(TextAnchor a)
+        {
+            switch (a)
+            {
+                case TextAnchor.UpperLeft:    return TextAlignmentOptions.TopLeft;
+                case TextAnchor.UpperCenter:  return TextAlignmentOptions.Top;
+                case TextAnchor.UpperRight:   return TextAlignmentOptions.TopRight;
+                case TextAnchor.MiddleLeft:   return TextAlignmentOptions.Left;
+                case TextAnchor.MiddleCenter: return TextAlignmentOptions.Center;
+                case TextAnchor.MiddleRight:  return TextAlignmentOptions.Right;
+                case TextAnchor.LowerLeft:    return TextAlignmentOptions.BottomLeft;
+                case TextAnchor.LowerCenter:  return TextAlignmentOptions.Bottom;
+                case TextAnchor.LowerRight:   return TextAlignmentOptions.BottomRight;
+                default:                      return TextAlignmentOptions.Left;
+            }
+        }
+
+        // Add a configured TMP label to an existing GameObject. Matches the legacy
+        // Text defaults the builders assumed: no wrap, overflow, rich text on,
+        // non-interactive.
+        public static TextMeshProUGUI Tmp(GameObject go, string text, float size,
+            TextAnchor anchor, Color color, bool wrap = false)
+        {
+            var t = go.AddComponent<TextMeshProUGUI>();
+            t.text = text;
+            t.font = Theme.TmpFont;
+            t.fontSize = size;
+            t.color = color;
+            t.alignment = Align(anchor);
+            t.textWrappingMode = wrap ? TextWrappingModes.Normal : TextWrappingModes.NoWrap;
+            t.overflowMode = TextOverflowModes.Overflow;
+            t.raycastTarget = false;
+            return t;
+        }
+
+        // TMP_InputField factory. TMP needs a viewport RectTransform with the text
+        // component nested inside it (the caret is spawned under the viewport), so the
+        // field GO becomes the viewport and `txt` its child. Returns the field; caller
+        // wires contentType / events / initial text.
+        public static TMP_InputField BuildInputField(GameObject fieldGo, TextMeshProUGUI txt)
+        {
+            var input = fieldGo.AddComponent<TMP_InputField>();
+            input.textViewport = (RectTransform)fieldGo.transform;
+            input.textComponent = txt;
+            input.caretWidth = 1;
+            input.customCaretColor = true;
+            input.caretColor = Theme.Text;
+            input.selectionColor = new Color(Theme.ToggleOn.r, Theme.ToggleOn.g, Theme.ToggleOn.b, 0.45f);
+            return input;
+        }
 
         public static GameObject Rect(string name, Transform parent)
         {
@@ -30,7 +88,7 @@ namespace Bismuth.UI
             return img;
         }
 
-        public static Text Label(Transform parent, string text, int size = (int)LabelFontSize, TextAnchor anchor = TextAnchor.MiddleLeft, Color? color = null)
+        public static TextMeshProUGUI Label(Transform parent, string text, int size = (int)LabelFontSize, TextAnchor anchor = TextAnchor.MiddleLeft, Color? color = null)
         {
             var go = Rect("Label", parent);
             var rect = (RectTransform)go.transform;
@@ -38,17 +96,7 @@ namespace Bismuth.UI
             rect.anchorMax = Vector2.one;
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
-
-            var t = go.AddComponent<Text>();
-            t.text = text;
-            t.font = Theme.Font;
-            t.fontSize = size;
-            t.color = color ?? Theme.Text;
-            t.alignment = anchor;
-            t.horizontalOverflow = HorizontalWrapMode.Overflow;
-            t.verticalOverflow = VerticalWrapMode.Overflow;
-            t.raycastTarget = false;
-            return t;
+            return Tmp(go, text, size, anchor, color ?? Theme.Text);
         }
 
         // Muted wrapped body copy under a section header (used for the on-screen
@@ -64,8 +112,7 @@ namespace Bismuth.UI
             vlg.padding = new RectOffset(10, 4, 0, 6);
 
             var t = Label(wrap.transform, text, (int)LabelFontSize - 2, TextAnchor.UpperLeft, Theme.TextMuted);
-            t.horizontalOverflow = HorizontalWrapMode.Wrap;
-            t.verticalOverflow = VerticalWrapMode.Overflow;
+            t.textWrappingMode = TextWrappingModes.Normal;
             return wrap;
         }
 
@@ -77,7 +124,7 @@ namespace Bismuth.UI
             le.minHeight = 22f;
 
             var label = Label(go.transform, text.ToUpperInvariant(), (int)SmallCapsFontSize, TextAnchor.MiddleLeft, Theme.TextMuted);
-            label.fontStyle = FontStyle.Bold;
+            label.fontStyle = FontStyles.Bold;
             label.rectTransform.offsetMin = new Vector2(2f, 0f);
             return go;
         }
@@ -92,9 +139,8 @@ namespace Bismuth.UI
             le.preferredHeight = 22f;
             le.minHeight = 22f;
 
-            // childControlWidth=true so HLG honors preferred widths (Text's ILayoutElement
-            // for the label, LayoutElement for the [?] icon). With it false, the qmark
-            // expanded to the default RectTransform size and rendered as a wide pill.
+            // childControlWidth=true so HLG honors preferred widths; false made the [?]
+            // icon expand to the default RectTransform size and render as a wide pill.
             var hlg = go.AddComponent<HorizontalLayoutGroup>();
             hlg.childControlWidth = true;
             hlg.childControlHeight = true;
@@ -105,16 +151,8 @@ namespace Bismuth.UI
             hlg.padding = new RectOffset(2, 0, 0, 0);
 
             var labelGo = Rect("L", go.transform);
-            var labelT = labelGo.AddComponent<Text>();
-            labelT.text = text.ToUpperInvariant();
-            labelT.font = Theme.Font;
-            labelT.fontSize = (int)SmallCapsFontSize;
-            labelT.color = Theme.TextMuted;
-            labelT.fontStyle = FontStyle.Bold;
-            labelT.alignment = TextAnchor.MiddleLeft;
-            labelT.horizontalOverflow = HorizontalWrapMode.Overflow;
-            labelT.verticalOverflow = VerticalWrapMode.Overflow;
-            labelT.raycastTarget = false;
+            var labelT = Tmp(labelGo, text.ToUpperInvariant(), (int)SmallCapsFontSize, TextAnchor.MiddleLeft, Theme.TextMuted);
+            labelT.fontStyle = FontStyles.Bold;
 
             var qGo = Rect("Q", go.transform);
             var qLe = qGo.AddComponent<LayoutElement>();
@@ -128,7 +166,7 @@ namespace Bismuth.UI
             qBg.color = new Color(1f, 1f, 1f, 0.08f);
             qBg.raycastTarget = true;
             var qLbl = Label(qGo.transform, "?", (int)SmallCapsFontSize - 1, TextAnchor.MiddleCenter, Theme.TextMuted);
-            qLbl.fontStyle = FontStyle.Bold;
+            qLbl.fontStyle = FontStyles.Bold;
 
             var popup = BuildHelpTooltip(helpText);
             if (popup != null) popup.SetActive(false);
@@ -181,15 +219,7 @@ namespace Bismuth.UI
             csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
             var textGo = Rect("T", go.transform);
-            var t = textGo.AddComponent<Text>();
-            t.text = text;
-            t.font = Theme.Font;
-            t.fontSize = (int)SmallCapsFontSize;
-            t.color = Theme.Text;
-            t.alignment = TextAnchor.UpperLeft;
-            t.horizontalOverflow = HorizontalWrapMode.Overflow;
-            t.verticalOverflow = VerticalWrapMode.Overflow;
-            t.raycastTarget = false;
+            Tmp(textGo, text, (int)SmallCapsFontSize, TextAnchor.UpperLeft, Theme.Text);
 
             return go;
         }
@@ -217,15 +247,7 @@ namespace Bismuth.UI
             labelRect.anchorMax = new Vector2(1f, 1f);
             labelRect.offsetMin = new Vector2(8f, 0f);
             labelRect.offsetMax = new Vector2(-40f, 0f);
-            var lab = labelGo.AddComponent<Text>();
-            lab.text = label;
-            lab.font = Theme.Font;
-            lab.fontSize = (int)LabelFontSize;
-            lab.color = Theme.Text;
-            lab.alignment = TextAnchor.MiddleLeft;
-            lab.horizontalOverflow = HorizontalWrapMode.Wrap;
-            lab.verticalOverflow = VerticalWrapMode.Overflow;
-            lab.raycastTarget = false;
+            var lab = Tmp(labelGo, label, (int)LabelFontSize, TextAnchor.MiddleLeft, Theme.Text, wrap: true);
 
             // Classic radio button: outer ring + filled inner dot when on.
             const float ringSize = 16f;
@@ -269,10 +291,9 @@ namespace Bismuth.UI
             return row;
         }
 
-        // Header row: optional ▶ arrow (when buildBody is non-null) + clickable title + radio button.
-        // Arrow/title click → expand/collapse the body. Radio click → toggle the bool independently.
-        // The container's preferredHeight is computed by its VLG, so the parent scrollable VLG
-        // sees the full (header + body when expanded) height and reflows naturally.
+        // Header row: optional ▶ arrow (when buildBody is non-null) + clickable title + radio.
+        // Arrow/title click expands/collapses the body; radio toggles the bool independently.
+        // The container's VLG-computed preferredHeight lets the parent scrollable VLG reflow.
         public static GameObject Collapsible(
             Transform parent,
             string title,
@@ -302,7 +323,7 @@ namespace Bismuth.UI
             bool value = initial;
 
             // ▶ chevron (only when there's a body). Animator rotates it 90° on expand.
-            Text chevron = null;
+            TextMeshProUGUI chevron = null;
             if (hasBody)
             {
                 var arrowGo = Rect("Arrow", header.transform);
@@ -422,7 +443,7 @@ namespace Bismuth.UI
         }
 
         // Internal: create a child Text inside a parent rect (no its own LayoutElement).
-        private static Text labelChild(Transform parent, string text, int size, TextAnchor anchor, Color color)
+        private static TextMeshProUGUI labelChild(Transform parent, string text, int size, TextAnchor anchor, Color color)
         {
             var go = Rect("L", parent);
             var rect = (RectTransform)go.transform;
@@ -430,16 +451,7 @@ namespace Bismuth.UI
             rect.anchorMax = Vector2.one;
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
-            var t = go.AddComponent<Text>();
-            t.text = text;
-            t.font = Theme.Font;
-            t.fontSize = size;
-            t.color = color;
-            t.alignment = anchor;
-            t.horizontalOverflow = HorizontalWrapMode.Overflow;
-            t.verticalOverflow = VerticalWrapMode.Overflow;
-            t.raycastTarget = false;
-            return t;
+            return Tmp(go, text, size, anchor, color);
         }
 
         public static GameObject Button(Transform parent, string label, Action onClick)
@@ -494,18 +506,10 @@ namespace Bismuth.UI
             labRect.pivot = new Vector2(0, 0.5f);
             labRect.sizeDelta = new Vector2(labelW, 0);
             labRect.anchoredPosition = new Vector2(8f, 0);
-            var lab = labGo.AddComponent<Text>();
-            lab.text = label;
-            lab.font = Theme.Font;
-            lab.fontSize = (int)LabelFontSize;
-            lab.color = Theme.Text;
-            lab.alignment = TextAnchor.MiddleLeft;
-            lab.raycastTarget = false;
+            var lab = Tmp(labGo, label, (int)LabelFontSize, TextAnchor.MiddleLeft, Theme.Text);
 
-            // Value display (right) — wrapped in an InputField so the user can click and
-            // type a new value directly. The InputField lives on `valGo`; its caret is built
-            // by Unity on first activation. The visible Text is a child so it doesn't collide
-            // with the InputField on the same GameObject.
+            // Value display (right) — a TMP_InputField (on `valGo`) for click-to-type. The
+            // visible text is a child so it doesn't collide with the field's own.
             var valGo = Rect("Value", row.transform);
             var valRect = (RectTransform)valGo.transform;
             valRect.anchorMin = new Vector2(1, 0);
@@ -523,23 +527,13 @@ namespace Bismuth.UI
             valTextRect.anchorMax = Vector2.one;
             valTextRect.offsetMin = Vector2.zero;
             valTextRect.offsetMax = Vector2.zero;
-            var valT = valTextGo.AddComponent<Text>();
-            valT.font = Theme.Font;
-            valT.fontSize = (int)LabelFontSize;
-            valT.color = Theme.TextMuted;
-            valT.alignment = TextAnchor.MiddleRight;
-            valT.supportRichText = false;
-            valT.raycastTarget = false;
+            var valT = Tmp(valTextGo, "", (int)LabelFontSize, TextAnchor.MiddleRight, Theme.TextMuted);
+            valT.richText = false;
 
-            var input = valGo.AddComponent<InputField>();
-            input.textComponent = valT;
-            input.contentType = InputField.ContentType.DecimalNumber;
-            input.lineType = InputField.LineType.SingleLine;
-            input.caretWidth = 1;
+            var input = BuildInputField(valGo, valT);
+            input.contentType = TMP_InputField.ContentType.DecimalNumber;
+            input.lineType = TMP_InputField.LineType.SingleLine;
             input.caretBlinkRate = 0.6f;
-            input.customCaretColor = true;
-            input.caretColor = Theme.Text;
-            input.selectionColor = new Color(Theme.ToggleOn.r, Theme.ToggleOn.g, Theme.ToggleOn.b, 0.45f);
             input.text = Mathf.Clamp(value, min, max).ToString(format);
 
             // Track — stretches between label and value
@@ -678,13 +672,7 @@ namespace Bismuth.UI
             labRect.pivot = new Vector2(0, 0.5f);
             labRect.sizeDelta = new Vector2(labelW, 0);
             labRect.anchoredPosition = new Vector2(8f, 0);
-            var lab = labGo.AddComponent<Text>();
-            lab.text = label;
-            lab.font = Theme.Font;
-            lab.fontSize = (int)LabelFontSize;
-            lab.color = Theme.Text;
-            lab.alignment = TextAnchor.MiddleLeft;
-            lab.raycastTarget = false;
+            var lab = Tmp(labGo, label, (int)LabelFontSize, TextAnchor.MiddleLeft, Theme.Text);
 
             // Right cluster: ◀ value ▶
             var rightGo = Rect("Right", row.transform);
@@ -698,7 +686,7 @@ namespace Bismuth.UI
             int idx = (options == null || options.Count == 0) ? -1 : Mathf.Clamp(currentIndex, 0, options.Count - 1);
             string currentText = (idx >= 0) ? options[idx] : "(none)";
 
-            Text valueText = null;
+            TextMeshProUGUI valueText = null;
 
             void MakeArrow(string glyph, float anchorX, Vector2 pivot, Action click)
             {
@@ -722,14 +710,7 @@ namespace Bismuth.UI
             valRect.anchorMax = new Vector2(1, 1);
             valRect.offsetMin = new Vector2(btnW + 4, 0);
             valRect.offsetMax = new Vector2(-(btnW + 4), 0);
-            valueText = valGo.AddComponent<Text>();
-            valueText.text = currentText;
-            valueText.font = Theme.Font;
-            valueText.fontSize = (int)LabelFontSize;
-            valueText.color = Theme.Text;
-            valueText.alignment = TextAnchor.MiddleCenter;
-            valueText.raycastTarget = false;
-            valueText.horizontalOverflow = HorizontalWrapMode.Overflow;
+            valueText = Tmp(valGo, currentText, (int)LabelFontSize, TextAnchor.MiddleCenter, Theme.Text);
 
             MakeArrow("◂", 0f, new Vector2(0, 0.5f), () => {
                 if (options == null || options.Count == 0) return;
@@ -747,10 +728,9 @@ namespace Bismuth.UI
             return row;
         }
 
-        // Inline dropdown — label on left, current value + chevron on right. Clicking the
-        // row expands an option list beneath it (inside the scroll content, so nothing to
-        // clip against RectMask2D or float over the panel). Selecting an option collapses
-        // the list and fires onChange. Better than CycleSelector for long option lists.
+        // Inline dropdown — label + current value/chevron. Clicking expands an option list
+        // beneath it, inside the scroll content (no RectMask2D clipping / floating). For
+        // long option lists where CycleSelector would be tedious.
         public static GameObject Dropdown(
             Transform parent,
             string label,
@@ -780,13 +760,7 @@ namespace Bismuth.UI
             labRect.pivot = new Vector2(0, 0.5f);
             labRect.sizeDelta = new Vector2(140f, 0);
             labRect.anchoredPosition = new Vector2(8f, 0);
-            var lab = labGo.AddComponent<Text>();
-            lab.text = label;
-            lab.font = Theme.Font;
-            lab.fontSize = (int)LabelFontSize;
-            lab.color = Theme.Text;
-            lab.alignment = TextAnchor.MiddleLeft;
-            lab.raycastTarget = false;
+            var lab = Tmp(labGo, label, (int)LabelFontSize, TextAnchor.MiddleLeft, Theme.Text);
 
             var valGo = Rect("Value", header.transform);
             var valRect = (RectTransform)valGo.transform;
@@ -794,14 +768,7 @@ namespace Bismuth.UI
             valRect.anchorMax = new Vector2(1, 1);
             valRect.offsetMin = new Vector2(150f, 0);
             valRect.offsetMax = new Vector2(-8f, 0);
-            var val = valGo.AddComponent<Text>();
-            val.text = (options.Count > 0 ? options[idx] : "") + "  ▾";
-            val.font = Theme.Font;
-            val.fontSize = (int)LabelFontSize;
-            val.color = Theme.Text;
-            val.alignment = TextAnchor.MiddleRight;
-            val.raycastTarget = false;
-            val.horizontalOverflow = HorizontalWrapMode.Overflow;
+            var val = Tmp(valGo, (options.Count > 0 ? options[idx] : "") + "  ▾", (int)LabelFontSize, TextAnchor.MiddleRight, Theme.Text);
 
             var listGo = Rect("Options", container.transform);
             var lVlg = listGo.AddComponent<VerticalLayoutGroup>();
@@ -814,7 +781,7 @@ namespace Bismuth.UI
             listGo.SetActive(false);
 
             bool open = false;
-            var optTexts = new Text[options.Count];
+            var optTexts = new TextMeshProUGUI[options.Count];
 
             Action close = () =>
             {
@@ -883,13 +850,7 @@ namespace Bismuth.UI
             labRect.pivot = new Vector2(0, 0.5f);
             labRect.sizeDelta = new Vector2(labelW, 0);
             labRect.anchoredPosition = new Vector2(8f, 0);
-            var lab = labGo.AddComponent<Text>();
-            lab.text = label;
-            lab.font = Theme.Font;
-            lab.fontSize = (int)LabelFontSize;
-            lab.color = Theme.Text;
-            lab.alignment = TextAnchor.MiddleLeft;
-            lab.raycastTarget = false;
+            var lab = Tmp(labGo, label, (int)LabelFontSize, TextAnchor.MiddleLeft, Theme.Text);
 
             var inGo = Rect("Input", row.transform);
             var inRect = (RectTransform)inGo.transform;
@@ -907,22 +868,12 @@ namespace Bismuth.UI
             txtRect.anchorMax = Vector2.one;
             txtRect.offsetMin = new Vector2(8f, 0);
             txtRect.offsetMax = new Vector2(-8f, 0);
-            var txt = txtGo.AddComponent<Text>();
-            txt.font = Theme.Font;
-            txt.fontSize = (int)LabelFontSize;
-            txt.color = Theme.Text;
-            txt.alignment = TextAnchor.MiddleLeft;
-            txt.supportRichText = false;
-            txt.raycastTarget = false;
+            var txt = Tmp(txtGo, "", (int)LabelFontSize, TextAnchor.MiddleLeft, Theme.Text);
+            txt.richText = false;
 
-            var input = inGo.AddComponent<InputField>();
-            input.textComponent = txt;
-            input.contentType = InputField.ContentType.Standard;
-            input.lineType = InputField.LineType.SingleLine;
-            input.caretWidth = 1;
-            input.customCaretColor = true;
-            input.caretColor = Theme.Text;
-            input.selectionColor = new Color(Theme.ToggleOn.r, Theme.ToggleOn.g, Theme.ToggleOn.b, 0.45f);
+            var input = BuildInputField(inGo, txt);
+            input.contentType = TMP_InputField.ContentType.Standard;
+            input.lineType = TMP_InputField.LineType.SingleLine;
             input.text = initial ?? "";
 
             input.onEndEdit.AddListener(s => onCommit?.Invoke(s));
@@ -951,13 +902,7 @@ namespace Bismuth.UI
             labRect.pivot = new Vector2(0, 0.5f);
             labRect.sizeDelta = new Vector2(labelW, 0);
             labRect.anchoredPosition = new Vector2(8f, 0);
-            var lab = labGo.AddComponent<Text>();
-            lab.text = label;
-            lab.font = Theme.Font;
-            lab.fontSize = (int)LabelFontSize;
-            lab.color = Theme.Text;
-            lab.alignment = TextAnchor.MiddleLeft;
-            lab.raycastTarget = false;
+            var lab = Tmp(labGo, label, (int)LabelFontSize, TextAnchor.MiddleLeft, Theme.Text);
 
             var rightGo = Rect("Segs", row.transform);
             var rr = (RectTransform)rightGo.transform;
@@ -1091,10 +1036,9 @@ namespace Bismuth.UI
             return container;
         }
 
-        // Gradient editor. Solid toggle hides the Stops list and shows a single ColorPicker
-        // bound to Stops[0] (matches ColorGradient.Evaluate's solid-mode behavior). Stops have
-        // numbered headers with a live position preview. Add/Remove triggers a full stops-list
-        // rebuild so numbering stays correct.
+        // Gradient editor. Solid toggle hides the Stops list and shows one ColorPicker bound
+        // to Stops[0] (matches ColorGradient.Evaluate's solid mode). Add/Remove rebuilds the
+        // whole stops list so the numbered headers stay correct.
         public static GameObject GradientEditor(
             Transform parent,
             string title,
@@ -1248,13 +1192,7 @@ namespace Bismuth.UI
             posRect.pivot = new Vector2(1, 0.5f);
             posRect.sizeDelta = new Vector2(72f, 0);
             posRect.anchoredPosition = new Vector2(-12f, 0);
-            var posText = posGo.AddComponent<Text>();
-            posText.font = Theme.Font;
-            posText.fontSize = (int)LabelFontSize;
-            posText.color = Theme.TextMuted;
-            posText.alignment = TextAnchor.MiddleRight;
-            posText.text = stop.Progress.ToString("0.00");
-            posText.raycastTarget = false;
+            var posText = Tmp(posGo, stop.Progress.ToString("0.00"), (int)LabelFontSize, TextAnchor.MiddleRight, Theme.TextMuted);
 
             var bodyGo = Rect("Body", container.transform);
             var bodyVlg = bodyGo.AddComponent<VerticalLayoutGroup>();
@@ -1383,12 +1321,7 @@ namespace Bismuth.UI
             hexRect.pivot = new Vector2(1, 0.5f);
             hexRect.sizeDelta = new Vector2(110f, 0);
             hexRect.anchoredPosition = new Vector2(-(swatchSize + 16f), 0);
-            var hexText = hexGo.AddComponent<Text>();
-            hexText.font = Theme.Font;
-            hexText.fontSize = (int)LabelFontSize;
-            hexText.color = Theme.TextMuted;
-            hexText.alignment = TextAnchor.MiddleRight;
-            hexText.raycastTarget = false;
+            var hexText = Tmp(hexGo, "", (int)LabelFontSize, TextAnchor.MiddleRight, Theme.TextMuted);
 
             // Body
             var bodyGo = Rect("Body", container.transform);
@@ -1406,7 +1339,7 @@ namespace Bismuth.UI
             bodyGo.AddComponent<RectMask2D>();
 
             // --- HEX input row ---
-            InputField hexInput = null;
+            TMP_InputField hexInput = null;
             {
                 var hexRow = Row(bodyGo.transform);
                 const float labelW = 140f;
@@ -1436,23 +1369,13 @@ namespace Bismuth.UI
                 inTxtRect.anchorMax = Vector2.one;
                 inTxtRect.offsetMin = new Vector2(8f, 0);
                 inTxtRect.offsetMax = new Vector2(-8f, 0);
-                var inTxt = inTxtGo.AddComponent<Text>();
-                inTxt.font = Theme.Font;
-                inTxt.fontSize = (int)LabelFontSize;
-                inTxt.color = Theme.Text;
-                inTxt.alignment = TextAnchor.MiddleLeft;
-                inTxt.supportRichText = false;
-                inTxt.raycastTarget = false;
+                var inTxt = Tmp(inTxtGo, "", (int)LabelFontSize, TextAnchor.MiddleLeft, Theme.Text);
+                inTxt.richText = false;
 
-                hexInput = inGo.AddComponent<InputField>();
-                hexInput.textComponent = inTxt;
-                hexInput.contentType = InputField.ContentType.Alphanumeric;
-                hexInput.lineType = InputField.LineType.SingleLine;
+                hexInput = BuildInputField(inGo, inTxt);
+                hexInput.contentType = TMP_InputField.ContentType.Alphanumeric;
+                hexInput.lineType = TMP_InputField.LineType.SingleLine;
                 hexInput.characterLimit = 9;
-                hexInput.caretWidth = 1;
-                hexInput.customCaretColor = true;
-                hexInput.caretColor = Theme.Text;
-                hexInput.selectionColor = new Color(Theme.ToggleOn.r, Theme.ToggleOn.g, Theme.ToggleOn.b, 0.45f);
             }
 
             // --- RGB(A) sliders ---
@@ -1549,13 +1472,7 @@ namespace Bismuth.UI
             labRect.pivot = new Vector2(0, 0.5f);
             labRect.sizeDelta = new Vector2(labelW, 0);
             labRect.anchoredPosition = new Vector2(8f, 0);
-            var lab = labGo.AddComponent<Text>();
-            lab.text = label;
-            lab.font = Theme.Font;
-            lab.fontSize = (int)LabelFontSize;
-            lab.color = Theme.Text;
-            lab.alignment = TextAnchor.MiddleLeft;
-            lab.raycastTarget = false;
+            var lab = Tmp(labGo, label, (int)LabelFontSize, TextAnchor.MiddleLeft, Theme.Text);
 
             var rightGo = Rect("Swatches", row.transform);
             var rightRect = (RectTransform)rightGo.transform;
@@ -1621,9 +1538,8 @@ namespace Bismuth.UI
         }
 
         // Destructive-action button with two-click confirmation. First click arms it (label
-        // changes to "Confirm: {label}?", bg brightens); second click within the timeout
-        // fires onConfirm. Auto-reverts after 3s if not confirmed. Click elsewhere is fine —
-        // arming just resets on its own timer.
+        // → "Confirm: {label}?"); second click within the timeout fires onConfirm.
+        // Auto-reverts after 3s on its own timer if not confirmed.
         public static GameObject DangerButton(Transform parent, string label, Action onConfirm)
         {
             var row = Row(parent);
@@ -1838,7 +1754,7 @@ namespace Bismuth.UI
         public RectTransform Track;
         public RectTransform Handle;
         public RectTransform Fill;
-        public InputField ValueInput;
+        public TMP_InputField ValueInput;
         public string Format = "0.00";
         public float Step = 0f;
         public Action<float> OnChange;

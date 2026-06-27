@@ -5,57 +5,32 @@ using UnityEngine.UI;
 
 namespace Bismuth
 {
-    /* Repaints the game's own text with the overlay font. A generalized version of
-       the song-title swap. Covers all three text systems the game mixes: legacy
-       uGUI Text, TextMeshPro, and 3D TextMesh (judgement popups). Opt-in via
-       Settings.GameTextUseOverlayFont. Sweeps on scene change and level start, plus
-       a per-spawn hook for pooled judgement popups. Originals are cached so toggling
-       off restores live objects. Scene loads reset naturally, since fresh objects
-       come from prefabs with the original fonts.
-
-       Fonts fill the em square differently. Pretendard renders visually larger than
-       the game fonts at the same fontSize, so every swap also scales the text size
-       by the line-height/em ratio of the original vs ours (fallback 0.85). */
+    /* Repaints the game's own text with the overlay font (opt-in via
+       Settings.GameTextUseOverlayFont). Covers all three text systems: legacy uGUI
+       Text, TextMeshPro, and 3D TextMesh. Originals are cached so toggling off
+       restores live objects. Pretendard renders larger per em than the game fonts,
+       so every swap also scales size by the line-height/em ratio (fallback 0.85). */
     internal static class GameFontApplier
     {
         private const float DefaultScale = 0.85f;
-        /* World-space TextMesh (judgement popups, results screens) reads visually
-           bigger than canvas text at the same metric ratio, so shrink it further. */
-        private const float MeshExtraScale = 0.8f;
 
-        private static Font _font;
         private static TMP_FontAsset _tmpFont;
         /* Family bold for title text (scrHUDText.isTitle: world number/name on level
            select, etc). Falls back to the regular weight when absent. */
-        private static Font _boldFont;
         private static TMP_FontAsset _boldTmpFont;
 
-        private struct TextState
-        {
-            public Font Font; public int Size; public float LineSpacing; public FontStyle Style;
-            public bool BestFit; public int BestFitMax;
-        }
         private struct TmpState { public TMP_FontAsset Font; public float Size; public float LineSpacing; public FontStyles Style; public bool AutoSize; public float SizeMin, SizeMax; }
-        private struct MeshState { public Font Font; public Material Mat; public int Size; public float CharSize; public float LineSpacing; public FontStyle Style; }
 
-        /* Original (pre-rewrite) text for guest-track credit labels whose size is
-           driven through a <size=…> rich-text tag. Kept so Restore can put the
-           string back. */
-        private static readonly Dictionary<Text, string> _guestCreditOrigText = new Dictionary<Text, string>();
-        private static readonly System.Text.RegularExpressions.Regex SizeTagRe =
-            new System.Text.RegularExpressions.Regex(@"</?size(=[^>]*)?>",
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-        private static readonly Dictionary<Text, TextState> _origText = new Dictionary<Text, TextState>();
+        // Legacy game Text and 3D TextMesh are rendered via shadows (TMP). Only game TMP
+        // is still swapped in place; its original state is cached here for Restore.
         private static readonly Dictionary<TMP_Text, TmpState> _origTmp = new Dictionary<TMP_Text, TmpState>();
-        private static readonly Dictionary<TextMesh, MeshState> _origMesh = new Dictionary<TextMesh, MeshState>();
 
         private static bool Enabled =>
             MainClass.Settings != null && MainClass.Settings.GameTextUseOverlayFont;
 
-        /* Hand-tuned bases for Pretendard over the game fonts (June 2026). Metric
-           normalization alone leaves text ~1.4× too large and leading ~1.5× too
-           tight. Sliders apply ON TOP of these, centered at 1.0. */
+        /* Hand-tuned bases for Pretendard over the game fonts: metric normalization
+           alone leaves text ~1.4× too large and leading ~1.5× too tight. Sliders
+           apply ON TOP of these, centered at 1.0. */
         private const float BaseGameTextScale = 0.6f;
         private const float BaseGameLineSpacing = 1.5f;
         private const float BaseStatsScale = 0.8f;
@@ -65,9 +40,8 @@ namespace Bismuth
             (MainClass.Settings != null ? Mathf.Clamp(MainClass.Settings.GameTextScale, 0.4f, 1.5f) : 1f)
             * BaseGameTextScale;
 
-        /* Line-advance multiplier (Game UI tab). Pretendard glyphs fill far more of
-           the em box than the game fonts, so swapped multi-line text reads cramped
-           at a metrically "equal" size. Widen the leading to compensate. */
+        /* Line-advance multiplier (Game UI tab). Pretendard fills more of the em box,
+           so swapped multi-line text reads cramped at a metrically "equal" size. */
         private static float UserLineSpacing =>
             (MainClass.Settings != null ? Mathf.Clamp(MainClass.Settings.GameTextLineSpacing, 0.8f, 2f) : 1f)
             * BaseGameLineSpacing;
@@ -87,10 +61,8 @@ namespace Bismuth
         }
 
         /* Stats size applied to CONTAINER localScale, not font size: these labels
-           best-fit their rects, so font-size changes only register once they
-           undercut the fitted size (the slider felt stepped/dead). Originals are
-           cached per container for restore, and it stays idempotent (always
-           orig × multiplier). */
+           best-fit their rects, so font-size changes feel stepped/dead. Cached per
+           container for restore; idempotent (always orig × multiplier). */
         private struct XformState { public Vector3 Scale; public Vector3 Pos; }
         private static readonly Dictionary<Transform, XformState> _statsOrigScale =
             new Dictionary<Transform, XformState>();
@@ -115,13 +87,11 @@ namespace Bismuth
             }
             var ns = new Vector3(st.Scale.x * m, st.Scale.y * m, st.Scale.z);
             tr.localScale = ns;
-            /* Scaling happens about the pivot, which sits off the visual center on
-               stats containers (the block drifted downward as it shrank). Shift
-               localPosition so the rect center stays put. rect is in pivot-relative
-               local units, unaffected by localScale. keepCenter=false scales about
-               the pivot instead: right-anchored labels (Continue/LastLevel) must keep
-               the pivot edge flush to the margin, and center-preserving shoved them
-               off it. */
+            /* Scaling is about the pivot, which sits off-center on stats containers
+               (the block drifted down as it shrank), so shift localPosition to keep the
+               rect center put. keepCenter=false scales about the pivot instead, for
+               right-anchored labels (Continue/LastLevel) that must stay flush to the
+               margin. */
             var rt = tr as RectTransform;
             if (keepCenter && rt != null)
             {
@@ -134,32 +104,153 @@ namespace Bismuth
         }
 
         // Called from MainClass.ApplySelectedFont whenever overlay font resolves
-        internal static void SetFonts(Font font, TMP_FontAsset tmpFont, Font boldFont, TMP_FontAsset boldTmpFont)
+        internal static void SetFonts(TMP_FontAsset tmpFont, TMP_FontAsset boldTmpFont)
         {
-            _font = font;
             _tmpFont = tmpFont;
-            _boldFont = boldFont != null ? boldFont : font;
             _boldTmpFont = boldTmpFont != null ? boldTmpFont : tmpFont;
+            WireBoldWeight();
+            PrewarmGameGlyphs();
             _lastSweepFrame = -1; // font identity changed, never dedupe this sweep
             Reapply();
             RequestFullSweepSoon(); // catch Start()-time localized-font re-stamps
         }
 
-        /* Game titles (world number/name on level select…) are visually bold in the
-           stock fonts, so match them with the family's heaviest weight.
-           scrHUDText.isTitle alone misses some. The strongest signal is the ORIGINAL
-           font being a bold variant (the game ships dedicated bold assets for
-           titles). */
+        // Rasterize common Latin glyphs into the game atlases now, so the first scene sweep
+        // doesn't cold-generate them. Korean (the bulk of localized UI) can't be cheaply
+        // pre-warmed, so it still rasterizes on first use, then persists across scenes.
+        private const string PrewarmAscii =
+            " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
+
+        /* Point the regular game-font asset's bold (700) slot at the bundled Bold asset, so a
+           <b> tag renders TRUE bold instead of TMP's faux-bold. The guest-track shadow uses
+           <b> to bold individual label LINES inside a component that also holds a
+           regular-weight name ("객원 레벨 디자인:\nRikri"). */
+        private static void WireBoldWeight()
+        {
+            try
+            {
+                if (_tmpFont == null || _boldTmpFont == null || _boldTmpFont == _tmpFont) return;
+                var table = _tmpFont.fontWeightTable;
+                if (table == null || table.Length <= 7) return;
+                var pair = table[7]; // index 7 = weight 700 (bold)
+                pair.regularTypeface = _boldTmpFont;
+                table[7] = pair;
+            }
+            catch { }
+        }
+
+        private static void PrewarmGameGlyphs()
+        {
+            try
+            {
+                _tmpFont?.TryAddCharacters(PrewarmAscii);
+                if (_boldTmpFont != null && _boldTmpFont != _tmpFont) _boldTmpFont.TryAddCharacters(PrewarmAscii);
+            }
+            catch { }
+        }
+
+        /* Game titles (world number/name on level select…) are bold in the stock
+           fonts, so match them with the family's heaviest weight. scrHUDText.isTitle
+           alone misses some; the strongest extra signal is the original font being a
+           bold variant. */
         private static bool IsTitle(Component c)
         {
             try
             {
                 var hud = c.GetComponent<scrHUDText>();
                 if (hud != null && hud.isTitle) return true;
-                /* The credits block ("by 7th Beat Games") is display text, title
-                   weight regardless of which scene rule catches it. */
+                // The credits block ("by 7th Beat Games") is title-weight display text.
                 return c.GetComponentInParent<scrCreditsText>() != null;
             }
+            catch { return false; }
+        }
+
+        // The title-screen credits ("by 7th Beat Games") — display text that should stay on
+        // one line and shrink to fit its rect rather than wrap (Pretendard renders wider).
+        private static bool IsCredits(Component c)
+        {
+            try { return c.GetComponentInParent<scrCreditsText>() != null; }
+            catch { return false; }
+        }
+
+        // Guest-track credit decorations (GuestTrackWorld…: "level design by", "music by", …)
+        // carry a huge native fontSize in a big world-space box, so they wrap + autosize to
+        // stay inside that box (FitMode.Box) instead of overflowing when the panel scales up.
+        private static bool InGuestTrackCredit(Component c)
+        {
+            for (var p = c.transform; p != null; p = p.parent)
+                if (p.name.StartsWith("GuestTrack")) return true;
+            return false;
+        }
+
+        // The ">< check out <other game> <" cross-promo under a guest track (object
+        // "checkItOut!"). Oversized blue vanilla display text — render it smaller + unbolded.
+        private static bool IsCollabTag(Component c)
+        {
+            return c.gameObject.name.StartsWith("checkItOut");
+        }
+
+        // Extra TMP line advance between a guest-track label and the name beneath it (the
+        // combined "label\nname" components render cramped at default spacing).
+        private const float GuestLineSpacing = 32f;
+        // When a name is a SEPARATE component below its label, push it down this fraction of
+        // its own font size so it isn't cramped against the label.
+        private const float GuestNameGap = 0.2f;
+
+        /* A guest-track artist NAME that sits below a SEPARATE label element (its parent IS
+           that label, e.g. guestLevelDesign/Rikri — not the Canvas/artist root and not the
+           track root). These render cramped under the label, so nudge them down. Combined
+           label+name components (parent Canvas) handle spacing via TMP lineSpacing instead. */
+        private static bool IsGuestName(Component c)
+        {
+            if (!InGuestTrackCredit(c) || IsCollabTag(c) || IsGuestLabelObject(c)) return false;
+            var p = c.transform.parent;
+            return p != null && GuestLabelNames.Contains(p.name);
+        }
+
+        // Push a name down off its label (position only; cached in the stats table so Restore
+        // resets it). Idempotent — always offsets from the cached original position.
+        private static void OffsetNameDown(Transform tr, float localDown)
+        {
+            if (tr == null) return;
+            XformState st;
+            if (!_statsOrigScale.TryGetValue(tr, out st))
+            {
+                st = new XformState { Scale = tr.localScale, Pos = tr.localPosition };
+                _statsOrigScale[tr] = st;
+            }
+            tr.localPosition = new Vector3(st.Pos.x, st.Pos.y - localDown, st.Pos.z);
+        }
+
+        /* Object-names of guest-track ROLE LABEL elements (the artist NAMES are their
+           children). The label TEXT isn't a reliable signal — some labels have no colon
+           ("레벨 시각 효과") — so bold is decided by which element holds the text, not its
+           wording. A label element holding a combined "label\nname" string can't bold
+           wholesale; the shadow bolds its label line per-line instead. */
+        private static readonly System.Collections.Generic.HashSet<string> GuestLabelNames =
+            new System.Collections.Generic.HashSet<string>
+            {
+                "guestLevelDesign", "vfxDesign", "guestTrackBy", "tutorialMusicBy",
+                "guestArtBy", "guestVFX", "guestTutorialDesign", "specialThanks", "guestTwemoji",
+            };
+
+        private static bool IsGuestLabelObject(Component c) => GuestLabelNames.Contains(c.gameObject.name);
+
+        // Title/splash "by 7th Beat Games" (Phase 0/…/7thBeatGames/7th Beat Games Text) —
+        // display credit that should stay on one line and fit its box, not wrap.
+        private static bool IsSplashCredit(Component c)
+        {
+            for (var p = c.transform; p != null; p = p.parent)
+                if (p.name == "7thBeatGames") return true;
+            return false;
+        }
+
+        // Portal credits around a world portal in level select (PortalCredit.titleText /
+        // peopleText: "객원 레벨 디자인:" + the artist names). Fixed legacy fontSize in a
+        // box tuned for the game font, so Pretendard overflows — wrap + autosize to fit.
+        private static bool InPortalCredit(Component c)
+        {
+            try { return c.GetComponentInParent<PortalCredit>(true) != null; }
             catch { return false; }
         }
 
@@ -173,34 +264,29 @@ namespace Bismuth
 
         private static int _sweepBoldCount;
 
-        /* On the level-select / title screen? World content (portal floors,
-           world-name text, keycaps, credits) is parented under DontDestroyOnLoad, so
-           a component's OWN scene is not "scnLevelSelect". Gate on the ACTIVE scene
-           instead, which makes them title-styled only while the menu is showing (they
-           persist into gameplay scenes too). */
+        /* On the level-select / title screen? World content is parented under
+           DontDestroyOnLoad, so a component's OWN scene isn't "scnLevelSelect" — gate
+           on the ACTIVE scene so they're title-styled only while the menu shows. */
         private static bool InLevelSelect()
         {
             try { return UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "scnLevelSelect"; }
             catch { return false; }
         }
 
-        /* The level select / title screen is set entirely in bold-looking display
-           text in vanilla, but none of the per-component signals (scrHUDText.isTitle,
-           fontStyle, original font name) reliably fire there. So while the menu is
-           showing, this verdict is AUTHORITATIVE (the caller ignores
-           NameLooksBold/style, which mis-bold single-letter keycaps). Bold everything
-           except: the news sign and tip cycler (body copy), stats panels, and single
-           glyphs (keycaps). The credits block is handled as a title via IsTitle. */
+        /* The title screen is all bold-looking display text in vanilla, but no
+           per-component signal (isTitle, fontStyle, font name) reliably fires there, so
+           while the menu shows this verdict is AUTHORITATIVE (caller ignores
+           NameLooksBold/style). Bold everything except news sign + tip cycler (body
+           copy), stats panels, and single glyphs (keycaps); credits go through IsTitle. */
         private static bool LevelSelectBold(Component c, string content)
         {
             try
             {
                 if (c.GetComponentInParent<NewsSign>() != null) return false;
-                /* The press-to-start hint cluster ("Hit Space" group) holds cycling
-                   tips (number-key navigation, completion taglines) that stay body
-                   copy. NOTE: portal labels and the "by 7th Beat Games" subtitle are
-                   ALSO scrTextChanger components but sit outside this group, so they
-                   must NOT be excluded by component type, only by this cluster. */
+                /* The "Hit Space" hint cluster holds cycling body-copy tips. NOTE:
+                   portal labels and the "by 7th Beat Games" subtitle are ALSO
+                   scrTextChanger but sit outside this group, so exclude by cluster, not
+                   by component type. */
                 if (InHintCluster(c)) return false;
                 if (content == null || content.Trim().Length <= 1) return false;
                 return !IsStatsText(c);
@@ -223,16 +309,14 @@ namespace Bismuth
         }
 
         /* Custom-level-select chrome to bold. Unlike the title screen, DON'T bold the
-           whole scene (it's full of body copy: level descriptions, help text). Only
-           the screen title, portal/world-name labels, and the "불러오는 중…" loading
-           text. */
+           whole scene (full of body copy) — only the screen title, portal/world-name
+           labels, and the loading text. */
         private static bool ClsBold(Component c)
         {
             // Selected level title in detail view
             try { var cls = scnCLS.instance; if (cls != null && ReferenceEquals(c, cls.portalName)) return true; }
             catch { }
-            /* Difficulty name ("엄격"/"느슨"…) shown when opening a level from CLS. Its
-               sibling description (txtDescription) stays body copy. */
+            // Difficulty name ("엄격"/"느슨"…); its sibling txtDescription stays body copy.
             if (c.gameObject.name == "txtValue" && HasAncestor(c, "Difficulty Container")) return true;
             for (var p = c.transform; p != null; p = p.parent)
             {
@@ -264,19 +348,42 @@ namespace Bismuth
             // — no scene/title rule should bold it.
             if (IsEditorUi(c)) return false;
             /* The settings submenu (child of PauseMenu) keeps its designed weight
-               EVERYWHERE. Checked first so no scene rule (e.g. LevelSelectBold's
-               whole-scene bold when settings is opened from the main menu) overrides
-               it. */
-            if (!HasAncestor(c, "SettingsMenu"))
+               EVERYWHERE — except its tab/section headings ("일반"/general…, the
+               "border/title" leaf), which read as titles and get bolded. Checked first
+               so no scene rule touches the rest of the submenu. */
+            if (HasAncestor(c, "SettingsMenu"))
             {
-                if (IsTitle(c)) return true;
-                /* Pause menu: bold all of its (non-settings) text. includeInactive
-                   because the menu may be inactive during a full sweep. */
-                try { if (c.GetComponentInParent<PauseMenu>(true) != null) return true; }
-                catch { }
-                if (InLevelSelect()) return LevelSelectBold(c, text);
-                if (InCls()) return ClsBold(c);
+                if (c.gameObject.name == "title") return true;
+                return styleBold || NameLooksBold(origFontName);
             }
+            // Guest-track text mixes role LABELS and artist NAMES. A component holding ONLY a
+            // label (no name) bolds wholesale at true weight; a component that also holds a
+            // name stays regular here and the shadow bolds just the label LINE via <b>.
+            if (InGuestTrackCredit(c))
+            {
+                // Bold the role-label elements; artist-name children stay regular. A combined
+                // label+name element (one component holding a newline) can't bold wholesale —
+                // the shadow bolds just its label line via <b>.
+                if (!IsGuestLabelObject(c)) return false;
+                return text == null || text.IndexOf('\n') < 0;
+            }
+            // Portal credits around a world portal: bold the role label (PortalCredit.titleText,
+            // "객원 시각 디자인:") and leave the artist name (peopleText) regular.
+            if (InPortalCredit(c))
+            {
+                try { var pc = c.GetComponentInParent<PortalCredit>(true); return pc != null && ReferenceEquals(c, pc.titleText); }
+                catch { return false; }
+            }
+            if (IsTitle(c)) return true;
+            // Official level name/description ("World Description", e.g. "The Wind Up" /
+            // "유턴과 구불거리는 길") — bold regardless of which menu scene shows it.
+            if (HasAncestor(c, "World Description")) return true;
+            // Pause menu: bold all its (non-settings) text. includeInactive: may be
+            // inactive during a full sweep.
+            try { if (c.GetComponentInParent<PauseMenu>(true) != null) return true; }
+            catch { }
+            if (InLevelSelect()) return LevelSelectBold(c, text);
+            if (InCls()) return ClsBold(c);
             return styleBold || NameLooksBold(origFontName);
         }
 
@@ -294,14 +401,11 @@ namespace Bismuth
             if (s == null || s.GameUiTextWeights == null || s.GameUiTextWeights.Count == 0) return null;
             if (_elementWeights == null || _elementWeights.Count == 0) return null;
             string key = GameUiLayout.OwnerKey(c);
-            /* Judgement popups (Perfect/EPerfect…) are pooled world-space TextMeshes
-               under scrHitTextMesh, not GameUiLayout targets, so they get a synthetic
-               key. The parent lookup is gated to the TextMesh path to keep full sweeps
-               cheap. The popups are world-space TMP (TMPro.TextMeshPro, a TMP_Text),
-               not legacy TextMesh. includeInactive is REQUIRED: popups are pooled and
-               inactive both during full sweeps and at the Show-prefix moment (the game
-               activates them after), and the no-arg GetComponentInParent skips
-               inactive GameObjects, so the weight would silently never resolve. */
+            /* Judgement popups (Perfect/EPerfect…) are pooled world-space TMP under
+               scrHitTextMesh, not GameUiLayout targets, so they get a synthetic key.
+               includeInactive is REQUIRED: popups are pooled and inactive at both sweep
+               and Show-prefix time, and the no-arg lookup skips inactive GameObjects, so
+               the weight would silently never resolve. */
             if (key == null && IsJudgement(c))
                 key = "judgement";
             if (key == null) return null;
@@ -323,19 +427,9 @@ namespace Bismuth
         private static float JudgementScale =>
             MainClass.Settings != null ? Mathf.Clamp(MainClass.Settings.GameJudgementScale, 0.3f, 4f) : 1f;
 
-        /* "Is this a font Bismuth assigned?" Needed to recognize the game re-stamping
-           a (localized) font onto an already-swapped component. Covers regular, bold,
-           and every per-element weight font. */
-        private static bool IsOurLegacyFont(Font f)
-        {
-            if (f == null) return false;
-            if (f == _font || f == _boldFont) return true;
-            if (_elementWeights != null)
-                foreach (var kv in _elementWeights)
-                    if (kv.Value != null && kv.Value.Font == f) return true;
-            return false;
-        }
-
+        /* "Is this a font Bismuth assigned?" Recognizes the game re-stamping a
+           localized font onto an already-swapped component. Covers regular, bold, and
+           every per-element weight font. */
         private static bool IsOurTmpFont(TMP_FontAsset f)
         {
             if (f == null) return false;
@@ -346,25 +440,42 @@ namespace Bismuth
             return false;
         }
 
-        /* Keycap letters (scrLetterPress) sit on small key sprites everywhere:
-           world-select shortcut keys AND in-level multi-key indicators, and the
-           family's Black weight overwhelms the sprite. Overrides every bold signal. */
+        /* Keycap letters (scrLetterPress) sit on small key sprites that the family's
+           Black weight overwhelms. Overrides every bold signal. */
+        /* Version Text components a scrVersionText drives (PauseMenu.versionText, main menu).
+           The Text is *referenced* by the component, not always parented under it, so resolve
+           them by reference each full sweep (FindObjectsByType Include catches the inactive
+           pause menu, so there's no first-open flash). */
+        private static readonly HashSet<Component> _versionTexts = new HashSet<Component>();
+
+        private static void RefreshVersionTexts()
+        {
+            _versionTexts.Clear();
+            try
+            {
+                foreach (var v in Object.FindObjectsByType<scrVersionText>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                    if (v != null && v.text != null) _versionTexts.Add(v.text);
+            }
+            catch { }
+        }
+
         private static bool ForceRegular(Component c)
         {
             try
             {
                 if (c.GetComponentInParent<scrLetterPress>() != null) return true;
-                /* Speed-trial best-multiplier badge ("1.5배"): a small accent label
-                   that shouldn't take title weight. */
+                // Speed-trial best-multiplier badge ("1.5배"): small accent, not title.
                 if (c.GetComponentInParent<scrBestMultiplierText>() != null) return true;
+                // Version string stays regular weight, incl. the pause-menu version.
+                if (_versionTexts.Contains(c) || c.GetComponentInParent<scrVersionText>() != null) return true;
                 return false;
             }
             catch { return false; }
         }
 
-        /* Called on scene change / level start / toggle flip. Full sweeps are
-           frame-deduped, since scene change and level start can land on the same
-           frame and the FindObjectsByType scan is the expensive part. */
+        /* Called on scene change / level start / toggle flip. Frame-deduped because
+           scene change and level start can land on the same frame and the
+           FindObjectsByType scan is the expensive part. */
         private static int _lastSweepFrame = -1;
 
         internal static void Reapply()
@@ -379,14 +490,12 @@ namespace Bismuth
         }
 
         /* Scoped sweep: only the game HUD canvas. Everything that (re)spawns or gets
-           its font re-stamped mid-scene (death %, results, congrats, rewind
-           re-localization) sits under scrUIController.canvas, and a full
-           FindObjectsByType scene scan here was a visible hitch at start/death/retry
-           on large custom maps. Full sweeps stay reserved for scene loads
-           (custom-level text decorations sit outside the canvas). */
+           re-stamped mid-scene (death %, results, congrats, rewind) sits under
+           scrUIController.canvas, and a full scene scan here visibly hitched at
+           start/death/retry on large maps. Full sweeps stay reserved for scene loads. */
         internal static void ReapplyHud()
         {
-            if (!Enabled || _font == null) return;
+            if (!Enabled || _tmpFont == null) return;
             try
             {
                 var uic = scrUIController.instance;
@@ -396,9 +505,8 @@ namespace Bismuth
         }
 
         /* Death/results text spawns on controller state changes, after the level-start
-           sweep. The state-change patch requests delayed sweeps, and Overlay.Update
-           ticks them (one shortly after for instant texts, one later for animated
-           screens). */
+           sweep. The state-change patch requests two delayed sweeps (Overlay.Update
+           ticks them): one soon for instant texts, one later for animated screens. */
         private static int _sweepFrameA = -1;
         private static int _sweepFrameB = -1;
 
@@ -409,11 +517,10 @@ namespace Bismuth
             _sweepFrameB = Time.frameCount + 30;
         }
 
-        /* Scene-entry texts get localized fonts assigned in their object Start(), one
-           frame AFTER sceneLoaded, so an immediate sweep runs too early and gets
-           stomped (cold launch showed the vanilla title screen until the toggle was
-           cycled). Delayed FULL sweeps after scene entry / font resolution catch the
-           re-stamp. Mid-scene state-change ticks stay HUD-scoped for perf. */
+        /* Scene-entry texts get localized fonts in their Start(), one frame AFTER
+           sceneLoaded, so an immediate sweep runs too early and gets stomped (cold
+           launch showed the vanilla title screen until the toggle was cycled). Delayed
+           FULL sweeps after scene entry / font resolution catch the re-stamp. */
         private static int _fullSweepFrameA = -1;
         private static int _fullSweepFrameB = -1;
 
@@ -426,11 +533,12 @@ namespace Bismuth
 
         internal static void Tick()
         {
-            /* State-change sweeps are HUD-scoped in gameplay: the texts they exist to
-               catch spawn under the HUD canvas, and full sweeps caused death-screen
-               lag. Level select is different: world text activates late on approach
-               (portal labels, world names), sits outside any canvas, and the scene is
-               small, so sweep it fully. */
+            // Finish styling a spread-out scene sweep before the deferred work below.
+            if (_pending.Count > 0) DrainPending(SweepBudget);
+            /* State-change sweeps are HUD-scoped in gameplay (the texts they catch spawn
+               under the HUD canvas; full sweeps caused death-screen lag). Level select
+               is swept fully: its world text activates late, outside any canvas, and the
+               scene is small. */
             if (_sweepFrameA > 0 && Time.frameCount >= _sweepFrameA) { _sweepFrameA = -1; StateSweep(); }
             if (_sweepFrameB > 0 && Time.frameCount >= _sweepFrameB) { _sweepFrameB = -1; StateSweep(); }
             if (_fullSweepFrameA > 0 && Time.frameCount >= _fullSweepFrameA) { _fullSweepFrameA = -1; Reapply(); }
@@ -469,12 +577,11 @@ namespace Bismuth
 
         private static int _lastBoldLogged = -1;
 
-        // ── Sweep diagnostics (opt-in) ───────────────────────────────────────
-        /* Flip DiagEnabled to true to dump, once per sweep, the bold/font decision for
-           every text whose content matches DiagFilter. Invaluable for tracing which
-           component a stray label belongs to and why it did/didn't bold (it pinned
-           level-select portal labels and "by 7th Beat Games" to their scrTextChanger
-           components, June 2026). Off by default, no log spam. */
+        // ── Sweep diagnostics (opt-in) ─────────────────────────────────────
+        /* Flip DiagEnabled to dump, once per sweep, the bold/font decision for every text
+           matching DiagFilter — invaluable for tracing which component a stray label
+           belongs to and why it did/didn't bold. */
+        // Runtime-toggled from Misc → Debug → "Trace font sweep" (DiagFilter = the Debug filter).
         internal static bool DiagEnabled = false;
         // Substrings to match. null/empty matches every non-empty text under DiagMaxLen.
         internal static string[] DiagFilter = null;
@@ -532,7 +639,7 @@ namespace Bismuth
                 var rt = c.transform as RectTransform;
                 if (rt != null) extra = " pos=" + rt.anchoredPosition + " size=" + rt.rect.size + " scale=" + rt.localScale.x;
                 if (c is Text tt) extra += " hOver=" + tt.horizontalOverflow + " vOver=" + tt.verticalOverflow + " fs=" + tt.fontSize + " bestFit=" + tt.resizeTextForBestFit + " raw=[" + tt.text.Trim() + "]";
-                if (c is TMP_Text mm) extra += " over=" + mm.overflowMode + " wrap=" + mm.enableWordWrapping + " fs=" + mm.fontSize + " autoSize=" + mm.enableAutoSizing;
+                if (c is TMP_Text mm) extra += " over=" + mm.overflowMode + " wrap=" + mm.textWrappingMode + " fs=" + mm.fontSize + " autoSize=" + mm.enableAutoSizing;
             }
             catch { }
             BismuthLog.Debug("GameFontDiag '" + text.Trim() + "' " + type + " path=" + DiagPath(c.transform) +
@@ -551,44 +658,70 @@ namespace Bismuth
             return sb.ToString();
         }
 
+        /* A full scene sweep gathers every text, then styles them a budget at a time across
+           frames (Tick drains the rest), so a large scene load — where each legacy text now
+           spawns a TMP shadow GameObject — doesn't stall in one frame. Originals stay visible
+           until their shadow attaches, so it reads as a brief styling cascade. */
+        private static readonly Queue<Component> _pending = new Queue<Component>();
+        private const int SweepBudget = 128;
+
         private static void Apply()
         {
-            if (_font == null) return;
+            if (_tmpFont == null) return;
             Prune();
+            RefreshVersionTexts();
             _sweepBoldCount = 0;
-            if (DiagEnabled) _diagBudget = 16; // per-sweep cap so it can't flood log
+            if (DiagEnabled) _diagBudget = 64; // per-sweep cap so it can't flood log
+            _pending.Clear();
             foreach (var t in Object.FindObjectsByType<Text>(FindObjectsInactive.Include, FindObjectsSortMode.None))
-            {
-                ApplyText(t);
-                if (DiagEnabled && t != null) Diag(t, t.text, "Text", t.font != null ? t.font.name : "null", t.fontStyle);
-            }
+                _pending.Enqueue(t);
             foreach (var t in Object.FindObjectsByType<TMP_Text>(FindObjectsInactive.Include, FindObjectsSortMode.None))
-            {
-                ApplyTmp(t);
-                if (DiagEnabled && t != null) Diag(t, t.text, t.GetType().Name, t.font != null ? t.font.name : "null", t.fontStyle);
-            }
+                _pending.Enqueue(t);
             foreach (var t in Object.FindObjectsByType<TextMesh>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                _pending.Enqueue(t);
+            DrainPending(SweepBudget);
+        }
+
+        // Style up to `budget` of the gathered texts; Tick drains the remainder next frames.
+        private static void DrainPending(int budget)
+        {
+            int n = 0;
+            while (_pending.Count > 0 && n < budget)
             {
-                ApplyTextMesh(t);
-                if (DiagEnabled && t != null) Diag(t, t.text, "TextMesh", t.font != null ? t.font.name : "null", t.fontStyle);
+                var c = _pending.Dequeue();
+                n++;
+                if (c == null) continue;
+                if (c is Text txt)
+                {
+                    ApplyText(txt);
+                    if (DiagEnabled) Diag(txt, txt.text, "Text", txt.font != null ? txt.font.name : "null", txt.fontStyle);
+                }
+                else if (c is TMP_Text tmp)
+                {
+                    ApplyTmp(tmp);
+                    if (DiagEnabled) Diag(tmp, tmp.text, tmp.GetType().Name, tmp.font != null ? tmp.font.name : "null", tmp.fontStyle);
+                }
+                else if (c is TextMesh mesh)
+                {
+                    ApplyTextMesh(mesh);
+                    if (DiagEnabled) Diag(mesh, mesh.text, "TextMesh", mesh.font != null ? mesh.font.name : "null", mesh.fontStyle);
+                }
             }
-            if (_sweepBoldCount != _lastBoldLogged)
+            if (_pending.Count == 0 && _sweepBoldCount != _lastBoldLogged)
             {
                 _lastBoldLogged = _sweepBoldCount;
                 BismuthLog.Debug("GameFont: sweep bold-swapped " + _sweepBoldCount +
-                                 " texts (bold font: " + (_boldFont != null ? _boldFont.name : "none") + ")");
+                                 " texts (bold font: " + (_boldTmpFont != null ? _boldTmpFont.name : "none") + ")");
             }
         }
 
         /* Re-apply the Bismuth font right after the game stamps a localized one
-           (RDString.SetLocalizedFont, patched). Fixes language-selector previews
-           reverting to each language's own preview font over the swap. Note: a name
-           in a script Pretendard doesn't cover (e.g. Thai) falls back to tofu, which
-           is acceptable per the "keep our font" request. The skip-guard makes these
-           idempotent. */
+           (RDString.SetLocalizedFont, patched), fixing language-selector previews that
+           revert to each language's own font over the swap. A script Pretendard lacks
+           (e.g. Thai) falls back to tofu, acceptable per the "keep our font" request. */
         internal static void OnLocalizedFontSet(Text t)
         {
-            if (Enabled && _font != null) ApplyText(t);
+            if (Enabled && _tmpFont != null) ApplyText(t);
         }
 
         internal static void OnLocalizedFontSet(TMP_Text t)
@@ -598,13 +731,13 @@ namespace Bismuth
 
         internal static void OnLocalizedFontSet(TextMesh t)
         {
-            if (Enabled && _font != null) ApplyTextMesh(t);
+            if (Enabled && _tmpFont != null) ApplyTextMesh(t);
         }
 
         // Per-spawn hook for pooled/instantiated objects (judgement popups)
         internal static void ApplyTo(GameObject go)
         {
-            if (!Enabled || _font == null || go == null) return;
+            if (!Enabled || _tmpFont == null || go == null) return;
             if (DiagEnabled) _diagBudget = 16; // HUD sweeps get their own budget (filter is specific)
             foreach (var t in go.GetComponentsInChildren<Text>(true))
             {
@@ -619,35 +752,19 @@ namespace Bismuth
             foreach (var t in go.GetComponentsInChildren<TextMesh>(true)) ApplyTextMesh(t);
         }
 
-        /* Level editor form panels are dense, hand-fitted UI. User size/leading tweaks
-           meant for gameplay/menu text wreck them (and some editor labels auto-fit, so
-           a global shrink lands unevenly). Editor-scene canvas text keeps metric
-           normalization only: visually vanilla, just in the Bismuth font. */
+        /* Level editor form panels are dense, hand-fitted UI that user size/leading
+           tweaks wreck (and some labels auto-fit, so a global shrink lands unevenly).
+           Editor-scene text keeps metric normalization only: vanilla, just our font. */
         private static bool IsEditorUi(Component c)
         {
             try { return c.gameObject.scene.name == "scnEditor"; }
             catch { return false; }
         }
 
-        /* World XI/MN guest-track credit decorations
-           (BG/XtraInfo/Info../GuestTrackWorld..) are hand-placed prefab text. Role
-           labels carry an embedded <size=N> rich-text tag that overrides fontSize, and
-           name lines get their fontSize re-stamped every frame by the localized-font
-           refresh. Both defeat normal fontSize scaling, so Pretendard (which renders
-           taller than the game font at the same point size) overruns the
-           fixed-position layout and crowds the name into the label (World XI packs them
-           tighter than other worlds, so only it visibly breaks). Fix by driving size
-           through a rich-text <size=…> tag instead, which beats both the tag override
-           and the fontSize re-stamp. See ApplyGuestCreditSize. */
-        private static bool InGuestTrackCredit(Component c)
-        {
-            for (var p = c.transform; p != null; p = p.parent)
-                if (p.name.StartsWith("GuestTrack")) return true;
-            return false;
-        }
-
         private static bool Skip(Component c)
         {
+            // Our own shadow render child (the TMP we draw under each styled game Text).
+            if (c.gameObject.name == GameTextShadow.ChildName) return true;
             /* Bismuth's own canvases manage their fonts themselves, and txtLevelName
                has its dedicated swap/restore in ApplyLevelNameTransform. Check BOTH
                owner references: scrController.instance can be unset during the
@@ -655,6 +772,13 @@ namespace Bismuth
                full-size swapped and scene-bolded ("8-X Jungle City" rendered huge). */
             var root = c.transform.root;
             if (root != null && root.name.StartsWith("Bismuth")) return true;
+            // Other mods' HUDs (TUFHelper's PP displayer, leaderboards, …) are theirs to
+            // style — leave them on their own fonts.
+            if (IsForeignModUi(c)) return true;
+            // In-level text decorations (scrDecoration) are styled by the mapper — their
+            // FontName and size are part of the chart, so leave them untouched.
+            try { if (c.GetComponentInParent<scrDecoration>(true) != null) return true; }
+            catch { }
             try { if (ReferenceEquals(c, scrController.instance?.txtLevelName)) return true; }
             catch { }
             try { if (ReferenceEquals(c, scrUIController.instance?.txtLevelName)) return true; }
@@ -662,19 +786,79 @@ namespace Bismuth
             return false;
         }
 
-        /* Visual-size normalization: the ratio of (line height / em size) between the
-           original font and the Bismuth font. > 1 means the original is airier, so
-           swapped text must shrink. Clamped, since metric outliers shouldn't halve a
-           label. */
+        /* Text owned by another mod's UI: a mod's HUD carries its own MonoBehaviours
+           (loaded from Mods//UMMMods/), whereas game text only carries Assembly-CSharp /
+           engine scripts. If any ancestor is defined in a foreign mod assembly, the
+           hierarchy is that mod's and we leave its fonts alone. Per-assembly verdict is
+           cached, so after warmup this is a parent walk + dictionary lookups. */
+        private static readonly List<MonoBehaviour> _mbBuf = new List<MonoBehaviour>();
+        private static readonly Dictionary<System.Reflection.Assembly, bool> _foreignAsm =
+            new Dictionary<System.Reflection.Assembly, bool>();
+        private static System.Reflection.Assembly _gameAsm, _bismuthAsm;
+
+        private static bool IsForeignModUi(Component c)
+        {
+            try
+            {
+                for (var p = c.transform; p != null; p = p.parent)
+                {
+                    p.GetComponents(_mbBuf);
+                    for (int i = 0; i < _mbBuf.Count; i++)
+                    {
+                        var b = _mbBuf[i];
+                        if (b != null && IsForeignAssembly(b.GetType().Assembly)) return true;
+                    }
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        private static bool IsForeignAssembly(System.Reflection.Assembly asm)
+        {
+            if (asm == null) return false;
+            bool verdict;
+            if (_foreignAsm.TryGetValue(asm, out verdict)) return verdict;
+            verdict = ComputeForeign(asm);
+            _foreignAsm[asm] = verdict;
+            return verdict;
+        }
+
+        private static bool ComputeForeign(System.Reflection.Assembly asm)
+        {
+            if (_bismuthAsm == null) _bismuthAsm = typeof(GameFontApplier).Assembly;
+            if (_gameAsm == null) { try { _gameAsm = typeof(scrController).Assembly; } catch { } }
+            if (asm == _bismuthAsm || asm == _gameAsm) return false;
+            var n = asm.GetName().Name;
+            // Engine/runtime/mod-loader assemblies aren't "another mod's HUD".
+            if (n == "Assembly-CSharp-firstpass" || n == "UnityModManager" ||
+                n == "mscorlib" || n == "netstandard" ||
+                n.StartsWith("UnityEngine") || n.StartsWith("Unity.") ||
+                n.StartsWith("System") || n.StartsWith("Mono.") ||
+                n.StartsWith("Microsoft") || n.StartsWith("0Harmony") || n.StartsWith("MonoMod"))
+                return false;
+            /* Beyond the whitelist it's a game dependency shipped in Managed/ (DOTween,
+               Rewired…) or a mod (loaded from Mods//UMMMods/). A blank Location means an
+               in-memory load, which for a non-engine assembly is a mod. */
+            string loc = null;
+            try { loc = asm.Location; } catch { }
+            if (string.IsNullOrEmpty(loc)) return true;
+            return loc.Replace('\\', '/').IndexOf("/Managed/", System.StringComparison.OrdinalIgnoreCase) < 0;
+        }
+
+        /* Visual-size normalization: ratio of (line height / em) between the original
+           GAME font (legacy, still legacy — it's the game's own text) and our Bismuth TMP
+           font. > 1 means the original is airier, so swapped text must shrink. Clamped so
+           metric outliers don't halve a label. Our side comes from TMP faceInfo (the legacy
+           Bismuth Font is gone). */
         private static float LegacyScale(Font orig)
         {
             try
             {
-                if (orig != null && orig.fontSize > 0 && orig.lineHeight > 0 &&
-                    _font.fontSize > 0 && _font.lineHeight > 0)
+                if (orig != null && orig.fontSize > 0 && orig.lineHeight > 0 && _tmpFont != null)
                 {
                     float o = (float)orig.lineHeight / orig.fontSize;
-                    float u = (float)_font.lineHeight / _font.fontSize;
+                    float u = _tmpFont.faceInfo.lineHeight / _tmpFont.faceInfo.pointSize;
                     if (o > 0f && u > 0f) return Mathf.Clamp(o / u, 0.6f, 1.1f);
                 }
             }
@@ -698,111 +882,76 @@ namespace Bismuth
         }
 
         /* IMPORTANT: all three Apply* methods derive sizes from the CACHED ORIGINAL
-           state, never the component's current values. The game re-assigns its own
-           (localized) fonts to surviving components on rewind, which defeats the
-           "font == ours" skip, and recomputing from current values then compounds the
-           scale once per attempt (text shrank/grew every death until this fix). */
+           state, never current values. The game re-assigns localized fonts on rewind,
+           defeating the "font == ours" skip; recomputing from current values then
+           compounds the scale once per attempt (text grew/shrank every death). */
 
         private static void ApplyText(Text t)
         {
             if (t == null || Skip(t)) return;
             var elem = ElementWeightEntry(t);
-            TextState st;
-            if (!_origText.TryGetValue(t, out st))
-            {
-                st = new TextState
-                {
-                    Font = t.font, Size = t.fontSize, LineSpacing = t.lineSpacing, Style = t.fontStyle,
-                    BestFit = t.resizeTextForBestFit, BestFitMax = t.resizeTextMaxSize,
-                };
-                _origText[t] = st;
-            }
-            else if (!IsOurLegacyFont(t.font))
-            {
-                /* The game re-stamped a font since caching (Start()-time localization
-                   runs AFTER the scene-entry sweep). Adopt it as the restore target,
-                   or toggling off restores a pre-localization font with no Korean
-                   glyphs (title-screen tip/credits rendered as tofu). */
-                st.Font = t.font;
-                _origText[t] = st;
-            }
-            /* Bold for legacy Text is faux via fontStyle (the font stays _font), so the
-               skip check below must compare BOTH font and style, or boldness can never
-               flip once a component is on the Bismuth font (keycaps stayed bold, names
-               regular). */
-            bool italic = st.Style == FontStyle.Italic || st.Style == FontStyle.BoldAndItalic;
+            /* Decisions come from the LIVE original. We no longer swap its font, so its
+               fontStyle / font.name still reflect the game's own — the basis for bold
+               detection. The original stays legacy and is hidden by its shadow, which
+               renders the visible glyphs in TMP. */
+            bool italic = t.fontStyle == FontStyle.Italic || t.fontStyle == FontStyle.BoldAndItalic;
             bool bold = ShouldBold(t, t.text,
-                st.Style == FontStyle.Bold || st.Style == FontStyle.BoldAndItalic,
-                st.Font != null ? st.Font.name : null);
-            Font desiredFont = elem != null && elem.Font != null ? elem.Font : _font;
-            FontStyle desiredStyle = elem != null && elem.Font != null
-                ? (italic ? FontStyle.Italic : FontStyle.Normal)
-                : (bold ? (italic ? FontStyle.BoldAndItalic : FontStyle.Bold) : st.Style);
-            /* Guest-track credit labels ignore fontSize (embedded <size> tag /
-               per-frame re-stamp), so drive their size via a rich-text tag, and do it
-               BEFORE the font/style skip below so it keeps re-applying once already on
-               the Bismuth font. */
-            if (InGuestTrackCredit(t)) ApplyGuestCreditSize(t, st);
-            if (t.font == desiredFont && t.fontStyle == desiredStyle) return;
+                t.fontStyle == FontStyle.Bold || t.fontStyle == FontStyle.BoldAndItalic,
+                t.font != null ? t.font.name : null);
             if (bold) _sweepBoldCount++;
             bool editorUi = IsEditorUi(t);
-            float scale = LegacyScale(st.Font) * (editorUi ? 1f : UserScale);
-            /* CLS portal/world-name labels ("라이브러리", two-line "추천\n클래식") render
-               oversized once bolded in Pretendard. These are scrTextChanger components
-               that re-stamp fontSize every frame, so a fontSize change gets reverted.
-               Shrink the TRANSFORM instead (idempotent, not re-stamped), like the stats
-               panels and the Continue sublabel. */
+            bool guest = InGuestTrackCredit(t);
+            // Guest-track credits mix Korean labels with Latin names; per-font metric scaling
+            // inflates the airier Latin names past the labels. Scale uniformly so every line
+            // follows the game's authored fontSize (label > name) rather than font metrics.
+            float scale = (guest ? DefaultScale : LegacyScale(t.font)) * (editorUi ? 1f : UserScale);
+            // The collab cross-promo is oversized vanilla display text — render it noticeably
+            // smaller than the rest of the panel.
+            if (guest && IsCollabTag(t)) scale *= 0.7f;
+
+            /* Transform-level fixes apply to the original; the shadow child inherits them.
+               CLS portal/world-name and Continue/LastLevel are fit-container text that
+               ignore fontSize, so they're shrunk via the transform instead. */
             if (InCls() && HasAncestor(t, "WorldNameCanvas"))
                 ScaleTransform(t.transform, ClsLabelScale, keepCenter: false);
             if (IsStatsText(t)) ApplyStatsScale(t);
-            /* Continue tile level-name sublabel ("8-X Jungle City",
-               Canvas World/Continue/LastLevel) renders oversized in Pretendard and
-               ignores font-size writes (fit-container text, same as stats panels), so
-               shrink its transform instead. */
             if (t.name == "LastLevel" && t.transform.parent != null && t.transform.parent.name == "Continue")
                 ScaleTransform(t.transform, 0.6f, keepCenter: false);
-            /* Faux bold via fontStyle, not the bundled Black Font asset: the legacy
-               Black asset silently renders as regular (dynamic-font name fallback),
-               whereas engine-synthesized bold is reliable for any dynamic font. */
-            t.font = desiredFont;
-            t.fontStyle = desiredStyle;
-            t.fontSize = Mathf.Max(1, Mathf.RoundToInt(st.Size * scale));
-            /* Auto-fit text ignores fontSize and renders at up to resizeTextMaxSize, so
-               scale the cap too or size tweaks (UserScale, LastLevel) do nothing. */
-            if (st.BestFit)
-                t.resizeTextMaxSize = Mathf.Max(1, Mathf.RoundToInt(st.BestFitMax * scale));
-            t.lineSpacing = st.LineSpacing * (editorUi ? 1f : UserLineSpacing);
-            /* CLS portal labels ship with a very tight lineSpacing (0.6) for their
-               big-over-small two-line format ("추천\n클래식"), so give them a fixed,
-               readable gap instead. */
-            if (InCls() && HasAncestor(t, "WorldNameCanvas")) t.lineSpacing = ClsLabelLineSpacing;
-        }
+            // Separate name component below its label — nudge it down off the cramped label.
+            if (guest && !string.IsNullOrEmpty(t.text) && IsGuestName(t))
+                OffsetNameDown(t.transform, GuestNameGap * t.fontSize);
 
-        // Extra shrink for split-layout guest-track credits, on top of font swap
-        private const float GuestCreditSizeScale = 0.7f;
-
-        /* Drive a guest-track credit label's rendered size through a <size=N>
-           rich-text tag. fontSize writes don't stick here: the role labels embed their
-           own <size> tag and the name lines get fontSize re-stamped each frame, but the
-           rich-text tag overrides both. Only the split-layout worlds crowd, where the
-           title and name are separate single-line objects and shrinking the title opens
-           the gap to the fixed-position name. The combined worlds hold title and name
-           in one multiline <size> block that scales uniformly and never crowds, so a
-           newline means skip. Strips any existing tag first, so it stays idempotent. */
-        private static void ApplyGuestCreditSize(Text t, TextState st)
-        {
-            if (t.text.IndexOf('\n') >= 0) return;
-            string orig;
-            if (!_guestCreditOrigText.TryGetValue(t, out orig))
-                _guestCreditOrigText[t] = t.text;
-            int target = Mathf.Max(1, Mathf.RoundToInt(st.Size * GuestCreditSizeScale));
-            string bare = SizeTagRe.Replace(t.text, "");
-            string wrapped = "<size=" + target + ">" + bare + "</size>";
-            if (t.text != wrapped)
+            /* Real Bold/Black asset for bold (TMP renders the bundled weights cleanly,
+               unlike the legacy Black asset); fall back to a faux-bold style flag only when
+               no bold asset is loaded. An element weight pins a specific asset outright. */
+            TMP_FontAsset tmpFont = elem != null && elem.TmpFont != null ? elem.TmpFont
+                                  : (bold && _boldTmpFont != null ? _boldTmpFont : _tmpFont);
+            bool fauxBold = bold && (elem == null || elem.TmpFont == null) && _boldTmpFont == null;
+            FontStyles style = (fauxBold ? FontStyles.Bold : FontStyles.Normal)
+                             | (italic ? FontStyles.Italic : FontStyles.Normal);
+            /* Fit mode for overflow-prone display text (Pretendard renders wider than the
+               game fonts). Portal + guest-track credits wrap and autosize down to STAY
+               INSIDE their box (Box) — so a long phrase ("Guest level design by") never
+               spills out and blow up to screen width when the world-enter zoom scales the
+               whole XtraInfo panel up. The title/splash credit only needs to not wrap, so
+               it collapses to one line capped near natural size (Width). */
+            bool splash = IsSplashCredit(t);
+            GameTextShadow.FitMode fit;
+            float fitShrink;
+            if (InPortalCredit(t) || guest) { fit = GameTextShadow.FitMode.Box; fitShrink = 1f; }
+            else if (IsCredits(t) || splash)
             {
-                t.supportRichText = true;
-                t.text = wrapped;
+                fit = GameTextShadow.FitMode.Width;
+                fitShrink = splash ? 0.95f : GameTextShadow.DefaultFitShrink;
             }
+            else { fit = GameTextShadow.FitMode.None; fitShrink = GameTextShadow.DefaultFitShrink; }
+            // Guest-track labels bake an absolute <size=…> tag into their text that overrides
+            // our scaling — strip it so the whole panel sizes consistently off our scale. For
+            // mixed label+name components (not bolded wholesale) bold just the label line, and
+            // add line spacing so the label and the name beneath it aren't cramped.
+            GameTextShadow.Attach(t).Configure(tmpFont, style, scale, fit, fitShrink,
+                stripSize: guest, boldLabelLines: guest && IsGuestLabelObject(t) && !bold,
+                lineSpacing: guest ? GuestLineSpacing : 0f);
         }
 
         private static void ApplyTmp(TMP_Text t)
@@ -827,22 +976,20 @@ namespace Bismuth
             bool bold = ShouldBold(t, t.text, (st.Style & FontStyles.Bold) != 0,
                 st.Font != null ? st.Font.name : null);
             bool explicitWeight = elem != null && elem.TmpFont != null;
-            /* TMP bold = a different font asset, so the skip check on font alone is
-               mostly right, but also compare style (the faux-Bold flag) so a flip
-               re-applies. */
+            // TMP bold = a different font asset, but also compare style (faux-Bold flag)
+            // so a flip re-applies.
             var target = explicitWeight ? elem.TmpFont : (bold && _boldTmpFont != null ? _boldTmpFont : _tmpFont);
             FontStyles desiredStyle = bold || explicitWeight ? (st.Style & ~FontStyles.Bold) : st.Style;
             if (t.font == target && t.fontStyle == desiredStyle) return;
             if (bold) _sweepBoldCount++;
             bool editorUi = IsEditorUi(t);
             float scale = TmpScale(st.Font) * (editorUi ? 1f : UserScale);
-            /* Judgement popups take their own size multiplier (independent of the global
-               game-text scale) so they can be enlarged without touching anything else. */
+            // Judgement popups take their own size multiplier, independent of the
+            // global game-text scale.
             if (IsJudgement(t)) scale *= JudgementScale;
             if (IsStatsText(t)) ApplyStatsScale(t);
-            /* The original asset becomes a fallback of the Bismuth asset, so glyphs
-               Pretendard lacks (kana, symbols) keep rendering instead of turning into
-               boxes. */
+            // Original asset becomes a fallback of ours so glyphs Pretendard lacks
+            // (kana, symbols) keep rendering instead of boxing.
             if (st.Font != null)
             {
                 var fb = target.fallbackFontAssetTable;
@@ -850,12 +997,11 @@ namespace Bismuth
                 if (!fb.Contains(st.Font)) fb.Add(st.Font);
             }
             t.font = target;
-            /* The real Black asset replaces the faux-bold style. Leaving the Bold flag
-               set would stack engine-simulated bold on top and smudge the glyphs. */
+            // Real Black asset replaces the faux-bold style; leaving the Bold flag set
+            // would stack simulated bold on top and smudge the glyphs.
             t.fontStyle = desiredStyle;
-            /* Auto-sizing TMP (level descriptions) IGNORES fontSize and fits text
-               between fontSizeMin/Max, so short text balloons to Max. Scale the BOUNDS
-               instead, the TMP analog of legacy best-fit resizeTextMaxSize. */
+            /* Auto-sizing TMP IGNORES fontSize and fits between fontSizeMin/Max, so short
+               text balloons to Max. Scale the BOUNDS instead (TMP's best-fit analog). */
             if (st.AutoSize)
             {
                 t.enableAutoSizing = true;
@@ -880,68 +1026,38 @@ namespace Bismuth
         {
             if (t == null || Skip(t)) return;
             var elem = ElementWeightEntry(t);
-            var renderer = t.GetComponent<MeshRenderer>();
-            if (renderer == null) return;
-            MeshState st;
-            if (!_origMesh.TryGetValue(t, out st))
-            {
-                st = new MeshState
-                {
-                    Font = t.font, Mat = renderer.sharedMaterial,
-                    Size = t.fontSize, CharSize = t.characterSize, LineSpacing = t.lineSpacing,
-                    Style = t.fontStyle,
-                };
-                _origMesh[t] = st;
-            }
-            else if (!IsOurLegacyFont(t.font))
-            {
-                st.Font = t.font; // re-stamped since cached, see ApplyText
-                st.Mat = renderer.sharedMaterial;
-                _origMesh[t] = st;
-            }
-            // Like legacy Text: bold is faux via fontStyle, so compare font AND style
-            bool meshItalic = st.Style == FontStyle.Italic || st.Style == FontStyle.BoldAndItalic;
+            // Decisions from the live original (its font/style stay the game's own — we
+            // hide it and render a TMP shadow that auto-matches its world size).
+            bool meshItalic = t.fontStyle == FontStyle.Italic || t.fontStyle == FontStyle.BoldAndItalic;
             bool bold = ShouldBold(t, t.text,
-                st.Style == FontStyle.Bold || st.Style == FontStyle.BoldAndItalic,
-                st.Font != null ? st.Font.name : null);
-            Font desiredFont = elem != null && elem.Font != null ? elem.Font : _font;
-            FontStyle desiredStyle = elem != null && elem.Font != null
-                ? (meshItalic ? FontStyle.Italic : FontStyle.Normal)
-                : (bold ? (meshItalic ? FontStyle.BoldAndItalic : FontStyle.Bold) : st.Style);
-            if (t.font == desiredFont && t.fontStyle == desiredStyle) return;
+                t.fontStyle == FontStyle.Bold || t.fontStyle == FontStyle.BoldAndItalic,
+                t.font != null ? t.font.name : null);
             if (bold) _sweepBoldCount++;
-            float scale = Mathf.Clamp(LegacyScale(st.Font) * MeshExtraScale, 0.45f, 1.1f) * UserScale;
             if (IsStatsText(t)) ApplyStatsScale(t);
-            /* Legacy 3D TextMesh renders through the font's own material. fontSize 0
-               means "font import size", so scale characterSize instead in that case. */
-            t.font = desiredFont;
-            renderer.sharedMaterial = desiredFont.material;
-            t.fontStyle = desiredStyle;
-            if (st.Size > 0)
-                t.fontSize = Mathf.Max(1, Mathf.RoundToInt(st.Size * scale));
-            else
-                t.characterSize = st.CharSize * scale;
-            t.lineSpacing = st.LineSpacing * UserLineSpacing; // multiplier semantics
+            TMP_FontAsset tmpFont = elem != null && elem.TmpFont != null ? elem.TmpFont
+                                  : (bold && _boldTmpFont != null ? _boldTmpFont : _tmpFont);
+            bool fauxBold = bold && (elem == null || elem.TmpFont == null) && _boldTmpFont == null;
+            FontStyles style = (fauxBold ? FontStyles.Bold : FontStyles.Normal)
+                             | (meshItalic ? FontStyles.Italic : FontStyles.Normal);
+            // Shadow matches the original's height, so only the user's scale slider applies.
+            var sh = GameTextMeshShadow.Attach(t);
+            if (sh != null) sh.Configure(tmpFont, style, UserScale);
         }
 
-        /* StopMod must restore. After a hot reload the caches are gone and the new
-           assembly's fresh Font instances make swapped text look unswapped, so it
-           would re-cache the scaled state as "original" and compound across deploys. */
+        /* StopMod must restore: after a hot reload the caches are gone and fresh Font
+           instances make swapped text look unswapped, so it would re-cache the scaled
+           state as "original" and compound across deploys. */
         internal static void RestoreAll() => Restore();
 
         private static void Restore()
         {
-            foreach (var kv in _origText)
-                if (kv.Key != null)
-                {
-                    kv.Key.font = kv.Value.Font;
-                    kv.Key.fontSize = kv.Value.Size;
-                    kv.Key.lineSpacing = kv.Value.LineSpacing;
-                    kv.Key.fontStyle = kv.Value.Style;
-                    if (kv.Value.BestFit) kv.Key.resizeTextMaxSize = kv.Value.BestFitMax;
-                }
-            foreach (var kv in _guestCreditOrigText)
-                if (kv.Key != null) kv.Key.text = kv.Value; // undo <size=…> rewrite
+            _pending.Clear(); // abandon any in-flight incremental sweep
+            // Legacy game Text and 3D TextMesh are styled via shadows — un-hide each
+            // original and drop its TMP child. (Game TMP below is still swapped in place.)
+            foreach (var sh in Object.FindObjectsByType<GameTextShadow>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                if (sh != null && !sh.Owned) sh.Detach(); // leave overlay-owned (level name) alone
+            foreach (var sh in Object.FindObjectsByType<GameTextMeshShadow>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                if (sh != null) sh.Detach();
             foreach (var kv in _origTmp)
                 if (kv.Key != null)
                 {
@@ -955,37 +1071,20 @@ namespace Bismuth
                         kv.Key.fontSizeMax = kv.Value.SizeMax;
                     }
                 }
-            foreach (var kv in _origMesh)
-                if (kv.Key != null)
-                {
-                    kv.Key.font = kv.Value.Font;
-                    kv.Key.fontSize = kv.Value.Size;
-                    kv.Key.characterSize = kv.Value.CharSize;
-                    kv.Key.lineSpacing = kv.Value.LineSpacing;
-                    kv.Key.fontStyle = kv.Value.Style;
-                    var r = kv.Key.GetComponent<MeshRenderer>();
-                    if (r != null) r.sharedMaterial = kv.Value.Mat;
-                }
             foreach (var kv in _statsOrigScale)
                 if (kv.Key != null)
                 {
                     kv.Key.localScale = kv.Value.Scale;
                     kv.Key.localPosition = kv.Value.Pos;
                 }
-            _origText.Clear();
-            _guestCreditOrigText.Clear();
             _origTmp.Clear();
-            _origMesh.Clear();
             _statsOrigScale.Clear();
         }
 
         // Drop entries whose components died with their scene
         private static void Prune()
         {
-            PruneDict(_origText);
-            PruneDict(_guestCreditOrigText);
             PruneDict(_origTmp);
-            PruneDict(_origMesh);
             PruneDict(_statsOrigScale);
         }
 

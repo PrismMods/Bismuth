@@ -85,10 +85,9 @@ namespace Bismuth
             return sprite;
         }
 
-        // Tip texture is stretched 1:1 with the shadow tip rect (RawImage has no 9-slice).
-        // To keep the side blur fixed at `shadowSize` px regardless of column width, the
-        // texture's width must match the rect width — so the blur isn't stretched along
-        // with the center. Caches by (shadowSize, rainWidth).
+        // Tip texture stretches 1:1 with the shadow tip rect (RawImage has no 9-slice), so
+        // to keep the side blur fixed at `shadowSize` px regardless of column width the
+        // texture width must match the rect width. Caches by (shadowSize, rainWidth).
         private Texture2D GetShadowTipTex(int shadowSize, int rainWidth)
         {
             int key = (shadowSize << 16) | (Mathf.Clamp(rainWidth, 1, 0xFFFF));

@@ -1,16 +1,16 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
 namespace Bismuth.UI
 {
-    // Full-screen edit overlay for the GAME's own HUD elements (Locations tab),
-    // the counterpart of LocationEditor for Bismuth's elements. Drag moves, scroll
-    // wheel scales, right-click resets one element. Elements that are currently
-    // inactive (death %, congrats, …) keep a dimmed handle at their last layout
-    // position so they can be edited without dying first. Writes go through
+    // Full-screen edit overlay for the GAME's own HUD elements (Locations tab) — the
+    // counterpart of LocationEditor. Drag moves, scroll scales, right-click resets one
+    // element. Currently-inactive elements (death %, congrats, …) keep a dimmed handle at
+    // their last position so they're editable without dying first. Writes go through
     // GameUiLayout (wrapper transforms / error meter override) and apply live.
     internal static class GameUiEditor
     {
@@ -65,12 +65,10 @@ namespace Bismuth.UI
             _canvasGo.AddComponent<UndoPoller>();
         }
 
-        // Keeps smaller handles above larger ones. The congrats/results boxes blanket
-        // the screen center and made the elements under them ungrabbable. uGUI renders
-        // and raycasts later siblings on top, so order the handle block by area,
-        // descending. Re-orders only when the order actually changed (SetSiblingIndex
-        // dirties the canvas). Runs off last frame's sizes, so one frame of staleness
-        // is invisible here.
+        // Keeps smaller handles grabbable above larger ones (congrats/results boxes blanket
+        // the center). uGUI raycasts later siblings on top, so order the handle block by
+        // area descending. Re-orders only on actual change (SetSiblingIndex dirties the
+        // canvas); runs off last frame's sizes, so one frame of staleness is invisible.
         private class HandleSorter : MonoBehaviour
         {
             private readonly List<LocHandle> _handles = new List<LocHandle>();
@@ -117,13 +115,11 @@ namespace Bismuth.UI
             _reopenPanel = false;
         }
 
-        // ── Force-show while editing ─────────────────────────────────────────
-        // Most game elements only exist on screen at specific moments (death %,
-        // congrats, countdown…), and many sit inside inactive screen containers
-        // (win/fail screens), so activating only the element's own GameObject left
-        // invisible dimmed handles. Activate the whole ancestor chain up to the
-        // canvas, lift faded CanvasGroups/text alphas, and fill empty texts with
-        // sample content. Record every change and restore exactly on Close.
+        // ── Force-show while editing ───────────────────────────────────────
+        // Most game elements only show at specific moments (death %, congrats, …) and many
+        // sit inside inactive containers, so activating just the element left invisible
+        // handles. Activate the whole ancestor chain to the canvas, lift faded
+        // CanvasGroup/text alphas, and fill empty texts with samples. Restored on Close.
 
         private static readonly List<KeyValuePair<GameObject, bool>> _shownGos =
             new List<KeyValuePair<GameObject, bool>>();
@@ -188,11 +184,10 @@ namespace Bismuth.UI
             }
         }
 
-        // The real results screen is a multi-line colored breakdown built by the
-        // game (DetailedResults.GenerateResults: localized "status.results.*"
-        // labels plus <color> hit-margin values), so a plain placeholder looks
-        // nothing like it. Generate the authentic string from the current (usually
-        // empty) margin tracker. GenerateResults is private, hence the reflection call.
+        // The real results screen is a multi-line colored breakdown
+        // (DetailedResults.GenerateResults), so a plain placeholder looks nothing like it.
+        // Generate the authentic string from the current margin tracker. GenerateResults is
+        // private, hence the reflection call.
         private static string ResultsSample(string fallback)
         {
             try
@@ -233,7 +228,7 @@ namespace Bismuth.UI
             _liftedColors.Clear();
         }
 
-        // ── Element handles (wrapper-offset model) ──────────────────────────
+        // ── Element handles (wrapper-offset model) ─────────────────────────
 
         private static void MakeElementHandle(GameUiLayout.TargetDef t)
         {
@@ -291,7 +286,7 @@ namespace Bismuth.UI
             return sf > 0.0001f ? sf : 1f;
         }
 
-        // ── Error meter handle (absolute normalized position + scale mul) ────
+        // Error meter handle (absolute normalized position + scale mul)
 
         private static void MakeMeterHandle()
         {
@@ -357,7 +352,7 @@ namespace Bismuth.UI
             s.GameErrorMeterOverride = true;
         }
 
-        // ── Construction ─────────────────────────────────────────────────────
+        // ── Construction ───────────────────────────────────────────────────
 
         private static LocHandle MakeHandle(string label, Func<RectTransform> get)
         {
@@ -372,7 +367,7 @@ namespace Bismuth.UI
 
             var lbl = UIBuilder.Label(go.transform, label.ToUpperInvariant(),
                 (int)UIBuilder.SmallCapsFontSize, TextAnchor.MiddleCenter, Theme.Text);
-            lbl.fontStyle = FontStyle.Bold;
+            lbl.fontStyle = FontStyles.Bold;
 
             var cg = go.AddComponent<CanvasGroup>();
 
@@ -400,7 +395,7 @@ namespace Bismuth.UI
 
             var lbl = UIBuilder.Label(btn.transform, "✓ Done editing", (int)UIBuilder.LabelFontSize,
                 TextAnchor.MiddleCenter, Color.black);
-            lbl.fontStyle = FontStyle.Bold;
+            lbl.fontStyle = FontStyles.Bold;
 
             ClickHandler.Attach(btn, Close);
 

@@ -12,14 +12,14 @@ namespace Bismuth.UI.Pages
             var s = UICore.Settings;
             var notify = UICore.OnSettingsChanged;
 
-            // ── Menu ─────────────────────────────────────────────────────────
+            // ── Menu ───────────────────────────────────────────────────────
             UIBuilder.SectionHeader(content, "Menu");
             UIBuilder.Collapsible(content, "Block game inputs while menu is open", s.BlockInputsWhileMenuOpen,
                 v => { s.BlockInputsWhileMenuOpen = v; notify?.Invoke(); }, null);
 
             UIBuilder.Spacer(content);
 
-            // ── Key Limiter ──────────────────────────────────────────────────
+            // ── Key Limiter ────────────────────────────────────────────────
             UIBuilder.SectionHeader(content, "Key Limiter");
             UIBuilder.Collapsible(content, "Enable", s.KeyLimiterEnabled,
                 v => { s.KeyLimiterEnabled = v; notify?.Invoke(); }, null);
@@ -45,7 +45,7 @@ namespace Bismuth.UI.Pages
             BuildCustomKeys(customContainer.transform, s, notify);
             customContainer.SetActive(!s.KeyLimiterUseKvKeys);
 
-            // ── Chatter Blocker ──────────────────────────────────────────────
+            // ── Chatter Blocker ────────────────────────────────────────────
             UIBuilder.Spacer(content);
             UIBuilder.SectionHeader(content, "Chatter Blocker");
             UIBuilder.Collapsible(content, "Enable", s.ChatterBlockerEnabled,
@@ -184,13 +184,7 @@ namespace Bismuth.UI.Pages
             txtRect.anchorMax = Vector2.one;
             txtRect.offsetMin = new Vector2(6f, 0f);
             txtRect.offsetMax = new Vector2(-6f, 0f);
-            var txt = txtGo.AddComponent<Text>();
-            txt.text = text;
-            txt.font = Theme.Font;
-            txt.fontSize = (int)UIBuilder.LabelFontSize;
-            txt.color = Theme.Text;
-            txt.alignment = TextAnchor.MiddleCenter;
-            txt.raycastTarget = false;
+            var txt = UIBuilder.Tmp(txtGo, text, (int)UIBuilder.LabelFontSize, TextAnchor.MiddleCenter, Theme.Text);
 
             ClickHandler.Attach(go, onClick);
             return go;

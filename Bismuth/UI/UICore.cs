@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -54,13 +55,12 @@ namespace Bismuth.UI
                 BuildTitleBar();
                 BuildBody();
                 BuildResizeGrip();
-                // Re-attach resize handles LAST so they sit on top of everything else in
-                // sibling order. Otherwise the footer / titlebar / rail render on top of the
-                // handles in their overlapping zones and absorb drag events; the corner grip
-                // would be visible but unresponsive. Handles have transparent raycast Images,
-                // so the grip dots underneath show through cleanly.
+                // Re-attach resize handles LAST so they sit on top in sibling order, else the
+                // footer/titlebar/rail render over them and absorb drags (grip visible but
+                // unresponsive). Handles' raycast Images are transparent, so the dots show through.
                 ResizeHandle.AttachAll(_panel);
                 ApplyScale(_settings.UiScale);
+                PrewarmGlyphs();
                 _canvasGo.SetActive(false);
                 BismuthLog.Log("[UI] Initialized — hotkey Ctrl+B armed");
             }
@@ -72,11 +72,29 @@ namespace Bismuth.UI
             }
         }
 
-        private static Font ResolveSavedFont()
+        // Pay the deferred first-activation cost now, at build time, instead of on the first
+        // Open(): lay the panel out and rasterize every TMP glyph into the dynamic SDF atlas
+        // up front (incl. inactive tabs — they share the atlas). Unity skips both for inactive
+        // objects, which is why the first open otherwise hitches.
+        private static void PrewarmGlyphs()
+        {
+            try
+            {
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                LayoutRebuilder.ForceRebuildLayoutImmediate(_panel);
+                var texts = _canvasGo.GetComponentsInChildren<TMP_Text>(true);
+                foreach (var t in texts) if (t != null) t.ForceMeshUpdate();
+                sw.Stop();
+                BismuthLog.Debug($"[UI] prewarm: {texts.Length} TMP texts laid out + rasterized in {sw.ElapsedMilliseconds}ms");
+            }
+            catch (Exception ex) { BismuthLog.Log("[UI] prewarm skipped: " + ex.Message); }
+        }
+
+        private static TMP_FontAsset ResolveSavedFont()
         {
             var entry = FontLoader.Find(_availableFonts, _settings.UiFontName)
-                        ?? FontLoader.Find(_availableFonts, "Pretendard-Regular");
-            return entry?.Font;
+                        ?? (_availableFonts.Count > 0 ? _availableFonts[0] : null);
+            return entry?.TmpFont;
         }
 
         // Tracks the scale at which the panel's sizeDelta + anchoredPosition currently make sense.
@@ -92,10 +110,9 @@ namespace Bismuth.UI
             // so widget fontSize / preferredHeight / row spacing all render larger.
             _scaler.referenceResolution = ReferenceResolution / scale;
 
-            // Counter-resize the panel rect so its on-screen size stays constant despite the
-            // canvas-scale change. panel-screen-px = sizeDelta × canvasScale, and canvasScale
-            // is proportional to uiScale, so sizeDelta must shrink by (applied/new). Same for
-            // anchoredPosition — keeps a dragged-off-center panel pinned to the same screen point.
+            // Counter-resize the panel rect so its on-screen size stays constant: screen-px =
+            // sizeDelta × canvasScale ∝ uiScale, so sizeDelta shrinks by (applied/new). Same
+            // for anchoredPosition, pinning a dragged-off-center panel to the same screen point.
             if (_panel != null && _appliedScale > 0.001f)
             {
                 float ratio = _appliedScale / scale;
@@ -115,9 +132,9 @@ namespace Bismuth.UI
 
         public static void ApplyFont(FontLoader.FontEntry entry)
         {
-            if (entry == null || entry.Font == null) return;
+            if (entry == null || entry.TmpFont == null) return;
             _settings.UiFontName = entry.Name;
-            Theme.ApplyFont(entry.Font, _canvasGo);
+            Theme.ApplyFont(entry.TmpFont, _canvasGo);
         }
 
         public static void Dispose()
@@ -148,7 +165,7 @@ namespace Bismuth.UI
             _canvasGo.AddComponent<GraphicRaycaster>();
 
             // Bismuth runs alongside UMM's own EventSystem. Only add one if none exists.
-            if (UnityEngine.Object.FindObjectOfType<EventSystem>() == null)
+            if (UnityEngine.Object.FindAnyObjectByType<EventSystem>() == null)
             {
                 var esGo = new GameObject("BismuthEventSystem");
                 esGo.transform.SetParent(_canvasGo.transform, false);
@@ -247,13 +264,15 @@ namespace Bismuth.UI
             tr.anchorMax = new Vector2(1, 1);
             tr.offsetMin = new Vector2(12f, 0f);
             tr.offsetMax = new Vector2(-32f, 0f);
-            var title = titleGo.AddComponent<Text>();
+            var title = titleGo.AddComponent<TextMeshProUGUI>();
             title.text = "Bismuth";
-            title.font = Theme.Font;
+            title.font = Theme.TmpFont;
             title.fontSize = 15;
             title.color = Theme.Text;
-            title.fontStyle = FontStyle.Bold;
-            title.alignment = TextAnchor.MiddleLeft;
+            title.fontStyle = FontStyles.Bold;
+            title.alignment = TextAlignmentOptions.Left;
+            title.textWrappingMode = TextWrappingModes.NoWrap;
+            title.overflowMode = TextOverflowModes.Overflow;
             title.raycastTarget = false;
 
             // Close
@@ -266,7 +285,7 @@ namespace Bismuth.UI
             var closeBg = UIBuilder.SolidImage(close, new Color(0, 0, 0, 0));
             closeBg.raycastTarget = true;
             var x = UIBuilder.Label(close.transform, "×", 14, TextAnchor.MiddleCenter, Theme.Text);
-            x.fontStyle = FontStyle.Bold;
+            x.fontStyle = FontStyles.Bold;
             var closeHover = close.AddComponent<HoverHandler>();
             closeHover.OnEnter = () => closeBg.color = Theme.CloseHover;
             closeHover.OnExit = () => closeBg.color = new Color(0, 0, 0, 0);
@@ -370,9 +389,8 @@ namespace Bismuth.UI
         {
             if (!_isOpen) return;
             _isOpen = false;
-            // Save current dimensions in canonical (scale=1.0) units so they restore
-            // correctly across UI scale changes. sizeDelta is scaled inversely by
-            // ApplyScale, so multiplying by _appliedScale undoes that.
+            // Save dimensions in canonical (scale=1.0) units so they restore across UI scale
+            // changes. ApplyScale scales sizeDelta inversely, so ×_appliedScale undoes that.
             if (_panel != null && _settings != null)
             {
                 _settings.UiPanelWidth  = _panel.sizeDelta.x * _appliedScale;

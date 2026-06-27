@@ -25,6 +25,9 @@ namespace Bismuth
         private static List<FontLoader.FontEntry> availableFonts = new List<FontLoader.FontEntry>();
         // Retry init on first scene load when koren UMM loaded us before game statics were ready.
         private static bool _deferredApplyPending;
+        // Force-reload request (Misc → Debug). Deferred to OnUpdate so the panel isn't rebuilt
+        // inside its own button's click handler.
+        private static bool _forceReloadPending;
 
         internal static void Setup(UnityModManager.ModEntry modEntry)
         {
@@ -35,7 +38,11 @@ namespace Bismuth
             modEntry.OnToggle = OnToggle;
             modEntry.OnGUI = OnGUI;
             modEntry.OnSaveGUI = OnSaveGUI;
-            modEntry.OnUpdate = (_, __) => UICore.HandleUpdate();
+            modEntry.OnUpdate = (_, __) =>
+            {
+                UICore.HandleUpdate();
+                if (_forceReloadPending) { _forceReloadPending = false; DoForceReload(); }
+            };
             // Opting into OnUnload makes the mod hot-reloadable: UMM watches the dll and
             // reloads in-place when it changes, instead of requiring a game restart.
             modEntry.OnUnload = OnUnload;
@@ -121,21 +128,7 @@ namespace Bismuth
                 KeyLimiter.Apply(Settings);
 
                 GameUiLayout.Reapply();
-                UICore.Initialize(_modEntry, Settings, () =>
-                {
-                    overlay?.ApplySettings(Settings);
-                    keyViewer?.ApplySettings(Settings);
-                    KeyLimiter.Apply(Settings);
-                    GameUiLayout.Reapply();
-                }, availableFonts);
-                UICore.OnKeyViewerRebuild = () => keyViewer?.Rebuild(Settings);
-                UICore.Tabs.AddTab("Overlay", PageOverlay.Build);
-                UICore.Tabs.AddTab("Key Viewer", PageKeyViewer.Build);
-                UICore.Tabs.AddTab("Input", PageInput.Build);
-                UICore.Tabs.AddTab("Hide UI", PageHideUi.Build);
-                UICore.Tabs.AddTab("UI", PageUI.Build);
-                UICore.Tabs.AddTab("Game UI", PageGameUi.Build);
-                UICore.Tabs.AddTab("Misc", PageMisc.Build);
+                BuildUI();
                 UpdateChecker.Begin(_modEntry);
                 return true;
             }
@@ -150,6 +143,54 @@ namespace Bismuth
                 if (KeyViewer.Instance != null && keyViewer == null)
                     UnityEngine.Object.Destroy(KeyViewer.Instance.gameObject);
                 return false;
+            }
+        }
+
+        // Builds the settings panel + tabs over the current font list. Reused by force-reload.
+        private static void BuildUI()
+        {
+            UICore.Initialize(_modEntry, Settings, () =>
+            {
+                overlay?.ApplySettings(Settings);
+                keyViewer?.ApplySettings(Settings);
+                KeyLimiter.Apply(Settings);
+                GameUiLayout.Reapply();
+            }, availableFonts);
+            UICore.OnKeyViewerRebuild = () => keyViewer?.Rebuild(Settings);
+            UICore.Tabs.AddTab("Overlay", PageOverlay.Build);
+            UICore.Tabs.AddTab("Key Viewer", PageKeyViewer.Build);
+            UICore.Tabs.AddTab("Input", PageInput.Build);
+            UICore.Tabs.AddTab("Hide UI", PageHideUi.Build);
+            UICore.Tabs.AddTab("UI", PageUI.Build);
+            UICore.Tabs.AddTab("Game UI", PageGameUi.Build);
+            UICore.Tabs.AddTab("Misc", PageMisc.Build);
+        }
+
+        // Misc → Debug "Force reload": re-scan fonts (pick up newly dropped files), rebuild the
+        // panel so the pickers show them, and reapply everything — without a UMM reload. Set via
+        // a flag and run from OnUpdate so the panel isn't torn down inside its button's handler.
+        internal static void RequestForceReload() => _forceReloadPending = true;
+
+        private static void DoForceReload()
+        {
+            try
+            {
+                bool wasOpen = UICore.IsOpen;
+                FontLoader.DestroyTmpAssets(availableFonts);
+                availableFonts = FontLoader.ScanFonts(_modEntry.Path);
+                UICore.Dispose();
+                BuildUI();
+                ApplySelectedFont();
+                overlay?.ApplySettings(Settings);
+                keyViewer?.ApplySettings(Settings);
+                KeyLimiter.Apply(Settings);
+                GameUiLayout.Reapply();
+                if (wasOpen) UICore.Open();
+                BismuthLog.Log("[Bismuth] Force reload complete (" + availableFonts.Count + " fonts)");
+            }
+            catch (Exception ex)
+            {
+                BismuthLog.Log("[Bismuth] Force reload failed: " + ex);
             }
         }
 
@@ -169,7 +210,7 @@ namespace Bismuth
 
         private static void OnSceneUnloaded(Scene scene)
         {
-            if (!Settings.OptUnloadAssets) return;
+            if (!Settings.OptimizationsEnabled || !Settings.OptUnloadAssets) return;
             // Measure synchronously: op.completed fires after the next scene starts allocating,
             // which makes before-after read as negative noise.
             long before = UnityEngine.Profiling.Profiler.GetTotalAllocatedMemoryLong();
@@ -188,7 +229,6 @@ namespace Bismuth
 
             FontLoader.FontEntry target =
                 FontLoader.Find(availableFonts, Settings.FontName)
-                ?? FontLoader.Find(availableFonts, "Pretendard-Regular")
                 ?? availableFonts[0];
 
             // Optional per-part weights for stat rows / combo, drawn from the same family.
@@ -207,7 +247,6 @@ namespace Bismuth
             // tab). Titles get the configured weight, defaulting to the heaviest.
             FontLoader.FontEntry gameEntry =
                 FontLoader.Find(availableFonts, Settings.GameFontName)
-                ?? FontLoader.Find(availableFonts, "Pretendard-Regular")
                 ?? target;
             FontLoader.SplitWeight(gameEntry.Name, out string gameFamily, out _);
             var titleEntry = FindFamilyWeight(gameFamily, Settings.GameTextTitleWeight)
@@ -218,7 +257,7 @@ namespace Bismuth
             string lnWeight = Settings.GameUiWeightFor("levelname");
             var levelNameEntry = (!string.IsNullOrEmpty(lnWeight) ? FindFamilyWeight(gameFamily, lnWeight) : null)
                 ?? titleEntry ?? gameEntry;
-            overlay.SetLevelNameFont(levelNameEntry.Font);
+            overlay.SetLevelNameFont(levelNameEntry.TmpFont);
             // Weight table for the per-element overrides (Game UI tab → Element weights).
             var gameWeights = new Dictionary<string, FontLoader.FontEntry>(StringComparer.OrdinalIgnoreCase);
             foreach (var e in availableFonts)
@@ -227,7 +266,7 @@ namespace Bismuth
                 if (fam == gameFamily && !string.IsNullOrEmpty(w)) gameWeights[w] = e;
             }
             GameFontApplier.SetElementWeights(gameWeights);
-            GameFontApplier.SetFonts(gameEntry.Font, gameEntry.TmpFont, titleEntry?.Font, titleEntry?.TmpFont);
+            GameFontApplier.SetFonts(gameEntry.TmpFont, titleEntry?.TmpFont);
         }
 
         private static FontLoader.FontEntry FindFamilyWeight(string family, string weight)
@@ -256,7 +295,7 @@ namespace Bismuth
             SceneManager.sceneUnloaded -= OnSceneUnloaded;
             SceneManager.sceneLoaded -= OnSceneLoaded;
             _deferredApplyPending = false;
-            harmony.UnpatchAll(modEntry.Info.Id);
+            harmony.UnpatchSelf(); // HarmonyX 2.x: UnpatchAll(id) is obsolete; this unpatches our instance
             if (overlay != null)
             {
                 UnityEngine.Object.Destroy(overlay.gameObject);

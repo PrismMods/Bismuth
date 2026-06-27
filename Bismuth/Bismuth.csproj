@@ -14,6 +14,9 @@
         <FileAlignment>512</FileAlignment>
         <Deterministic>true</Deterministic>
         <AdofaiManaged>/Users/preluminance/Library/Application Support/Steam/steamapps/common/A Dance of Fire and Ice/ADanceOfFireAndIce.app/Contents/Resources/Data/Managed</AdofaiManaged>
+        <!-- MelonLoader + UMMCompat install: HarmonyX ships under MelonLoader/, the UMM
+             shim under UserLibs/ (this is a Mono v4.8 game, so the net472 Harmony). -->
+        <GameRoot>/Users/preluminance/Library/Application Support/Steam/steamapps/common/A Dance of Fire and Ice</GameRoot>
     </PropertyGroup>
     <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
         <DebugSymbols>true</DebugSymbols>
@@ -33,7 +36,7 @@
         <WarningLevel>4</WarningLevel>
     </PropertyGroup>
     <ItemGroup>
-        <Reference Include="0Harmony"><HintPath>$(AdofaiManaged)/UnityModManager/0Harmony.dll</HintPath><Private>False</Private></Reference>
+        <Reference Include="0Harmony"><HintPath>$(GameRoot)/MelonLoader/net472/0Harmony.dll</HintPath><Private>False</Private></Reference>
         <Reference Include="Assembly-CSharp"><HintPath>$(AdofaiManaged)/Assembly-CSharp.dll</HintPath><Private>False</Private></Reference>
         <Reference Include="Assembly-CSharp-firstpass"><HintPath>$(AdofaiManaged)/Assembly-CSharp-firstpass.dll</HintPath><Private>False</Private></Reference>
         <Reference Include="DOTween"><HintPath>$(AdofaiManaged)/DOTween.dll</HintPath><Private>False</Private></Reference>
@@ -68,7 +71,7 @@
         <Reference Include="UnityEngine.UIModule"><HintPath>$(AdofaiManaged)/UnityEngine.UIModule.dll</HintPath><Private>False</Private></Reference>
         <Reference Include="UnityEngine.UnityWebRequestModule"><HintPath>$(AdofaiManaged)/UnityEngine.UnityWebRequestModule.dll</HintPath><Private>False</Private></Reference>
         <Reference Include="UnityEngine.JSONSerializeModule"><HintPath>$(AdofaiManaged)/UnityEngine.JSONSerializeModule.dll</HintPath><Private>False</Private></Reference>
-        <Reference Include="UnityModManager"><HintPath>$(AdofaiManaged)/UnityModManager/UnityModManager.dll</HintPath><Private>False</Private></Reference>
+        <Reference Include="UnityModManager"><HintPath>$(GameRoot)/UserLibs/UnityModManager.dll</HintPath><Private>False</Private></Reference>
     </ItemGroup>
     <ItemGroup>
         <Compile Include="MainClass.cs" />
@@ -97,6 +100,9 @@
         <Compile Include="Util\UpdateChecker.cs" />
         <Compile Include="Util\OsShell.cs" />
         <Compile Include="Util\GameFontApplier.cs" />
+        <Compile Include="Util\GameTextShadow.cs" />
+        <Compile Include="Util\GameTextMeshShadow.cs" />
+        <Compile Include="Util\GameProbe.cs" />
         <Compile Include="Util\GameUiLayout.cs" />
         <Compile Include="UI\UpdatePopup.cs" />
         <Compile Include="UI\LogViewer.cs" />

@@ -141,9 +141,13 @@ namespace Bismuth
         private void UpdateCanvasVisibility()
         {
             if (_canvas == null || _settings == null) return;
-            bool show = AnyViewerOn(_settings) && !HiddenForScene(_settings);
+            bool show = AnyViewerOn(_settings) && !HiddenForScene(_settings) && !PauseMenuOpen;
             if (_canvas.gameObject.activeSelf != show) _canvas.gameObject.SetActive(show);
         }
+
+        // True while the pause menu is up — set by the PauseMenu.Show/Hide patches (and
+        // cleared on scene change). The key viewer hides until resumed.
+        internal static bool PauseMenuOpen;
 
         private static bool NeedsPersist(Settings s) =>
             (s.Hand != null && s.Hand.PersistCounts) || (s.Foot != null && s.Foot.PersistCounts);
@@ -217,11 +221,9 @@ namespace Bismuth
             UpdateCanvasVisibility();
         }
 
-        // Move a cell's persisted press count from its old key to the new one when the user
-        // rebinds a KV cell. Called by the settings UI before the rebuild so the freshly-built
-        // cell picks up the carried-over count from _counts. Old key is only forgotten if no
-        // other cell in the same preset still uses it (otherwise that other cell would zero
-        // out on the next rebuild).
+        // Move a cell's persisted press count from old key to new on rebind. Called before
+        // the rebuild so the freshly-built cell carries the count over. The old key is
+        // forgotten only if no other cell in the preset still uses it.
         internal void TransferKeyCount(KeyViewerPreset preset, KeyCode oldKey, KeyCode newKey)
         {
             if (preset == null || oldKey == newKey) return;

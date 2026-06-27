@@ -46,13 +46,28 @@ namespace Bismuth
             }
         }
 
-        // Custom level starts playing. isRestart=true on in-game retry, false on first load.
+        // An in-game retry reloads the scene via scrController.Restart, which re-enters
+        // scnGame.Play fresh — so flag the restart here and consume it in the Play postfix.
+        // (ADOFAI v3.2 dropped Play's old isRestart parameter, breaking the by-name bind.)
+        [HarmonyPatch(typeof(scrController), "Restart")]
+        private static class ControllerRestartPatch
+        {
+            public static void Prefix() => ScnGamePlayPatch.PendingRestart = true;
+        }
+
+        // Custom level starts playing. PendingRestart distinguishes an in-game retry (set
+        // above, survives the scene reload) from a first/outside entry (left false).
         [HarmonyPatch(typeof(scnGame), "Play")]
         private static class ScnGamePlayPatch
         {
-            public static void Postfix(bool isRestart)
+            internal static bool PendingRestart;
+
+            public static void Postfix(int seqID)
             {
-                Overlay.Instance?.OnLevelStart(isRestart);
+                bool isRestart = PendingRestart;
+                PendingRestart = false;
+                // seqID > 0 ⇒ started from a checkpoint tile (the game's own startedFromCheckpoint).
+                Overlay.Instance?.OnLevelStart(isRestart, seqID > 0);
             }
         }
 
@@ -62,7 +77,7 @@ namespace Bismuth
         {
             public static void Postfix()
             {
-                Overlay.Instance?.OnLevelStart(false);
+                Overlay.Instance?.OnLevelStart(false, false);
             }
         }
 
@@ -73,6 +88,7 @@ namespace Bismuth
             public static void Postfix()
             {
                 Overlay.Instance?.OnLevelEnd();
+                KeyViewer.PauseMenuOpen = false; // quitting a level while paused never calls Hide
             }
         }
 
@@ -117,10 +133,9 @@ namespace Bismuth
             }
         }
 
-        // Custom-level select updates the portal info (name/artist/description) when you
-        // navigate between levels. The game re-stamps the default font as it does, and
-        // CLS navigation fires no sweep, so only the level selected at the last sweep
-        // kept the overlay font. Re-sweep after each DisplayLevel.
+        // CLS navigation re-stamps the default font on the portal info but fires no sweep,
+        // so only the level selected at the last sweep kept the overlay font. Re-sweep
+        // after each DisplayLevel.
         [HarmonyPatch(typeof(scnCLS), "DisplayLevel")]
         private static class CLSDisplayLevelPatch
         {
@@ -131,9 +146,8 @@ namespace Bismuth
             }
         }
 
-        // The game stamps the per-language localized font via RDString.SetLocalizedFont,
-        // notably the language-selector previews, which set each language's OWN font over
-        // our swap (the name reverted while cycling languages). Re-apply ours right after.
+        // RDString.SetLocalizedFont stamps each language's OWN font over our swap (the
+        // language-selector previews reverted while cycling). Re-apply ours right after.
         [HarmonyPatch(typeof(RDString), "SetLocalizedFont", new[] { typeof(Text) })]
         private static class LocalizedFontTextPatch
         {
@@ -161,19 +175,25 @@ namespace Bismuth
             }
         }
 
-        // The pause/settings menu is shown over gameplay with no scene change, so the
-        // font sweep never ran for it (it only picked up the font after some later sweep,
-        // e.g. entering the CLS). Re-sweep when it opens. Covers both the pause menu and
-        // the settings submenu (Show handles submenu switches, ShowSettingsMenu covers
-        // opening settings directly).
+        // The pause/settings menu shows over gameplay with no scene change, so no font
+        // sweep ran for it. Re-sweep when it opens — both the pause menu (Show) and the
+        // settings submenu opened directly (ShowSettingsMenu).
         [HarmonyPatch(typeof(PauseMenu), "Show")]
         private static class PauseMenuShowPatch
         {
             public static void Postfix(PauseMenu __instance)
             {
+                KeyViewer.PauseMenuOpen = true;
                 try { GameFontApplier.ApplyTo(__instance.gameObject); GameFontApplier.RequestFullSweepSoon(); }
                 catch { }
             }
+        }
+
+        // Resume / close the pause menu — re-show the key viewer.
+        [HarmonyPatch(typeof(PauseMenu), "Hide")]
+        private static class PauseMenuHidePatch
+        {
+            public static void Postfix() => KeyViewer.PauseMenuOpen = false;
         }
 
         [HarmonyPatch(typeof(PauseMenu), "ShowSettingsMenu")]
@@ -186,10 +206,8 @@ namespace Bismuth
             }
         }
 
-        // The game's own layout pass for the hit error meter (anchors from `pos`,
-        // localScale from `meterScale`). Runs on scrController.Awake and when the
-        // user changes the meter size/shape in the game's settings. Re-apply the
-        // Bismuth override on top each time.
+        // The game's layout pass for the hit error meter (anchors from `pos`, scale from
+        // `meterScale`), on Awake and on meter size/shape changes. Re-apply our override.
         [HarmonyPatch(typeof(scrHitErrorMeter), "UpdateLayout")]
         private static class ErrorMeterLayoutPatch
         {
@@ -230,11 +248,11 @@ namespace Bismuth
             }
         }
 
-        // Hide all scrShowIfDebug elements (autoplay text + rabbit icon) by temporarily
-        // setting RDC.auto = false so the component hides its own content, then restoring it.
-        // While the game-UI editor is open the opposite applies: Update force-disables the
-        // private Text component every frame when autoplay is off (Behaviour.enabled, which
-        // GameUiEditor's force-show doesn't cover), so re-enable it with the real label.
+        // Hide all scrShowIfDebug elements (autoplay text + rabbit) by temporarily setting
+        // RDC.auto = false so the component hides its own content, then restoring it. While
+        // the game-UI editor is open the opposite applies: Update force-disables the private
+        // Text every frame when autoplay is off (Behaviour.enabled, which force-show doesn't
+        // cover), so re-enable it with the real label.
         [HarmonyPatch(typeof(scrShowIfDebug), "Update")]
         private static class ShowIfDebugUpdatePatch
         {
@@ -313,11 +331,10 @@ namespace Bismuth
             public static void Postfix() => HideErrorMeter();
         }
 
-        // The level editor force-disables the game's HUD canvas every frame outside
-        // play mode (LateUpdate: uiController.canvas.enabled = playMode), so the
-        // game-UI editor showed handles over nothing there. Re-enable it after the
-        // game's write while an edit session is open. scnEditor takes back over
-        // on the first frame after Close.
+        // The level editor force-disables the game's HUD canvas every frame outside play
+        // mode (LateUpdate: canvas.enabled = playMode), so the game-UI editor showed handles
+        // over nothing. Re-enable after the game's write while an edit session is open;
+        // scnEditor takes back over on the first frame after Close.
         [HarmonyPatch(typeof(scnEditor), "LateUpdate")]
         private static class EditorLateUpdateShowHudPatch
         {

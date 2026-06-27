@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -183,22 +184,12 @@ namespace Bismuth.UI.Pages
             nameTxtRect.anchorMax = Vector2.one;
             nameTxtRect.offsetMin = new Vector2(8f, 0);
             nameTxtRect.offsetMax = new Vector2(-8f, 0);
-            var nameTxt = nameTxtGo.AddComponent<Text>();
-            nameTxt.font = Theme.Font;
-            nameTxt.fontSize = (int)UIBuilder.LabelFontSize;
-            nameTxt.color = Theme.Text;
-            nameTxt.alignment = TextAnchor.MiddleLeft;
-            nameTxt.supportRichText = false;
-            nameTxt.raycastTarget = false;
+            var nameTxt = UIBuilder.Tmp(nameTxtGo, "", (int)UIBuilder.LabelFontSize, TextAnchor.MiddleLeft, Theme.Text);
+            nameTxt.richText = false;
 
-            var nameInput = nameGo.AddComponent<InputField>();
-            nameInput.textComponent = nameTxt;
-            nameInput.contentType = InputField.ContentType.Standard;
-            nameInput.lineType = InputField.LineType.SingleLine;
-            nameInput.caretWidth = 1;
-            nameInput.customCaretColor = true;
-            nameInput.caretColor = Theme.Text;
-            nameInput.selectionColor = new Color(Theme.ToggleOn.r, Theme.ToggleOn.g, Theme.ToggleOn.b, 0.45f);
+            var nameInput = UIBuilder.BuildInputField(nameGo, nameTxt);
+            nameInput.contentType = TMP_InputField.ContentType.Standard;
+            nameInput.lineType = TMP_InputField.LineType.SingleLine;
             nameInput.text = preset.Name ?? "";
             nameInput.onEndEdit.AddListener(v =>
             {
@@ -231,7 +222,7 @@ namespace Bismuth.UI.Pages
                 var delBg = delBtn.GetComponent<RoundedRectGraphic>();
                 delBg.color = new Color(Theme.ButtonBg.r, Theme.ButtonBg.g, Theme.ButtonBg.b, 0.04f);
                 delBg.raycastTarget = false;
-                delBtn.GetComponentInChildren<Text>().color = Theme.TextMuted;
+                delBtn.GetComponentInChildren<TextMeshProUGUI>().color = Theme.TextMuted;
             }
 
             Action select = () =>
@@ -269,19 +260,13 @@ namespace Bismuth.UI.Pages
             lblRect.anchorMax = Vector2.one;
             lblRect.offsetMin = Vector2.zero;
             lblRect.offsetMax = Vector2.zero;
-            var txt = lblGo.AddComponent<Text>();
-            txt.text = label;
-            txt.font = Theme.Font;
-            txt.fontSize = (int)UIBuilder.LabelFontSize;
-            txt.color = Theme.Text;
-            txt.alignment = TextAnchor.MiddleCenter;
-            txt.raycastTarget = false;
+            var txt = UIBuilder.Tmp(lblGo, label, (int)UIBuilder.LabelFontSize, TextAnchor.MiddleCenter, Theme.Text);
 
             if (onClick != null) ClickHandler.Attach(btn, onClick);
             return btn;
         }
 
-        // ── Editor view ──────────────────────────────────────────────────────
+        // ── Editor view ────────────────────────────────────────────────────
 
         private static void OpenEditor(KeyViewerPreset preset, bool isFoot, Settings s, Action notify, Action rebuild)
         {
@@ -341,13 +326,7 @@ namespace Bismuth.UI.Pages
             backLblRect.anchorMax = Vector2.one;
             backLblRect.offsetMin = Vector2.zero;
             backLblRect.offsetMax = Vector2.zero;
-            var backTxt = backLbl.AddComponent<Text>();
-            backTxt.text = "← Back";
-            backTxt.font = Theme.Font;
-            backTxt.fontSize = (int)UIBuilder.LabelFontSize;
-            backTxt.color = Theme.Text;
-            backTxt.alignment = TextAnchor.MiddleCenter;
-            backTxt.raycastTarget = false;
+            var backTxt = UIBuilder.Tmp(backLbl, "← Back", (int)UIBuilder.LabelFontSize, TextAnchor.MiddleCenter, Theme.Text);
             ClickHandler.Attach(backBtn, CloseEditor);
 
             // Title text on the right of Back
@@ -357,13 +336,8 @@ namespace Bismuth.UI.Pages
             titleRect.anchorMax = new Vector2(1, 1);
             titleRect.offsetMin = new Vector2(110f, 0);
             titleRect.offsetMax = new Vector2(-8f, 0);
-            var titleTxt = title.AddComponent<Text>();
-            titleTxt.text = "Editing " + (isFoot ? "Foot / " : "Hand / ") + preset.Name;
-            titleTxt.font = Theme.Font;
-            titleTxt.fontSize = (int)UIBuilder.LabelFontSize;
-            titleTxt.color = Theme.TextMuted;
-            titleTxt.alignment = TextAnchor.MiddleLeft;
-            titleTxt.raycastTarget = false;
+            var titleTxt = UIBuilder.Tmp(title, "Editing " + (isFoot ? "Foot / " : "Hand / ") + preset.Name,
+                (int)UIBuilder.LabelFontSize, TextAnchor.MiddleLeft, Theme.TextMuted);
 
             UIBuilder.Spacer(parent, 4f);
 
@@ -467,7 +441,7 @@ namespace Bismuth.UI.Pages
             }
         }
 
-        // ── Ghost keys ───────────────────────────────────────────────────────
+        // ── Ghost keys ─────────────────────────────────────────────────────
 
         // Re-syncs the ghost slot chips when the top row's cells change (slot count is
         // derived from the top row). Set while a hand preset's editor is open.
@@ -581,8 +555,8 @@ namespace Bismuth.UI.Pages
             _ghostRefresh = rebuildSlots;
 
             // Rain color defaults to yellow when unset (null). The picker binds one persistent
-            // KvColor instance; the toggle just points GhostRainColor at it or back to null,
-            // so edits survive toggling custom off and on again.
+            // KvColor; the toggle points GhostRainColor at it or back to null, so edits
+            // survive toggling custom off and on.
             var ghostCol = preset.GhostRainColor ?? new KvColor { R = 1f, G = 0.9f, B = 0f, A = 1f };
             GameObject pickerGo = null;
             UIBuilder.Collapsible(body.transform, "Custom rain color", preset.GhostRainColor != null,
@@ -627,18 +601,13 @@ namespace Bismuth.UI.Pages
             txtRect.anchorMax = Vector2.one;
             txtRect.offsetMin = new Vector2(6f, 0f);
             txtRect.offsetMax = new Vector2(-6f, 0f);
-            var txt = txtGo.AddComponent<Text>();
-            txt.text = text;
-            txt.font = Theme.Font;
-            txt.fontSize = (int)UIBuilder.LabelFontSize;
-            txt.color = onClick != null ? Theme.Text : Theme.TextMuted;
-            txt.alignment = TextAnchor.MiddleCenter;
-            txt.raycastTarget = false;
+            var txt = UIBuilder.Tmp(txtGo, text, (int)UIBuilder.LabelFontSize, TextAnchor.MiddleCenter,
+                onClick != null ? Theme.Text : Theme.TextMuted);
 
             if (onClick != null) ClickHandler.Attach(go, onClick);
         }
 
-        // ── Rows section + cell grid ─────────────────────────────────────────
+        // ── Rows section + cell grid ───────────────────────────────────────
 
         // Visual row grid: each row is a horizontal strip of cell buttons + a Row Settings
         // button on the right. Click cell → key submenu. Right-click cell → listen-rebind.
@@ -665,8 +634,8 @@ namespace Bismuth.UI.Pages
                     return;
                 }
                 // Swap the token first so TransferKeyCount's "is oldKey still in use" scan
-                // sees the new binding; otherwise it spots this very cell still holding the
-                // old token and leaves the old count behind.
+                // sees the new binding, else it spots this cell still on the old token and
+                // leaves the old count behind.
                 bool hadOld = KeyViewer.TryParseKey(_rebindCell.Token, out KeyCode oldKey);
                 _rebindCell.Token = KeyTokens.TokenFromKeyCode(kc);
                 _rebindCell.Label = null; // clear stale override
@@ -734,9 +703,8 @@ namespace Bismuth.UI.Pages
             stripLe.preferredHeight = cellH + 4f;
             stripLe.minHeight = cellH + 4f;
 
-            // Cells container — left-anchored, leaves room for the right cluster.
-            // Only data cells live here; the + / KPS / Total / Settings buttons sit in the
-            // right cluster so drag-reorder doesn't have to skip non-data children.
+            // Cells container — left-anchored, only data cells. The + / KPS / Total /
+            // Settings buttons sit in the right cluster so drag-reorder needn't skip them.
             var cellsGo = UIBuilder.Rect("Cells", stripGo.transform);
             var cellsRect = (RectTransform)cellsGo.transform;
             cellsRect.anchorMin = new Vector2(0, 0);
@@ -807,13 +775,7 @@ namespace Bismuth.UI.Pages
             lblRect.anchorMax = Vector2.one;
             lblRect.offsetMin = Vector2.zero;
             lblRect.offsetMax = Vector2.zero;
-            var txt = lblGo.AddComponent<Text>();
-            txt.text = "⚙ Settings";
-            txt.font = Theme.Font;
-            txt.fontSize = (int)UIBuilder.LabelFontSize - 1;
-            txt.color = Theme.Text;
-            txt.alignment = TextAnchor.MiddleCenter;
-            txt.raycastTarget = false;
+            var txt = UIBuilder.Tmp(lblGo, "⚙ Settings", (int)UIBuilder.LabelFontSize - 1, TextAnchor.MiddleCenter, Theme.Text);
 
             ClickHandler.Attach(btn, () => OpenRowSubmenu(preset, isFoot, rowIdx, s, notify, rebuild));
         }
@@ -848,18 +810,13 @@ namespace Bismuth.UI.Pages
             txtRect.anchorMax = Vector2.one;
             txtRect.offsetMin = new Vector2(2f, 0);
             txtRect.offsetMax = new Vector2(-2f, 0);
-            var txt = txtGo.AddComponent<Text>();
-            txt.font = Theme.Font;
-            txt.color = Theme.Text;
-            txt.alignment = TextAnchor.MiddleCenter;
-            txt.raycastTarget = false;
-            // Best-fit so long labels (Space, Total, RAlt…) auto-shrink instead of wrapping
+            var txt = UIBuilder.Tmp(txtGo, "", (int)UIBuilder.LabelFontSize - 1, TextAnchor.MiddleCenter, Theme.Text);
+            // Auto-size so long labels (Space, Total, RAlt…) shrink instead of wrapping
             // into two lines and clipping. Short labels still render at the normal size.
-            txt.resizeTextForBestFit = true;
-            txt.resizeTextMinSize = 8;
-            txt.resizeTextMaxSize = (int)UIBuilder.LabelFontSize - 1;
-            txt.horizontalOverflow = HorizontalWrapMode.Overflow;
-            txt.verticalOverflow = VerticalWrapMode.Truncate;
+            txt.enableAutoSizing = true;
+            txt.fontSizeMin = 8;
+            txt.fontSizeMax = (int)UIBuilder.LabelFontSize - 1;
+            txt.overflowMode = TextOverflowModes.Truncate;
             txt.text = isRebinding ? "…"
                 : (!string.IsNullOrEmpty(cell.Label) ? cell.Label : KeyTokens.PrettyTokenLabel(cell.Token));
 
@@ -916,13 +873,7 @@ namespace Bismuth.UI.Pages
             txtRect.anchorMax = Vector2.one;
             txtRect.offsetMin = Vector2.zero;
             txtRect.offsetMax = Vector2.zero;
-            var txt = txtGo.AddComponent<Text>();
-            txt.text = "+";
-            txt.font = Theme.Font;
-            txt.fontSize = (int)UIBuilder.LabelFontSize + 2;
-            txt.color = Theme.TextMuted;
-            txt.alignment = TextAnchor.MiddleCenter;
-            txt.raycastTarget = false;
+            var txt = UIBuilder.Tmp(txtGo, "+", (int)UIBuilder.LabelFontSize + 2, TextAnchor.MiddleCenter, Theme.TextMuted);
 
             ClickHandler.Attach(btn, () =>
             {
@@ -961,13 +912,7 @@ namespace Bismuth.UI.Pages
             txtRect.anchorMax = Vector2.one;
             txtRect.offsetMin = Vector2.zero;
             txtRect.offsetMax = Vector2.zero;
-            var txt = txtGo.AddComponent<Text>();
-            txt.text = "+ " + token;
-            txt.font = Theme.Font;
-            txt.fontSize = (int)UIBuilder.LabelFontSize - 1;
-            txt.color = Theme.TextMuted;
-            txt.alignment = TextAnchor.MiddleCenter;
-            txt.raycastTarget = false;
+            var txt = UIBuilder.Tmp(txtGo, "+ " + token, (int)UIBuilder.LabelFontSize - 1, TextAnchor.MiddleCenter, Theme.TextMuted);
 
             ClickHandler.Attach(btn, () =>
             {
@@ -977,7 +922,7 @@ namespace Bismuth.UI.Pages
             });
         }
 
-        // ── Submenus ─────────────────────────────────────────────────────────
+        // ── Submenus ───────────────────────────────────────────────────────
 
         // Each submenu rebuilds the editor view in-place. "Back" returns to the preset editor.
         private static void OpenRowSubmenu(
@@ -1050,13 +995,7 @@ namespace Bismuth.UI.Pages
             tokenLblRect.pivot = new Vector2(0, 0.5f);
             tokenLblRect.sizeDelta = new Vector2(140f, 0);
             tokenLblRect.anchoredPosition = new Vector2(8f, 0);
-            var tokenLbl = tokenLblGo.AddComponent<Text>();
-            tokenLbl.text = "Token";
-            tokenLbl.font = Theme.Font;
-            tokenLbl.fontSize = (int)UIBuilder.LabelFontSize;
-            tokenLbl.color = Theme.Text;
-            tokenLbl.alignment = TextAnchor.MiddleLeft;
-            tokenLbl.raycastTarget = false;
+            var tokenLbl = UIBuilder.Tmp(tokenLblGo, "Token", (int)UIBuilder.LabelFontSize, TextAnchor.MiddleLeft, Theme.Text);
             var tokenValGo = UIBuilder.Rect("Val", tokenRow.transform);
             var tokenValRect = (RectTransform)tokenValGo.transform;
             tokenValRect.anchorMin = new Vector2(1, 0);
@@ -1064,13 +1003,7 @@ namespace Bismuth.UI.Pages
             tokenValRect.pivot = new Vector2(1, 0.5f);
             tokenValRect.sizeDelta = new Vector2(220f, 0);
             tokenValRect.anchoredPosition = new Vector2(-8f, 0);
-            var tokenVal = tokenValGo.AddComponent<Text>();
-            tokenVal.text = KeyTokens.PrettyTokenLabel(cell.Token);
-            tokenVal.font = Theme.Font;
-            tokenVal.fontSize = (int)UIBuilder.LabelFontSize;
-            tokenVal.color = Theme.TextMuted;
-            tokenVal.alignment = TextAnchor.MiddleRight;
-            tokenVal.raycastTarget = false;
+            var tokenVal = UIBuilder.Tmp(tokenValGo, KeyTokens.PrettyTokenLabel(cell.Token), (int)UIBuilder.LabelFontSize, TextAnchor.MiddleRight, Theme.TextMuted);
 
             UIBuilder.TextInput(_editorView.transform, "Label", cell.Label ?? "",
                 v => { cell.Label = string.IsNullOrEmpty(v) ? null : v; notify?.Invoke(); rebuild(); });
@@ -1114,13 +1047,7 @@ namespace Bismuth.UI.Pages
             backLblRect.anchorMax = Vector2.one;
             backLblRect.offsetMin = Vector2.zero;
             backLblRect.offsetMax = Vector2.zero;
-            var backTxt = backLbl.AddComponent<Text>();
-            backTxt.text = "← Back";
-            backTxt.font = Theme.Font;
-            backTxt.fontSize = (int)UIBuilder.LabelFontSize;
-            backTxt.color = Theme.Text;
-            backTxt.alignment = TextAnchor.MiddleCenter;
-            backTxt.raycastTarget = false;
+            var backTxt = UIBuilder.Tmp(backLbl, "← Back", (int)UIBuilder.LabelFontSize, TextAnchor.MiddleCenter, Theme.Text);
             ClickHandler.Attach(backBtn, onBack);
 
             var titleGo = UIBuilder.Rect("Title", topRow.transform);
@@ -1129,16 +1056,9 @@ namespace Bismuth.UI.Pages
             titleRect.anchorMax = new Vector2(1, 1);
             titleRect.offsetMin = new Vector2(110f, 0);
             titleRect.offsetMax = new Vector2(-8f, 0);
-            var titleTxt = titleGo.AddComponent<Text>();
-            titleTxt.text = title;
-            titleTxt.font = Theme.Font;
-            titleTxt.fontSize = (int)UIBuilder.LabelFontSize;
-            titleTxt.color = Theme.TextMuted;
-            titleTxt.alignment = TextAnchor.MiddleLeft;
-            titleTxt.raycastTarget = false;
+            var titleTxt = UIBuilder.Tmp(titleGo, title, (int)UIBuilder.LabelFontSize, TextAnchor.MiddleLeft, Theme.TextMuted);
         }
 
-        // ────────────────────────────────────────────────────────────────────
 
         // KvColor binding helpers — convert KvColor ↔ Color for the ColorPicker.
         private static void EnsureKv(ref KvColor c, float r, float g, float b, float a)
@@ -1158,9 +1078,8 @@ namespace Bismuth.UI.Pages
     }
 
     // Drag-reorder for cell buttons. A ghost clone follows the cursor (preserving grab
-    // offset so the cursor stays exactly where the user grabbed) while the original cell
-    // fades. On drop, finds the row strip under the cursor — same row → reorder; different
-    // row → splice across rows. Drop outside any row is a no-op.
+    // offset) while the original fades. On drop, the row strip under the cursor decides:
+    // same row → reorder, different row → splice across rows, outside any row → no-op.
     internal class CellDragReorder : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
     {
         public KeyViewerCell Cell;
@@ -1174,9 +1093,8 @@ namespace Bismuth.UI.Pages
         private RectTransform _ghostRt;
         private CanvasGroup _selfCg;
         private bool _dragging;
-        // World-space vector from cursor to cell pivot at grab time. Stored in WORLD coords
-        // (not screen) so we don't have to keep converting; ScreenPointToWorldPointInRectangle
-        // is used to convert the cursor each frame, which transparently handles CanvasScaler.
+        // Cursor-to-cell-pivot vector at grab time, in WORLD coords so the per-frame
+        // ScreenPointToWorldPointInRectangle conversion transparently handles CanvasScaler.
         private Vector3 _grabOffsetWorld;
 
         public void OnBeginDrag(PointerEventData e)
@@ -1258,9 +1176,8 @@ namespace Bismuth.UI.Pages
 
             var targetRow = Preset.Rows[targetRowIdx];
 
-            // Convert cursor to world space against targetCells, then compare to each child's
-            // world center via GetWorldCorners. Doing the comparison in world space avoids
-            // the CanvasScaler mismatch that was causing every drop to land at index 0.
+            // Compare the cursor to each child's world center (GetWorldCorners) in world
+            // space — the CanvasScaler mismatch made every drop land at index 0 otherwise.
             Vector3 cursorWorld;
             if (!RectTransformUtility.ScreenPointToWorldPointInRectangle(
                     targetCells, e.position, e.pressEventCamera, out cursorWorld))

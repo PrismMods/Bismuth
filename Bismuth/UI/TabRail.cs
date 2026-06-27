@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -17,7 +18,6 @@ namespace Bismuth.UI
         private float _y = 0f;
 
         public RectTransform PageHost { get { return _pageHost; } }
-        public Action<int> OnTabChanged;
 
         private class Tab
         {
@@ -25,7 +25,7 @@ namespace Bismuth.UI
             public GameObject Item;
             public Image Bg;
             public Image AccentStrip;
-            public Text Label;
+            public TextMeshProUGUI Label;
             public RectTransform Page;
         }
 
@@ -75,13 +75,7 @@ namespace Bismuth.UI
             lr.anchorMax = new Vector2(1, 1);
             lr.offsetMin = new Vector2(12f, 0f);
             lr.offsetMax = Vector2.zero;
-            var lbl = labelGo.AddComponent<Text>();
-            lbl.text = name;
-            lbl.font = Theme.Font;
-            lbl.fontSize = 15;
-            lbl.color = Theme.TextMuted;
-            lbl.alignment = TextAnchor.MiddleLeft;
-            lbl.raycastTarget = false;
+            var lbl = UIBuilder.Tmp(labelGo, name, 15, TextAnchor.MiddleLeft, Theme.TextMuted);
 
             var pageGo = UIBuilder.Rect("Page_" + name, _pageHost);
             var pr = (RectTransform)pageGo.transform;
@@ -131,10 +125,9 @@ namespace Bismuth.UI
             cr.anchoredPosition = Vector2.zero;
             cr.sizeDelta = Vector2.zero;
 
-            // Transparent raycast target spanning the Content area — gives every cursor
-            // position inside Content (including row gaps) a hit candidate. Without this,
-            // scrolling between rows hits nothing and ScrollRect never gets the event,
-            // making scroll feel intermittent.
+            // Transparent raycast target spanning Content, so every cursor position (incl.
+            // row gaps) has a hit candidate — without it, scrolling between rows hits
+            // nothing and ScrollRect never gets the event, making scroll feel intermittent.
             var contentBg = content.AddComponent<Image>();
             contentBg.sprite = Theme.White;
             contentBg.color = new Color(0, 0, 0, 0);
@@ -177,7 +170,6 @@ namespace Bismuth.UI
                 t.Page.gameObject.SetActive(sel);
             }
             _active = idx;
-            if (OnTabChanged != null) OnTabChanged(idx);
         }
     }
 }

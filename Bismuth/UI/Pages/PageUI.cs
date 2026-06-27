@@ -70,7 +70,7 @@ namespace Bismuth.UI.Pages
             pickerRow.SetActive(s.UiAccentCustom);
         }
 
-        // ── Family + weight font selector ────────────────────────────────────
+        // ── Family + weight font selector ──────────────────────────────────
         // Family/weight name parsing lives in FontLoader (shared with the TMP
         // weight-table wiring).
         private static void SplitWeight(string name, out string family, out string weight)
@@ -88,13 +88,10 @@ namespace Bismuth.UI.Pages
             return -1;
         }
 
-        // One font selector = a family cycle row plus a weight cycle row underneath that
-        // only exists while the chosen family has more than one weight. The weight row is
-        // rebuilt on every family change since CycleSelector's option list is fixed.
-        // Internal: PageGameUi reuses it for the game-text font.
-        // defaultOption (optional) prepends a sentinel family entry (e.g. "Game
-        // default"): selecting it fires onDefault instead of apply and clears the
-        // weight row. defaultSelected starts the dropdown on it.
+        // One font selector = a family cycle row + a weight row (only when the family has
+        // multiple weights, rebuilt on each family change). Internal: PageGameUi reuses it.
+        // defaultOption prepends a sentinel family (e.g. "Game default") that fires onDefault
+        // instead of apply and clears the weight row; defaultSelected starts on it.
         internal static void BuildFontSelector(
             Transform parent, string label,
             IList<FontLoader.FontEntry> fonts, string currentName,

@@ -45,6 +45,6 @@ mv "$STAGE/$ZIP_NAME" .
 
 echo "Built $ZIP_NAME"
 echo "Next steps:"
-echo "  git commit -am 'Release v$VERSION' && git push"
+echo "  git commit -am 'v$VERSION' && git push"
 echo "  git tag v$VERSION && git push --tags"
 echo "  gh release create v$VERSION $ZIP_NAME --title 'v$VERSION' --notes-file -"

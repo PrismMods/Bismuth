@@ -1,4 +1,3 @@
-using System;
 using TMPro;
 using UnityEngine;
 
@@ -6,22 +5,13 @@ namespace Bismuth
 {
     public partial class Overlay
     {
+        // Placeholder/inactive value tint (saved-checkpoint accuracy, empty rows).
+        private static readonly Color Dim = new Color(0.7f, 0.7f, 0.7f);
+
         public void OnAttempt()
         {
             bool atCheckpoint = false;
             try { atCheckpoint = GCS.checkpointNum > 0; } catch { }
-
-            // Diagnostic for open official-level judgement-saving investigation
-            try
-            {
-                var trk = scrMistakesManager.marginTrackers;
-                var t0 = (trk != null && trk.Length > 0) ? trk[0] : null;
-                int hmCount = t0?.hitMargins?.Count ?? -1;
-                int last = t0?.lastHitMarginsSize ?? -1;
-                int perfectCount = (t0?.hitMarginsCount != null && t0.hitMarginsCount.Length > 3) ? t0.hitMarginsCount[3] : -1;
-                BismuthLog.Debug($"OnAttempt: checkpointNum={GCS.checkpointNum} atCp={atCheckpoint} hm.Count={hmCount} lastHmSize={last} hmc[Perfect]={perfectCount} chkUsed={scrController.checkpointsUsed}");
-            }
-            catch (Exception ex) { BismuthLog.Debug("OnAttempt diag failed: " + ex.Message); }
 
             if (atCheckpoint)
             {
@@ -84,49 +74,33 @@ namespace Bismuth
             }
 
             // Suppress saved-checkpoint accuracy on attempt start. The next AddHit repaints it.
-            var dim = new Color(0.7f, 0.7f, 0.7f);
-            if (accValue != null)  { accValue.text  = "--.--%"; accValue.color  = dim; }
-            if (xaccValue != null) { xaccValue.text = "--.--%"; xaccValue.color = dim; }
+            if (accValue != null)  { accValue.text  = "--.--%"; accValue.color  = Dim; }
+            if (xaccValue != null) { xaccValue.text = "--.--%"; xaccValue.color = Dim; }
 
             RefreshDisplay(includeAccuracy: false);
         }
 
-        public void OnLevelStart(bool isRestart)
+        // fromCheckpoint == the game's startedFromCheckpoint (Play's seqID > 0): this attempt
+        // began partway in, so it doesn't count toward the from-0% "full" total.
+        public void OnLevelStart(bool isRestart, bool fromCheckpoint)
         {
             var id = LevelKey.Resolve();
             string key = id.Key;
-            /* Full attempts only count starts from 0% (no checkpoint loaded). Regular
-               attempts count every attempt, including checkpoint restarts */
-            bool atCp = false;
-            try { atCp = GCS.checkpointNum > 0; } catch { }
 
-            if (isRestart && !RDC.auto)
+            /* What counts as a new attempt: a full retry (scrController.Restart → scene
+               reload, isRestart), an in-level checkpoint revive (Play seqID>0 with inLevel
+               still set), or re-entering the same level from outside. A first sighting of a
+               level loads its stored counts instead. Autoplay never counts. */
+            if (RDC.auto)
             {
-                // scnGame.Play(isRestart=true): in-game retry
-                if (_currentLevelKey != null)
-                {
-                    _attempts++;
-                    AttemptsStore.Set(_currentLevelKey, _attempts);
-                    if (!atCp)
-                    {
-                        _fullAttempts++;
-                        AttemptsStore.SetFull(_currentLevelKey, _fullAttempts);
-                    }
-                }
             }
-            else if (!inLevel && !RDC.auto)
+            else if (isRestart || (inLevel && fromCheckpoint))
             {
-                // Coming from outside (exit+re-enter or first play)
-                if (key != null && key == _currentLevelKey)
-                {
-                    _attempts++;
-                    AttemptsStore.Set(_currentLevelKey, _attempts);
-                    if (!atCp)
-                    {
-                        _fullAttempts++;
-                        AttemptsStore.SetFull(_currentLevelKey, _fullAttempts);
-                    }
-                }
+                if (_currentLevelKey != null) Count(fromCheckpoint);
+            }
+            else if (!inLevel)
+            {
+                if (key != null && key == _currentLevelKey) Count(fromCheckpoint);
                 else
                 {
                     _currentLevelKey = key;
@@ -144,12 +118,25 @@ namespace Bismuth
             if (attemptsValue != null) attemptsValue.text = _attempts.ToString();
             if (attemptsFullValue != null) attemptsFullValue.text = _fullAttempts.ToString();
             ShowOrHideElements();
-            /* Levels spawn HUD texts after scene loads, so catch them here too. Retries
-               re-stamp only HUD fonts (rewind re-localization), so the full scene scan
-               (a per-attempt hitch on large maps) is first-entry only. */
-            if (isRestart) GameFontApplier.ReapplyHud();
+            /* Levels spawn HUD texts after scene loads, so catch them here too. Retries and
+               checkpoint revives re-stamp only HUD fonts (rewind re-localization), so the
+               full scene scan (a per-attempt hitch on large maps) is first-entry only. */
+            if (isRestart || fromCheckpoint) GameFontApplier.ReapplyHud();
             else GameFontApplier.Reapply();
             GameUiLayout.Reapply();
+        }
+
+        // Bump + persist the attempt counters. A from-0% attempt also bumps "full"; a
+        // checkpoint start bumps only the regular count.
+        private void Count(bool fromCheckpoint)
+        {
+            _attempts++;
+            AttemptsStore.Set(_currentLevelKey, _attempts);
+            if (!fromCheckpoint)
+            {
+                _fullAttempts++;
+                AttemptsStore.SetFull(_currentLevelKey, _fullAttempts);
+            }
         }
 
         public void OnLevelEnd()
@@ -165,18 +152,17 @@ namespace Bismuth
             _lastTimingScale = -1f;
             _lastComboDisplay = -1;
 
-            var dim = new Color(0.7f, 0.7f, 0.7f);
-            if (progressValue != null)  { progressValue.text  = "--.--%"; progressValue.color  = dim; }
+            if (progressValue != null)  { progressValue.text  = "--.--%"; progressValue.color  = Dim; }
             if (attemptsValue != null)  { attemptsValue.color = Color.white; }
             if (attemptsFullValue != null) { attemptsFullValue.color = Color.white; }
             _combo = 0;
             if (comboDisplayValue != null)  { comboDisplayValue.text = "0"; }
             if (comboDisplayLabel != null)  { comboDisplayLabel.color = Color.white; }
-            if (accValue != null)      { accValue.text      = "--.--%"; accValue.color      = dim; }
-            if (xaccValue != null)     { xaccValue.text     = "--.--%"; xaccValue.color     = dim; }
-            if (bpmValue != null)      { bpmValue.text      = "---";    bpmValue.color      = dim; }
-            if (tileBpmValue != null)      { tileBpmValue.text      = "---";    tileBpmValue.color      = dim; }
-            if (timingScaleValue != null)  { timingScaleValue.text  = "---%";   timingScaleValue.color  = dim; }
+            if (accValue != null)      { accValue.text      = "--.--%"; accValue.color      = Dim; }
+            if (xaccValue != null)     { xaccValue.text     = "--.--%"; xaccValue.color     = Dim; }
+            if (bpmValue != null)      { bpmValue.text      = "---";    bpmValue.color      = Dim; }
+            if (tileBpmValue != null)      { tileBpmValue.text      = "---";    tileBpmValue.color      = Dim; }
+            if (timingScaleValue != null)  { timingScaleValue.text  = "---%";   timingScaleValue.color  = Dim; }
             for (int i = 0; i < _judgementCounts.Length; i++) _judgementCounts[i] = 0;
             if (judgementTexts != null)
                 for (int i = 0; i < judgementTexts.Length; i++)

@@ -8,10 +8,8 @@ using UnityEngine;
 
 namespace Bismuth
 {
-    // Throttles AudioSource.GetSpectrumData to every other frame.
-    // GetSpectrumData performs an FFT on the audio buffer — expensive native call.
-    // scrConductor already gates this behind getSpectrum && !GCS.lofiVersion;
-    // we halve the remaining cost by skipping alternate frames.
+    // Throttles AudioSource.GetSpectrumData (an expensive native FFT) to every other
+    // frame, halving the cost left after scrConductor's getSpectrum && !lofiVersion gate.
     [HarmonyPatch(typeof(scrConductor), "Update")]
     internal static class ConductorSpectrumThrottlePatch
     {
@@ -21,7 +19,8 @@ namespace Bismuth
         public static void Prefix(scrConductor __instance)
         {
             _suppressed = false;
-            if (__instance.getSpectrum && MainClass.Settings.OptSpectrumThrottle && ++_frame % 2 != 0)
+            if (__instance.getSpectrum && MainClass.Settings.OptimizationsEnabled
+                && MainClass.Settings.OptSpectrumThrottle && ++_frame % 2 != 0)
             {
                 __instance.getSpectrum = false;
                 _suppressed = true;
@@ -42,7 +41,7 @@ namespace Bismuth
     {
         public static void Postfix(ref Texture2D __result)
         {
-            if (!MainClass.Settings.OptTextureNonReadable) return;
+            if (!MainClass.Settings.OptimizationsEnabled || !MainClass.Settings.OptTextureNonReadable) return;
             if (__result == null || !__result.isReadable) return;
             if (MainClass.Settings.OptTextureDXT && __result.width % 4 == 0 && __result.height % 4 == 0)
                 __result.Compress(false);
@@ -63,7 +62,7 @@ namespace Bismuth
             ref bool ___baseTextureUsed,
             ref Texture2D __result)
         {
-            if (!MainClass.Settings.OptTextureNonReadable) return true;
+            if (!MainClass.Settings.OptimizationsEnabled || !MainClass.Settings.OptTextureNonReadable) return true;
             if (___textures.TryGetValue(options, out __result)) return false;
             if (!___baseTexture) { __result = null; return false; }
             var tex = ___baseTextureUsed ? TextureOptUtil.CopyTexture(___baseTexture) : ___baseTexture;
@@ -87,7 +86,7 @@ namespace Bismuth
             ref bool ___baseTextureUsed,
             ref Sprite __result)
         {
-            if (!MainClass.Settings.OptTextureNonReadable) return true;
+            if (!MainClass.Settings.OptimizationsEnabled || !MainClass.Settings.OptTextureNonReadable) return true;
             if (___sprites.TryGetValue(options, out __result)) return false;
             if (!___baseTexture) { __result = null; return false; }
             var tex = ___baseTextureUsed ? TextureOptUtil.CopyTexture(___baseTexture) : ___baseTexture;
@@ -111,10 +110,9 @@ namespace Bismuth
         }
     }
 
-    // scrPlanet.Update calls Physics2D.OverlapCircleAll every frame while hittable,
-    // allocating a new Collider2D[] each time for decoration hitbox checks.
-    // Replace with OverlapCircleNonAlloc into a static buffer; return Array.Empty on
-    // zero hits (the common case) to eliminate per-frame allocation entirely.
+    // scrPlanet.Update's per-frame Physics2D.OverlapCircleAll allocates a Collider2D[]
+    // each time. Use OverlapCircleNonAlloc into a static buffer, returning Array.Empty on
+    // the common zero-hit case, to eliminate the per-frame allocation.
     [HarmonyPatch(typeof(scrPlanet), "Update")]
     internal static class PlanetCollisionNonAllocPatch
     {
@@ -138,9 +136,18 @@ namespace Bismuth
 
         public static Collider2D[] OverlapDecorCircle(Vector2 pos, float radius)
         {
-            if (!MainClass.Settings.OptPhysicsNonAlloc)
+            if (!MainClass.Settings.OptimizationsEnabled || !MainClass.Settings.OptPhysicsNonAlloc)
                 return Physics2D.OverlapCircleAll(pos, radius);
-            int count = Physics2D.OverlapCircleNonAlloc(pos, radius, _buf);
+            // Replicates the 2-arg OverlapCircleAll defaults (DefaultRaycastLayers, live
+            // queriesHitTriggers, no depth bound) so the non-alloc query returns identical
+            // hits. Built per call to track queriesHitTriggers; it's a stack struct, no alloc.
+            var filter = new ContactFilter2D
+            {
+                useTriggers = Physics2D.queriesHitTriggers,
+                useLayerMask = true,
+                layerMask = Physics2D.DefaultRaycastLayers,
+            };
+            int count = Physics2D.OverlapCircle(pos, radius, filter, _buf);
             if (count == 0) return Array.Empty<Collider2D>();
             var result = new Collider2D[count];
             Array.Copy(_buf, result, count);
@@ -148,11 +155,10 @@ namespace Bismuth
         }
     }
 
-    // scrFloor.Update (Volume track color type) calls DOTween.Sequence() every frame
-    // before checking specialColorPulse. When specialColorPulse == None, the sequence
-    // is created but immediately abandoned — one wasted allocation per tile per frame.
-    // The transpiler replaces DOTween.Sequence() with a wrapper that returns a
-    // persistent no-op sequence for the None case, eliminating the allocation.
+    // scrFloor.Update (Volume color type) calls DOTween.Sequence() every frame before
+    // checking specialColorPulse, abandoning it when == None (one wasted alloc per tile
+    // per frame). The transpiler swaps in a wrapper returning a persistent no-op sequence
+    // for the None case.
     [HarmonyPatch(typeof(scrFloor), "Update")]
     internal static class FloorVolumeTrackDOTweenPatch
     {
@@ -183,7 +189,7 @@ namespace Bismuth
 
         public static Sequence SequenceOrNoop(scrFloor floor)
         {
-            if (!MainClass.Settings.OptVolumeTrackDOTween)
+            if (!MainClass.Settings.OptimizationsEnabled || !MainClass.Settings.OptVolumeTrackDOTween)
                 return DOTween.Sequence();
             if (floor.specialColorPulse == TrackColorPulse.None)
             {

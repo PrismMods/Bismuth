@@ -1,3 +1,4 @@
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -70,12 +71,15 @@ namespace Bismuth.UI
             }
         }
 
-        public static void ApplyFont(Font font, GameObject canvasRoot = null)
+        // Panel is all TextMeshPro: ApplyFont sweeps every TMP_Text under the canvas and
+        // restamps the asset. Called on build (before widgets exist, just caches) and when
+        // the user picks a panel font.
+        public static void ApplyFont(TMP_FontAsset font, GameObject canvasRoot = null)
         {
             if (font == null) return;
             _font = font;
             if (canvasRoot == null) return;
-            var texts = canvasRoot.GetComponentsInChildren<Text>(true);
+            var texts = canvasRoot.GetComponentsInChildren<TMP_Text>(true);
             for (int i = 0; i < texts.Length; i++)
             {
                 if (texts[i] != null) texts[i].font = font;
@@ -83,17 +87,14 @@ namespace Bismuth.UI
         }
 
 
-        private static Font _font;
-        public static Font Font
+        private static TMP_FontAsset _font;
+        public static TMP_FontAsset TmpFont
         {
             get
             {
-                if (_font == null)
-                {
-                    _font = Font.CreateDynamicFontFromOSFont("Arial", 14);
-                    if (_font == null)
-                        _font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-                }
+                // Hard fallback only — UICore resolves the bundled panel font into _font
+                // before any widget is built, so this rarely fires.
+                if (_font == null) _font = TMP_Settings.defaultFontAsset;
                 return _font;
             }
         }

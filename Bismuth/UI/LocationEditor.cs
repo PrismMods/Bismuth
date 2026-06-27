@@ -1,17 +1,16 @@
 using System;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace Bismuth.UI
 {
-    // Full-screen edit overlay for dragging overlay / key-viewer elements into place
-    // (Locations tab). Every visible element gets a translucent handle that tracks the
-    // element's screen rect each frame; dragging a handle rewrites the element's
-    // normalized anchor in Settings (applied live) and snaps to the screen edges and
-    // center lines. Ends via the floating "Done" pill, which fires the full
-    // OnSettingsChanged apply chain once.
+    // Full-screen edit overlay for dragging overlay / key-viewer elements (Locations tab).
+    // Each visible element gets a handle tracking its screen rect; dragging rewrites the
+    // element's normalized anchor in Settings (live) and snaps to screen edges / centers.
+    // The floating "Done" pill fires the full OnSettingsChanged apply chain once.
     internal static class LocationEditor
     {
         public static bool IsActive => _canvasGo != null;
@@ -83,7 +82,7 @@ namespace Bismuth.UI
             _reopenPanel = false;
         }
 
-        // ── Targets ──────────────────────────────────────────────────────────
+        // ── Targets ────────────────────────────────────────────────────────
 
         private class Target
         {
@@ -194,7 +193,7 @@ namespace Bismuth.UI
             return list;
         }
 
-        // ── Handle / Done button construction ───────────────────────────────
+        // ── Handle / Done button construction ──────────────────────────────
 
         private static void MakeHandle(Target t)
         {
@@ -209,7 +208,7 @@ namespace Bismuth.UI
 
             var lbl = UIBuilder.Label(go.transform, t.Name.ToUpperInvariant(),
                 (int)UIBuilder.SmallCapsFontSize, TextAnchor.MiddleCenter, Theme.Text);
-            lbl.fontStyle = FontStyle.Bold;
+            lbl.fontStyle = FontStyles.Bold;
 
             var cg = go.AddComponent<CanvasGroup>();
 
@@ -240,7 +239,7 @@ namespace Bismuth.UI
 
             var lbl = UIBuilder.Label(btn.transform, "✓ Done editing", (int)UIBuilder.LabelFontSize,
                 TextAnchor.MiddleCenter, Color.black);
-            lbl.fontStyle = FontStyle.Bold;
+            lbl.fontStyle = FontStyles.Bold;
 
             ClickHandler.Attach(btn, Close);
 
@@ -255,11 +254,10 @@ namespace Bismuth.UI
         }
     }
 
-    // One draggable handle. Tracks its target's screen rect every frame (expanded to a
-    // grabbable minimum), hides itself while the target is hidden or empty, and converts
-    // pointer drags into normalized-anchor writes with screen-edge / center-line snapping.
-    // Optional extras (used by GameUiEditor): scaling via corner grips or the scroll
-    // wheel, right-click reset, and dimmed handles for currently inactive targets.
+    // One draggable handle. Tracks its target's screen rect each frame (expanded to a
+    // grabbable minimum), hides while the target is hidden/empty, and converts drags into
+    // normalized-anchor writes with edge/center snapping. Optional extras (GameUiEditor):
+    // corner-grip / scroll-wheel scaling, right-click reset, dimmed inactive-target handles.
     internal class LocHandle : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler,
         IScrollHandler, IPointerClickHandler
     {
@@ -360,10 +358,9 @@ namespace Bismuth.UI
             }
         }
 
-        // Union of the visible child Graphics' rects, for targets whose own rect has
-        // dead space (the error meter wrapper extends well below its drawn content).
-        // Writes _corners[0]/[2] (the only ones used) and reports whether it found
-        // anything to measure.
+        // Union of the visible child Graphics' rects, for targets whose own rect has dead
+        // space (the error meter wrapper extends below its content). Writes _corners[0]/[2]
+        // and reports whether it found anything to measure.
         private static readonly Vector3[] _tightTmp = new Vector3[4];
 
         private bool TryTightCorners(RectTransform target)
@@ -385,11 +382,9 @@ namespace Bismuth.UI
             return true;
         }
 
-        // An empty container (all rows toggled off) still has padding-driven size, so
-        // only offer a handle when something inside is actually visible. A target that
-        // draws its own Graphic counts as content even when every child is inactive.
-        // The death % text carries inactive auxiliary labels, which hid its handle
-        // exactly when the real death message was on screen.
+        // An empty container still has padding-driven size, so only offer a handle when
+        // something inside is visible (a target drawing its own Graphic counts). The death
+        // % text carries inactive aux labels that hid its handle when the message showed.
         private static bool HasContent(RectTransform target)
         {
             var g = target.GetComponent<Graphic>();

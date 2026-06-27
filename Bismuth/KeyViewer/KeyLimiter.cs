@@ -36,13 +36,13 @@ namespace Bismuth
         private static System.Type _asyncKcType;      // AsyncKeyCode
         private static FieldInfo  _asyncKcLabel;      // AsyncKeyCode.label (SkyHook.KeyLabel)
         private static FieldInfo  _asyncKcKey;        // AsyncKeyCode.key (ushort raw OS scancode)
-        private static MethodInfo _unityToAsync;      // SkyHook.AsyncKeyMapper.UnityKeyToAsyncKey(KeyCode) → KeyLabel
-        private static MethodInfo _asyncToUnity;      // SkyHook.AsyncKeyMapper.AsyncKeyToUnityKey(KeyLabel) → KeyCode
+        private static MethodInfo _unityToAsync;      // SkyHook.SkyHookKeyMapper.UnityKeyToSkyHookKey(KeyCode) → KeyLabel
+        private static MethodInfo _asyncToUnity;      // SkyHook.SkyHookKeyMapper.SkyHookKeyToUnityKey(KeyLabel) → KeyCode
         private static object     _stateDown;         // ButtonState.Down (enum value 0)
 
         // Pre-computed set of allowed SkyHook KeyLabel values (ushort) for async keyboard path.
-        // Built from _allowed via UnityKeyToAsyncKey so we compare labels directly,
-        // avoiding the ambiguity in AsyncKeyToUnityKey (multiple KeyCodes share one label slot).
+        // Built from _allowed via UnityKeyToSkyHookKey so we compare labels directly,
+        // avoiding the ambiguity in SkyHookKeyToUnityKey (multiple KeyCodes share one label slot).
         private static readonly HashSet<ushort> _allowedLabels = new HashSet<ushort>();
 
         // Raw HID Usage ID → Unity KeyCode fallback for when SkyHook reports KeyLabel.Unknown.
@@ -75,9 +75,12 @@ namespace Bismuth
             _asyncKcLabel     = _asyncKcType != null ? AccessTools.Field(_asyncKcType, "label")           : null;
             _asyncKcKey       = _asyncKcType != null ? AccessTools.Field(_asyncKcType, "key")             : null;
 
-            var mapper        = AccessTools.TypeByName("SkyHook.AsyncKeyMapper");
-            _unityToAsync     = mapper      != null ? AccessTools.Method(mapper, "UnityKeyToAsyncKey")    : null;
-            _asyncToUnity     = mapper      != null ? AccessTools.Method(mapper, "AsyncKeyToUnityKey")    : null;
+            // ADOFAI v3 moved the mapper to SkyHook.Unity.dll and renamed it + its methods:
+            // AsyncKeyMapper → SkyHookKeyMapper, UnityKeyToAsyncKey → UnityKeyToSkyHookKey,
+            // AsyncKeyToUnityKey → SkyHookKeyToUnityKey (signatures otherwise unchanged).
+            var mapper        = AccessTools.TypeByName("SkyHook.SkyHookKeyMapper");
+            _unityToAsync     = mapper      != null ? AccessTools.Method(mapper, "UnityKeyToSkyHookKey")  : null;
+            _asyncToUnity     = mapper      != null ? AccessTools.Method(mapper, "SkyHookKeyToUnityKey")  : null;
 
             var bsType        = AccessTools.TypeByName("ButtonState");
             _stateDown        = bsType      != null ? System.Enum.ToObject(bsType, 0) : (object)0;
@@ -161,10 +164,9 @@ namespace Bismuth
             }
         }
 
-        // Counts how many keys in the game's own press list this frame pass our filters.
-        // Filters (any combination): KeyLimiter (allowed set), ChatterBlocker (within-threshold rejection).
-        // Uses GetStateKeys (same source the game uses) — immune to async timing issues.
-        // Idempotent across multiple calls in the same frame (chatter state is frame-cached).
+        // Counts keys in the game's press list this frame that pass our filters (KeyLimiter
+        // allowed-set + ChatterBlocker). Uses GetStateKeys (the game's own source, immune to
+        // async timing) and is idempotent within a frame (chatter state is frame-cached).
         private static bool _inCount;
         private static int CountAllowedInPressedKeys()
         {
@@ -273,18 +275,16 @@ namespace Bismuth
             return n;
         }
 
-        // While the menu is open the game must not see keyboard input. The game reads
-        // the keyboard through three independent RDInput entry points, each of which
-        // needs its own gate:
+        // While the menu is open the game must not see keyboard input. It reads the keyboard
+        // through three independent RDInput entry points, each needing its own gate:
         //   GetMain(ButtonState)            — press counting → planet hits
         //   WentDown/IsDown(KeyCode)        — raw shortcut keys (R restart, arrows, …)
         //   GetState(InputAction, state)    — Rewired actions (restartPress, backPress, …)
-        // The settings panel itself polls UnityEngine.Input directly (Ctrl+B, text
-        // fields via the EventSystem), so it stays responsive while all of these
-        // return "nothing pressed".
+        // The settings panel polls UnityEngine.Input directly (Ctrl+B, text fields), so it
+        // stays responsive while all of these return "nothing pressed".
         private static bool BlockInputs => _blockWhileOpen && UICore.IsOpen;
 
-        // ── RDInput.GetMain — platform-agnostic aggregator ───────────────────
+        // ── RDInput.GetMain — platform-agnostic aggregator ─────────────────
         [HarmonyPatch]
         private static class GetMainPatch
         {
@@ -303,7 +303,7 @@ namespace Bismuth
             }
         }
 
-        // ── RDInput.WentDown / IsDown — raw keyboard shortcut reads ──────────
+        // ── RDInput.WentDown / IsDown — raw keyboard shortcut reads ────────
         [HarmonyPatch]
         private static class WentDownBlockPatch
         {
@@ -334,7 +334,7 @@ namespace Bismuth
             }
         }
 
-        // ── RDInput.GetState — Rewired action reads (restart/back/confirm/…) ─
+        // RDInput.GetState — Rewired action reads (restart/back/confirm/…)
         [HarmonyPatch]
         private static class GetStateBlockPatch
         {
@@ -350,11 +350,10 @@ namespace Bismuth
             }
         }
 
-        // ── UnityEngine.Input.GetKeyDown — direct polls below RDInput ────────
-        // Menu scenes (scnLevelSelect & co.) read number-key navigation straight off
-        // Input.GetKeyDown, bypassing every RDInput wrapper. GetKeyDown is an extern
-        // icall, so this is patched outside PatchAll: if the native detour fails on
-        // some platform only this layer is lost instead of aborting every patch.
+        // ── UnityEngine.Input.GetKeyDown — direct polls below RDInput ──────
+        // Menu scenes read number-key navigation straight off Input.GetKeyDown, bypassing
+        // RDInput. GetKeyDown is an extern icall, so it's patched outside PatchAll: if the
+        // native detour fails, only this layer is lost instead of aborting every patch.
         internal static void TryPatchRawInput(Harmony harmony)
         {
             try
@@ -379,7 +378,7 @@ namespace Bismuth
             if (__result && !RawReadExempt && key != KeyCode.B && BlockInputs) __result = false;
         }
 
-        // ── Fallback: block accuracy recording for non-allowed key presses ────
+        // Fallback: block accuracy recording for non-allowed key presses
         [HarmonyPatch(typeof(scrMarginTracker), "AddHit", new[] { typeof(HitMargin) })]
         private static class AddHitBlockPatch
         {

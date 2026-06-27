@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using TMPro;
 using UnityEngine;
+using UnityEngine.TextCore.LowLevel;
 
 namespace Bismuth
 {
@@ -11,12 +12,17 @@ namespace Bismuth
         internal class FontEntry
         {
             public readonly string Name;
-            public readonly Font Font;
+            public readonly Font Font;        // bundled legacy Font (AssetBundle), or null
+            private readonly string _filePath; // loose .ttf/.otf path (custom font), or null
             // Same family Bold weight, wired by LinkFamilies after scan
             internal FontEntry BoldSibling;
             private TMP_FontAsset _tmp;
 
             public FontEntry(string name, Font font) { Name = name; Font = font; }
+            // Loose font file (user-droppable). Unity 6 TMP's CreateFontAsset(filePath) keeps
+            // the path and reloads the face on demand, so glyphs (incl. Korean) populate
+            // dynamically just like the bundled fonts — no AssetBundle needed.
+            public FontEntry(string name, string filePath) { Name = name; _filePath = filePath; }
 
             /* Created on first use: dynamic SDF atlas, with family real Bold in weight
                table so <b>/FontStyles.Bold doesn't fall back to synthetic bold */
@@ -24,9 +30,13 @@ namespace Bismuth
             {
                 get
                 {
-                    if (_tmp == null && Font != null)
+                    if (_tmp == null)
                     {
-                        _tmp = TMP_FontAsset.CreateFontAsset(Font);
+                        if (Font != null)
+                            _tmp = TMP_FontAsset.CreateFontAsset(Font);
+                        else if (!string.IsNullOrEmpty(_filePath))
+                            // Match CreateFontAsset(Font)'s defaults: 90pt, 9 padding, SDFAA, 1024².
+                            _tmp = TMP_FontAsset.CreateFontAsset(_filePath, 0, 90, 9, GlyphRenderMode.SDFAA, 1024, 1024);
                         if (_tmp != null)
                         {
                             _tmp.name = Name + " (TMP)";
@@ -60,8 +70,10 @@ namespace Bismuth
         };
 
         /* "Pretendard SemiBold" / "Pretendard-SemiBold" maps to ("Pretendard",
-           "SemiBold"). A name whose last token isn't a known weight is a single-weight
-           family, shown under its full name. */
+           "SemiBold"). Some families prefix the weight with an ordinal to force file
+           ordering ("Paperlogy-7Bold", "Paperlogy-4Regular") — the leading digits are
+           stripped before matching. A last token that still isn't a known weight is a
+           single-weight family, shown under its full name. */
         internal static void SplitWeight(string name, out string family, out string weight)
         {
             family = name;
@@ -69,7 +81,7 @@ namespace Bismuth
             if (string.IsNullOrEmpty(name)) return;
             int sp = name.LastIndexOfAny(new[] { ' ', '-' });
             if (sp <= 0) return;
-            string last = name.Substring(sp + 1);
+            string last = name.Substring(sp + 1).TrimStart('0', '1', '2', '3', '4', '5', '6', '7', '8', '9');
             foreach (var w in WeightOrder)
             {
                 if (string.Equals(last, w, StringComparison.OrdinalIgnoreCase))
@@ -119,39 +131,84 @@ namespace Bismuth
         public static List<FontEntry> ScanFonts(string modPath)
         {
             var result = new List<FontEntry>();
-            string fontsDir = Path.Combine(modPath, "Resources");
-            if (!Directory.Exists(fontsDir)) return result;
-
+            string resourcesDir = Path.Combine(modPath, "Resources");
             string suffix = PlatformBundleSuffix();
 
-            foreach (string filePath in Directory.GetFiles(fontsDir))
+            if (Directory.Exists(resourcesDir))
             {
-                string name = Path.GetFileName(filePath);
-                if (Path.GetExtension(filePath).ToLowerInvariant() == ".meta") continue;
-                // Skip bundles belonging to different platform
-                foreach (string s in new[] { "-mac", "-win", "-linux" })
-                    if (s != suffix && name.EndsWith(s, StringComparison.OrdinalIgnoreCase))
-                        goto next;
-                TryLoadBundle(filePath, result);
-                next:;
+                foreach (string filePath in Directory.GetFiles(resourcesDir))
+                {
+                    string name = Path.GetFileName(filePath);
+                    string ext = Path.GetExtension(filePath).ToLowerInvariant();
+                    if (ext == ".meta" || ext == ".ttf" || ext == ".otf") continue; // fonts handled below
+                    // Skip bundles belonging to a different platform
+                    bool wrongPlatform = false;
+                    foreach (string s in new[] { "-mac", "-win", "-linux" })
+                        if (s != suffix && name.EndsWith(s, StringComparison.OrdinalIgnoreCase)) wrongPlatform = true;
+                    if (!wrongPlatform) TryLoadBundle(filePath, result);
+                }
             }
+
+            // Loose custom fonts (user-droppable .ttf/.otf) from <mod>/Fonts and <mod>/Resources.
+            ScanLooseFonts(Path.Combine(modPath, "Fonts"), result);
+            ScanLooseFonts(resourcesDir, result);
 
             LinkFamilies(result);
             return result;
         }
 
+        // Register loose .ttf/.otf files as custom fonts. The file name (minus extension) is the
+        // entry name, so "Foo-Bold.ttf" splits into family Foo / weight Bold and bold-links like
+        // a bundled weight. Skips names already present (a bundled font wins).
+        private static void ScanLooseFonts(string dir, List<FontEntry> result)
+        {
+            if (!Directory.Exists(dir)) return;
+            foreach (string filePath in Directory.GetFiles(dir))
+            {
+                string ext = Path.GetExtension(filePath).ToLowerInvariant();
+                if (ext != ".ttf" && ext != ".otf") continue;
+                string name = Path.GetFileNameWithoutExtension(filePath);
+                if (Find(result, name) != null) continue;
+                result.Add(new FontEntry(name, filePath));
+                MainClass.Logger.Log($"[Bismuth] Found custom font '{name}' ({Path.GetFileName(filePath)})");
+            }
+        }
+
+        /* Pick each family's "bold" weight for <b>/FontStyles.Bold (TMP otherwise faux-bolds).
+           Prefer an exact "Bold"; if the family has none, fall back to its heaviest weight that
+           is still ≥ Bold (ExtraBold/Black), so a family shipped without a plain Bold still gets
+           a REAL bold rather than synthetic. A regular gets the family's bold; the bold weight
+           itself gets no sibling. */
         private static void LinkFamilies(List<FontEntry> entries)
         {
-            var bolds = new Dictionary<string, FontEntry>();
-            foreach (var e in entries)
-            {
-                SplitWeight(e.Name, out string fam, out string w);
-                if (string.Equals(w, "Bold", StringComparison.OrdinalIgnoreCase)) bolds[fam] = e;
-            }
+            var byFamily = new Dictionary<string, List<FontEntry>>(StringComparer.OrdinalIgnoreCase);
             foreach (var e in entries)
             {
                 SplitWeight(e.Name, out string fam, out _);
-                if (bolds.TryGetValue(fam, out var bold)) e.BoldSibling = bold;
+                if (!byFamily.TryGetValue(fam, out var list)) byFamily[fam] = list = new List<FontEntry>();
+                list.Add(e);
+            }
+            int boldRank = WeightRank("Bold");
+            foreach (var e in entries)
+            {
+                SplitWeight(e.Name, out string fam, out string w);
+                if (!byFamily.TryGetValue(fam, out var family)) continue;
+
+                FontEntry exact = null, heaviest = null;
+                int heaviestRank = -1;
+                foreach (var c in family)
+                {
+                    SplitWeight(c.Name, out _, out string cw);
+                    if (string.Equals(cw, "Bold", StringComparison.OrdinalIgnoreCase)) exact = c;
+                    int r = WeightRank(cw);
+                    if (r > heaviestRank) { heaviestRank = r; heaviest = c; }
+                }
+
+                FontEntry bold = exact;
+                // No plain Bold → use the heaviest weight if it's at least Bold and heavier than us.
+                if (bold == null && heaviest != null && heaviestRank >= boldRank && heaviestRank > WeightRank(w))
+                    bold = heaviest;
+                if (bold != null && bold != e) e.BoldSibling = bold;
             }
         }
 

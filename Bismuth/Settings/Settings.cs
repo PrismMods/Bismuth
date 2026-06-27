@@ -104,6 +104,9 @@ namespace Bismuth
         // Horizontal text alignment for text-bearing elements (currently the autoplay
         // label). -1 = inherit the game's alignment; 0/1/2 = Left/Center/Right.
         public int Align = -1;
+        // Hide this element (every game HUD element now renders through Bismuth's wrapper, so
+        // a CanvasGroup on the wrapper hides it + its shadow without fighting game show/hide).
+        public bool Hidden = false;
     }
 
     public class Settings : UnityModManager.ModSettings
@@ -134,13 +137,12 @@ namespace Bismuth
         public string KeyViewerCountWeight = "";
         // Repaint the game's song title/artist text with the overlay font.
         public bool LevelNameUseOverlayFont = true;
-        // Repaint ALL of the game's own text (legacy Text, TMP, 3D TextMesh) with the
-        // game font below. On by default since June 2026 (the Game UI tab's "Game
-        // default" font entry turns it off). The field name is kept for settings
-        // compat. The font is no longer tied to the overlay font, see the Game UI tab.
+        // Repaint ALL of the game's own text (legacy Text, TMP, 3D TextMesh) with the game
+        // font below. On by default (the Game UI tab's "Game default" entry turns it off).
+        // Name kept for settings compat; the font is no longer tied to the overlay font.
         public bool GameTextUseOverlayFont = true;
         // Game-text font (family + weight entry name), independent of FontName.
-        public string GameFontName = "Pretendard-Regular";
+        public string GameFontName = "Paperlogy-4Regular";
         // Weight used for title/bold game text (scrHUDText titles, level select).
         public string GameTextTitleWeight = FontLoader.WeightHeaviest;
         // Separate size multiplier for the level-select per-level stats panels
@@ -150,9 +152,8 @@ namespace Bismuth
         // Size multiplier for the hit-judgement popups (Perfect/완벽 …), applied ONLY to
         // them on top of the global game-text scale. 1.0 = follow the global size.
         public float GameJudgementScale = 1f;
-        // Extra size multiplier on top of the automatic per-font metric scaling.
-        // Pretendard reads larger than the game's fonts even after normalization,
-        // especially on world-space menu text.
+        // Extra size multiplier on top of per-font metric scaling: Pretendard reads
+        // larger than the game's fonts even after normalization, esp. world-space text.
         public float GameTextScale = 1f;
         // Line-advance multiplier for repainted game text, applied on top of
         // GameFontApplier's baked base (1.5×). 1.0 = the tuned default.
@@ -161,15 +162,21 @@ namespace Bismuth
         // their dedicated shadow colors but obey the switch.
         public bool OverlayShadowEnabled = true;
         public KvColor OverlayShadowColor = new KvColor { R = 0f, G = 0f, B = 0f, A = 0.5f };
-        public string FontName = "Pretendard-Regular";
+        public string FontName = "에이투지체-4Regular";
         public bool ShowOverlay = true;
         public bool ShowFps = false;
+        // Master switch for the whole Optimizations group; each flag below only takes
+        // effect while this is on (the Misc → Optimizations dropdown header toggle).
+        public bool OptimizationsEnabled = true;
         public bool OptSpectrumThrottle = true;
         public bool OptTextureNonReadable = true;
         public bool OptTextureDXT = false;
         public bool OptPhysicsNonAlloc = true;
         public bool OptUnloadAssets = true;
         public bool OptVolumeTrackDOTween = true;
+
+        // Developer mode: reveals the Misc → Debug tools and shows [dbg] lines in the log viewer.
+        public bool DebugMode = false;
         public bool ShowAttempts = false;
         public bool ShowFullAttempts = false;
 
@@ -202,7 +209,7 @@ namespace Bismuth
         public float ComboPulseDuration = 0.2f;
         public float ComboPulseOffsetY = 8f;
         public float ComboPulseScale   = 0.2f;
-        public float ComboLabelY = 65f;
+        public float ComboLabelY = 75f;
         public float ComboLabelSize = 1.0f;
         public float ComboCountSize = 1.0f;
         // Count (value) shadow.
@@ -300,8 +307,7 @@ namespace Bismuth
         public float LevelNameY     = 30f;
 
         // Normalized screen anchors for the draggable elements (Locations tab). Defaults
-        // approximate the historical fixed placements at the 1920×1080 reference
-        // resolution (status panels: ~10px inset from the top corners), rounded clean.
+        // approximate the historical fixed placements at the 1920×1080 reference.
         public float StatusLeftX  = 0.005f;
         public float StatusLeftY  = 0.99f;
         public float StatusRightX = 0.995f;
@@ -324,9 +330,8 @@ namespace Bismuth
         // Per-element game-text weight overrides (Game UI tab → Element weights).
         public List<GameUiTextWeight> GameUiTextWeights = new List<GameUiTextWeight>();
 
-        // One-time seeding gate for the curated default layout below: an EMPTY list is
-        // also a legitimate user state (everything reset to vanilla), so emptiness
-        // alone can't trigger re-seeding the way the KV presets do.
+        // One-time seeding gate for the curated default layout: an EMPTY list is also a
+        // legitimate user state (all reset to vanilla), so emptiness alone can't re-seed.
         public bool GameUiDefaultsSeeded = false;
         // One-time guard: nudge already-seeded configs off the old "Black" judgement
         // weight default onto the new "Light" one.
@@ -353,7 +358,7 @@ namespace Bismuth
 
         // UGUI settings panel preferences (new shell — see UI/).
         public float UiScale = 1.0f;
-        public string UiFontName = "Pretendard-Regular";
+        public string UiFontName = "Paperlogy-4Regular";
         public bool UiAccentCustom = false;
         public float UiAccentR = 0.604f;
         public float UiAccentG = 0.706f;
@@ -400,10 +405,9 @@ namespace Bismuth
             foreach (var p in KvHandPresets) p.EnsureDefaults();
             foreach (var p in KvFootPresets) p.EnsureDefaults();
 
-            // Curated default game-HUD layout (June 2026, baked from the author's
-            // tuned setup): win/death texts pulled toward the center and scaled down
-            // from the oversized stock sizes. Seeded once on fresh installs, never
-            // re-applied over an existing (or deliberately emptied) layout.
+            // Curated default game-HUD layout: win/death texts pulled toward center and
+            // scaled down from stock. Seeded once on fresh installs, never re-applied over
+            // an existing (or deliberately emptied) layout.
             // Migrate the legacy single "hide perfect judgements" toggle into the new
             // per-category flag, then clear it so it doesn't re-trigger on later loads.
             if (HidePerfectJudgements)

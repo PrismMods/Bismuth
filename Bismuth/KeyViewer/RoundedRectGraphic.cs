@@ -4,11 +4,10 @@ using UnityEngine.UI;
 
 namespace Bismuth
 {
-    // Procedural rounded-rect graphic: geometry is built at the cell's actual size,
-    // so corners stay smooth at any resolution and scale. Fill uses MaskableGraphic.color;
-    // an optional border ring uses BorderColor with a configurable BorderWidth. A small
-    // alpha-falloff fringe is added outside the outer outline so corners look smooth
-    // even without supersampling or MSAA.
+    // Procedural rounded-rect graphic built at the cell's actual size, so corners stay
+    // smooth at any resolution/scale. Fill uses MaskableGraphic.color; an optional border
+    // ring uses BorderColor/BorderWidth. A small alpha-falloff fringe outside the outline
+    // keeps corners smooth without supersampling or MSAA.
     internal class RoundedRectGraphic : MaskableGraphic
     {
         [SerializeField] private float _radius        = 8f;

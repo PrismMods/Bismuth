@@ -171,10 +171,10 @@ namespace Bismuth
                         Color shadowBodyColor = col.ShadowColor;
                         shadowBodyColor.a *= bodyFadeMul;
 
-                        // If there's no rain tip (rain top hasn't reached fadeStart), use the
-                        // soft-top sprite and extend the body rect upward by ShadowSize so the
-                        // top fade renders above the rain. Otherwise use the sharp-top sprite and
-                        // let bodyTop meet the tip at fadeStart without overlap brightening.
+                        // No rain tip yet (top hasn't reached fadeStart): use the soft-top
+                        // sprite, body extended up by ShadowSize so the fade renders above the
+                        // rain. Else use the sharp-top sprite so bodyTop meets the tip at
+                        // fadeStart without overlap brightening.
                         bool hasTip = (col.BotY + col.Height) > fadeStart;
                         int ss = Mathf.RoundToInt(col.ShadowSize);
                         Sprite wantSprite = hasTip
