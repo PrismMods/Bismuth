@@ -430,3 +430,4 @@ crashlytics-build.properties
 *.DS_Store
 .claude
 Bismuth.zip
+RELEASE_NOTES.md
