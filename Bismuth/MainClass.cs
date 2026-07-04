@@ -28,6 +28,10 @@ namespace Bismuth
         // Force-reload request (Misc → Debug). Deferred to OnUpdate so the panel isn't rebuilt
         // inside its own button's click handler.
         private static bool _forceReloadPending;
+        // Old font assets pending destruction after a force reload (dropped a few frames later,
+        // once re-apply has settled — see OnUpdate). Time.frameCount to destroy at, or -1.
+        private static List<FontLoader.FontEntry> _oldFonts;
+        private static int _destroyOldFontsFrame = -1;
 
         internal static void Setup(UnityModManager.ModEntry modEntry)
         {
@@ -42,6 +46,15 @@ namespace Bismuth
             {
                 UICore.HandleUpdate();
                 if (_forceReloadPending) { _forceReloadPending = false; DoForceReload(); }
+                // Drop the previous font assets a beat after a force reload — only once every
+                // re-apply (incl. GameFontApplier's frame-spread sweep) has re-pointed text off
+                // them, so nothing renders against a just-destroyed material.
+                if (_destroyOldFontsFrame > 0 && Time.frameCount >= _destroyOldFontsFrame)
+                {
+                    _destroyOldFontsFrame = -1;
+                    FontLoader.DestroyTmpAssets(_oldFonts);
+                    _oldFonts = null;
+                }
             };
             // Opting into OnUnload makes the mod hot-reloadable: UMM watches the dll and
             // reloads in-place when it changes, instead of requiring a game restart.
@@ -163,6 +176,7 @@ namespace Bismuth
             UICore.Tabs.AddTab("Hide UI", PageHideUi.Build);
             UICore.Tabs.AddTab("UI", PageUI.Build);
             UICore.Tabs.AddTab("Game UI", PageGameUi.Build);
+            UICore.Tabs.AddTab("Tweaks", PageTweaks.Build);
             UICore.Tabs.AddTab("Misc", PageMisc.Build);
         }
 
@@ -176,7 +190,10 @@ namespace Bismuth
             try
             {
                 bool wasOpen = UICore.IsOpen;
-                FontLoader.DestroyTmpAssets(availableFonts);
+                // Keep the OLD assets alive; re-scan into fresh entries, re-apply everything onto
+                // the new fonts, THEN drop the old ones (deferred in OnUpdate) so no text — panel,
+                // overlay, or the incrementally-swept game text — is left on a destroyed material.
+                var oldFonts = availableFonts;
                 availableFonts = FontLoader.ScanFonts(_modEntry.Path);
                 UICore.Dispose();
                 BuildUI();
@@ -186,6 +203,10 @@ namespace Bismuth
                 KeyLimiter.Apply(Settings);
                 GameUiLayout.Reapply();
                 if (wasOpen) UICore.Open();
+                // A prior pending set (rapid double reload) is unreferenced by now — drop it.
+                if (_oldFonts != null) FontLoader.DestroyTmpAssets(_oldFonts);
+                _oldFonts = oldFonts;
+                _destroyOldFontsFrame = Time.frameCount + 90; // ~1.5s: covers the frame-spread sweep
                 BismuthLog.Log("[Bismuth] Force reload complete (" + availableFonts.Count + " fonts)");
             }
             catch (Exception ex)

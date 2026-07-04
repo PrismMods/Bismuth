@@ -493,7 +493,8 @@ namespace Bismuth.UI
             var row = Row(parent);
             const float labelW = 140f;
             const float valueW = 56f;
-            const float undoW = 20f;   // inline revert button, left of the value field
+            const float undoW = 46f;   // inline "Undo" button, left of the value field
+            const float undoH = 20f;
             const float undoGap = 4f;
             const float trackGap = 12f; // breathing room between the track end and the undo button
             const float rightW = valueW + undoW + undoGap + trackGap; // reserved right cluster (track sizing)
@@ -602,14 +603,14 @@ namespace Bismuth.UI
             var undoRect = (RectTransform)undoGo.transform;
             undoRect.anchorMin = undoRect.anchorMax = new Vector2(1f, 0.5f);
             undoRect.pivot = new Vector2(1f, 0.5f);
-            undoRect.sizeDelta = new Vector2(undoW, undoW);
+            undoRect.sizeDelta = new Vector2(undoW, undoH);
             undoRect.anchoredPosition = new Vector2(-(8f + valueW + undoGap), 0f);
             var undoBg = undoGo.AddComponent<RoundedRectGraphic>();
             undoBg.Radius = 4f;
             undoBg.AAFringe = 0.5f;
             undoBg.color = new Color(Theme.ToggleOn.r, Theme.ToggleOn.g, Theme.ToggleOn.b, 0.18f);
             undoBg.raycastTarget = true;
-            var undoLbl = Label(undoGo.transform, "↺", (int)LabelFontSize, TextAnchor.MiddleCenter, Theme.Text);
+            var undoLbl = Label(undoGo.transform, "Undo", 13, TextAnchor.MiddleCenter, Theme.Text);
             undoLbl.raycastTarget = false;
             undoGo.SetActive(false);
 

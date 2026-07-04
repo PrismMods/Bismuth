@@ -4,17 +4,17 @@
   
   # Bismuth
 
-  An overlay / QoL mod for **A Dance of Fire and Ice** (3.1.0+).
+  An overlay / QoL mod for **A Dance of Fire and Ice** (3.1.0+) — the lite version of **Quartz**.
   
-  [![Latest Release](https://img.shields.io/github/v/release/sbrothers7/Bismuth?include_prereleases&sort=date&label=release&logo=github&style=flat-square)](https://github.com/sbrothers7/Bismuth/releases/latest)
-  [![Downloads](https://img.shields.io/github/downloads/sbrothers7/Bismuth/total?style=flat-square&logo=github&label=downloads)](https://github.com/sbrothers7/Bismuth/releases)
+  [![Latest Release](https://img.shields.io/github/v/release/QuartzTeam/Bismuth?include_prereleases&sort=date&label=release&logo=github&style=flat-square)](https://github.com/QuartzTeam/Bismuth/releases/latest)
+  [![Downloads](https://img.shields.io/github/downloads/QuartzTeam/Bismuth/total?style=flat-square&logo=github&label=downloads)](https://github.com/QuartzTeam/Bismuth/releases)
 </div>
 <br>
 
 - Configurable in-game stats overlays: progress, accuracy, x-accuracy, BPM, tile BPM, timing scale, judgements, combo, attempts, FPS
 - Customizable key viewer: key rain, ghost keys, hand/foot presets, and per-key & total press counts
 - Key limiter and chatter blocker
-- Custom fonts for the whole game — restyle the game's own text (menus, HUD, level titles) and the mod's own UI; drop a `.ttf`/`.otf` into `.../Bismuth/Fonts/` and pick it in the settings
+- Custom fonts for the whole game — restyle the game's own text (menus, HUD, level titles) and the mod's own UI; drop a `.ttf`/`.otf` into `…/Bismuth/Fonts/` and pick it in the settings
 - Game UI editor: move, scale, hide, or re-weight individual game HUD elements (death %, congrats, countdown, hit error meter, autoplay text, …)
 - Hide-UI toggles: (HUD, hit error meter, autoplay text/icon, no-fail, difficulty selector, judgement texts, song title, alpha/beta build text)
 - Performance optimizations and QoL tools: in-game log viewer and one-click reload
@@ -27,7 +27,7 @@ Tested Environments:
 ## Install
 
 1. Make sure Bismuth is enabled in the in-game UMM menu.
-2. Download the latest `Bismuth.zip` from [Releases](https://github.com/sbrothers7/Bismuth/releases).
+2. Download the latest `Bismuth.zip` from [Releases](https://github.com/QuartzTeam/Bismuth/releases).
 3. Extract into `…/A Dance of Fire and Ice/Mods/`.
 4. Launch and toggle **Bismuth** on in the mods menu.
 

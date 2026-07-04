@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Reflection.Emit;
 using HarmonyLib;
 using MonsterLove.StateMachine;
 using TMPro;
@@ -43,6 +45,39 @@ namespace Bismuth
             public static void Postfix(scrMarginTracker __instance, HitMargin hit)
             {
                 Overlay.Instance?.UpdateDisplay(__instance.percentAcc, __instance.percentXAcc, hit);
+            }
+        }
+
+        /* The editor's play-mode autoplay pause is hardcoded to Space:
+             scnEditor.Update — if (RDC.auto && Input.GetKeyDown(KeyCode.Space) && playMode) toggle pause
+           Swap that literal Space (KeyCode 32) for the user's configured key (Tweaks tab) so it
+           can be rebound. Matches the one `ldc.i4 32` feeding an Input.GetKeyDown in the method
+           (the other Space checks live in unrelated classes). Fails safe: if the pattern isn't
+           found after a game update, nothing is replaced and vanilla Space still pauses. */
+        [HarmonyPatch(typeof(scnEditor), "Update")]
+        private static class EditorAutoPauseKeyPatch
+        {
+            private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+            {
+                var codes = new List<CodeInstruction>(instructions);
+                try
+                {
+                    var getKeyDown = AccessTools.Method(typeof(Input), "GetKeyDown", new[] { typeof(KeyCode) });
+                    var repl = AccessTools.Method(typeof(Tweaks), nameof(Tweaks.AutoPauseKeyCode));
+                    for (int i = 0; i < codes.Count - 1; i++)
+                    {
+                        bool loads32 = (codes[i].opcode == OpCodes.Ldc_I4_S || codes[i].opcode == OpCodes.Ldc_I4)
+                            && codes[i].operand != null && Convert.ToInt32(codes[i].operand) == 32;
+                        if (loads32 && codes[i + 1].Calls(getKeyDown))
+                        {
+                            codes[i].opcode = OpCodes.Call;   // preserves any labels on the instruction
+                            codes[i].operand = repl;
+                            break;
+                        }
+                    }
+                }
+                catch { }
+                return codes;
             }
         }
 

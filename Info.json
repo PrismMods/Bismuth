@@ -1,11 +1,11 @@
 {
   "Id": "Bismuth",
   "DisplayName": "Bismuth",
-  "Author": "sbrothers7",
-  "Version": "1.2.1",
+  "Author": "QuartzTeam",
+  "Version": "1.2.2",
   "ManagerVersion": "0.32.4.0",
   "AssemblyName": "Bismuth.dll",
   "EntryMethod": "Bismuth.Startup.Load",
   "HomePage": "",
-  "Repository": "https://raw.githubusercontent.com/sbrothers7/Bismuth/main/Repository.json"
+  "Repository": "https://raw.githubusercontent.com/QuartzTeam/Bismuth/main/Repository.json"
 }

@@ -76,6 +76,8 @@ namespace Bismuth.UI
             lr.offsetMin = new Vector2(12f, 0f);
             lr.offsetMax = Vector2.zero;
             var lbl = UIBuilder.Tmp(labelGo, name, 15, TextAnchor.MiddleLeft, Theme.TextMuted);
+            var guard = labelGo.AddComponent<TabLabelGuard>();
+            guard.Label = lbl; guard.Expected = name;
 
             var pageGo = UIBuilder.Rect("Page_" + name, _pageHost);
             var pr = (RectTransform)pageGo.transform;
@@ -170,6 +172,30 @@ namespace Bismuth.UI
                 t.Page.gameObject.SetActive(sel);
             }
             _active = idx;
+        }
+    }
+
+    /* A tab label always reads its fixed name. The game runs a source-text localization
+       pass shortly after the panel builds that rewrites Bismuth's text by matching the
+       English value ("Misc" → "기타") — no component is attached (verified: the label's
+       whole parent chain is pure Bismuth), it just calls `.text =`. Bismuth owns these
+       labels, so restore the name whenever something changes it. The pass fires once, so
+       this is a one-time correction in practice, not a per-frame fight. */
+    internal class TabLabelGuard : MonoBehaviour
+    {
+        internal TextMeshProUGUI Label;
+        internal string Expected;
+        private bool _logged;
+
+        private void LateUpdate()
+        {
+            if (Label == null || Label.text == Expected) return;
+            if (!_logged)
+            {
+                _logged = true;
+                BismuthLog.Debug($"[dbg] tab label '{Expected}' was rewritten to '{Label.text}' — restoring");
+            }
+            Label.text = Expected;
         }
     }
 }

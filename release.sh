@@ -16,7 +16,7 @@ if [ -z "$1" ]; then
 fi
 
 VERSION="$1"
-REPO="sbrothers7/Bismuth"
+REPO="QuartzTeam/Bismuth"
 ZIP_NAME="Bismuth.zip"
 DOWNLOAD_URL="https://github.com/$REPO/releases/download/v$VERSION/$ZIP_NAME"
 

@@ -78,13 +78,44 @@ namespace Bismuth.UI
             cr.offsetMax = new Vector2(-8f, 0f);
 
             _text = UIBuilder.Tmp(contentGo, "", 13, TextAnchor.UpperLeft, Theme.Text, wrap: true);
-            _text.richText = true;          // line-number <link> + <noparse> content
-            _text.raycastTarget = true;     // receive clicks for copy-on-line-number
+            _text.richText = true;          // per-line <link> + <noparse> content
+            _text.raycastTarget = true;     // receive clicks to copy the whole line
             var csf = contentGo.AddComponent<ContentSizeFitter>();
             csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
             var copier = contentGo.AddComponent<LogLineCopier>();
             copier.Text = _text;
             copier.LineForLink = i => (i >= 0 && i < _lines.Length) ? _lines[i] : null;
+
+            // Translucent hover bar over the line under the cursor. Child of Content so it
+            // scrolls with the text; raycast-off so clicks reach the line link underneath.
+            var hlGo = UIBuilder.Rect("LineHighlight", contentGo.transform);
+            var hlRt = (RectTransform)hlGo.transform;
+            hlRt.anchorMin = new Vector2(0f, 1f);
+            hlRt.anchorMax = new Vector2(1f, 1f);
+            hlRt.pivot = new Vector2(0.5f, 1f);
+            var hlImg = hlGo.AddComponent<Image>();
+            hlImg.sprite = Theme.White;
+            hlImg.color = new Color(1f, 1f, 1f, 0.09f);
+            hlImg.raycastTarget = false;
+            hlGo.SetActive(false);
+            var hover = contentGo.AddComponent<LogLineHover>();
+            hover.Text = _text;
+            hover.Highlight = hlRt;
+            hover.Viewport = vr;
+
+            // "Copied" flash shown at the cursor when a line is copied.
+            var toastGo = UIBuilder.Rect("CopyToast", panel.transform);
+            var toastRt = (RectTransform)toastGo.transform;
+            toastRt.anchorMin = toastRt.anchorMax = new Vector2(0.5f, 0.5f);
+            toastRt.pivot = new Vector2(0f, 0.5f);
+            toastRt.sizeDelta = new Vector2(80f, 20f);
+            var toastTmp = UIBuilder.Tmp(toastGo, "Copied", 13, TextAnchor.MiddleLeft, Theme.Text);
+            toastTmp.raycastTarget = false;
+            var toast = toastGo.AddComponent<CopyToast>();
+            toast.Text = toastTmp;
+            toastGo.SetActive(false);
+            copier.Toast = toast;
+            copier.ToastParent = pr;
 
             _scroll = panel.AddComponent<ScrollRect>();
             _scroll.viewport = vr;
@@ -121,13 +152,14 @@ namespace Bismuth.UI
             if (lines.Count > 0 && lines[lines.Count - 1].Length == 0) lines.RemoveAt(lines.Count - 1);
             _lines = lines.ToArray();
 
-            // Each line: a clickable <link> line number (copies the line) + the raw text in
-            // <noparse> so the log's own <color>/<size> tags show literally instead of rendering.
-            var sb = new System.Text.StringBuilder(raw.Length + _lines.Length * 28);
+            // Each whole line is one clickable <link> (click anywhere on it → copy), with the
+            // line number tinted and the raw text in <noparse> so the log's own <color>/<size>
+            // tags show literally instead of rendering.
+            var sb = new System.Text.StringBuilder(raw.Length + _lines.Length * 32);
             for (int i = 0; i < _lines.Length; i++)
                 sb.Append("<link=\"").Append(i).Append("\"><color=#6E7681>")
-                  .Append((i + 1).ToString().PadLeft(4)).Append("</color></link>  <noparse>")
-                  .Append(_lines[i]).Append("</noparse>\n");
+                  .Append((i + 1).ToString().PadLeft(4)).Append("</color>  <noparse>")
+                  .Append(_lines[i]).Append("</noparse></link>\n");
             _text.text = sb.ToString();
             Canvas.ForceUpdateCanvases();
             if (_scroll != null) _scroll.verticalNormalizedPosition = 0f; // newest at bottom
@@ -142,11 +174,13 @@ namespace Bismuth.UI
         }
     }
 
-    // Click a line-number <link> in the log text → copy that line to the system clipboard.
+    // Click anywhere on a log line (whole line is one <link>) → copy that line to the clipboard.
     internal class LogLineCopier : MonoBehaviour, IPointerClickHandler
     {
         internal TMP_Text Text;
         internal System.Func<int, string> LineForLink;
+        internal CopyToast Toast;
+        internal RectTransform ToastParent;
 
         public void OnPointerClick(PointerEventData e)
         {
@@ -156,8 +190,79 @@ namespace Bismuth.UI
             if (int.TryParse(Text.textInfo.linkInfo[li].GetLinkID(), out int idx))
             {
                 string line = LineForLink(idx);
-                if (line != null) GUIUtility.systemCopyBuffer = line;
+                if (line == null) return;
+                GUIUtility.systemCopyBuffer = line;
+                if (Toast != null && ToastParent != null)
+                {
+                    if (RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                            ToastParent, e.position, e.pressEventCamera, out Vector2 lp))
+                        ((RectTransform)Toast.transform).anchoredPosition = lp + new Vector2(12f, 14f);
+                    Toast.Flash();
+                }
             }
+        }
+    }
+
+    // Brief "Copied" flash: fully opaque briefly, then fades out. Uses unscaled time so it
+    // works regardless of the game's timeScale.
+    internal class CopyToast : MonoBehaviour
+    {
+        internal TMP_Text Text;
+        private float _t;
+        private const float Hold = 0.7f, Fade = 0.4f;
+
+        internal void Flash()
+        {
+            _t = Hold + Fade;
+            SetAlpha(1f);
+            gameObject.SetActive(true);
+            transform.SetAsLastSibling(); // draw above the log content
+        }
+
+        private void Update()
+        {
+            if (_t <= 0f) return;
+            _t -= Time.unscaledDeltaTime;
+            SetAlpha(_t > Fade ? 1f : Mathf.Clamp01(_t / Fade));
+            if (_t <= 0f) gameObject.SetActive(false);
+        }
+
+        private void SetAlpha(float a)
+        {
+            if (Text == null) return;
+            var c = Text.color; c.a = a; Text.color = c;
+        }
+    }
+
+    // Positions a translucent bar over the log line under the cursor (per-line hover feedback).
+    internal class LogLineHover : MonoBehaviour
+    {
+        internal TMP_Text Text;
+        internal RectTransform Highlight;
+        internal RectTransform Viewport;
+        private int _lastLink = int.MinValue;
+
+        private void Update()
+        {
+            if (Text == null || Highlight == null) return;
+            Vector2 mp = Input.mousePosition;
+            // Screen-space-overlay canvas → null camera for both hit tests.
+            int link = (Viewport == null || RectTransformUtility.RectangleContainsScreenPoint(Viewport, mp, null))
+                ? TMP_TextUtilities.FindIntersectingLink(Text, mp, null) : -1;
+            if (link == _lastLink) return;
+            _lastLink = link;
+
+            var info = Text.textInfo;
+            if (link < 0 || link >= info.linkCount) { Highlight.gameObject.SetActive(false); return; }
+            int c = info.linkInfo[link].linkTextfirstCharacterIndex;
+            if (c < 0 || c >= info.characterCount) { Highlight.gameObject.SetActive(false); return; }
+            int lineNo = info.characterInfo[c].lineNumber;
+            if (lineNo < 0 || lineNo >= info.lineCount) { Highlight.gameObject.SetActive(false); return; }
+
+            var line = info.lineInfo[lineNo];
+            Highlight.gameObject.SetActive(true);
+            Highlight.anchoredPosition = new Vector2(0f, line.ascender);
+            Highlight.sizeDelta = new Vector2(0f, line.ascender - line.descender);
         }
     }
 }

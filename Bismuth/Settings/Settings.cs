@@ -162,7 +162,9 @@ namespace Bismuth
         // their dedicated shadow colors but obey the switch.
         public bool OverlayShadowEnabled = true;
         public KvColor OverlayShadowColor = new KvColor { R = 0f, G = 0f, B = 0f, A = 0.5f };
-        public string FontName = "에이투지체-4Regular";
+        // Default to Paperlogy (has CJK/kana): the level name resolves through this font when
+        // the game font isn't ready, and 에이투지체 lacks kana, so Japanese titles rendered small.
+        public string FontName = "Paperlogy-4Regular";
         public bool ShowOverlay = true;
         public bool ShowFps = false;
         // Master switch for the whole Optimizations group; each flag below only takes
@@ -225,6 +227,11 @@ namespace Bismuth
         public bool ComboCountAuto = false;
 
         public bool BlockInputsWhileMenuOpen = true;
+
+        // Tweaks — key that pauses/resumes autoplay while play-testing in the editor
+        // (the game hardcodes Space; rebindable + disableable from the Tweaks tab).
+        public bool AutoplayPauseEnabled = false;
+        public UnityEngine.KeyCode AutoplayPauseKey = UnityEngine.KeyCode.Space;
 
         // User chose "Keep both" in the duplicate-install prompt (Mods/ + UMMMods/).
         // Don't nag again.

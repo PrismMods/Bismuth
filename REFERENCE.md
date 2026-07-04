@@ -3,7 +3,7 @@
 A HarmonyX / UnityModManager overlay mod for **A Dance of Fire and Ice (ADOFAI)**.  
 Build: `xbuild Bismuth.sln` (Mono, .NET 4.8). A handful of expected warnings (toolset version, obsolete Unity APIs).
 
-The game is Unity 6 and ships TextMeshPro; the HUD (Overlay + KeyViewer) renders with TMP, while the settings panel stays on legacy `UnityEngine.UI.Text`. New `.cs` files must be added to `Bismuth.csproj`'s explicit `<Compile>` list.
+The game is Unity 6 and ships TextMeshPro. **Everything Bismuth draws now renders via TMP** — the HUD (Overlay + KeyViewer), the settings panel, *and* the game's own text. The game keeps its legacy `UnityEngine.UI.Text` / 3D `TextMesh` components (its scripts hold typed references), but Bismuth hides each original (`canvasRenderer` alpha 0) and draws a synced TMP child over it (`GameTextShadow` / `GameTextMeshShadow`), so the legacy `Font` is gone from the render path entirely. Fonts are `TMP_FontAsset`s built at runtime from the bundle and from user-dropped `.ttf`/`.otf` files. New `.cs` files must be added to `Bismuth.csproj`'s explicit `<Compile>` list.
 
 Project philosophy: Minimal and lightweight, but highly customizable.
 
@@ -90,15 +90,21 @@ Bismuth/
 │       ├── PageKeyViewer.cs  Preset lists + full preset editor (row grid, drag-reorder, rebind, submenus)
 │       ├── PageInput.cs      Menu input-block toggle + Key Limiter (chip editor + listen) + Chatter Blocker + KeyListener component
 │       ├── PageHideUi.cs     Hide UI toggles with conditional sub-container
-│       ├── PageUI.cs         Panel scale slider, panel/overlay font pickers (family + weight), accent color
-│       ├── PageGameUi.cs     Game-text repaint: game font (decoupled from overlay), title weight, size/spacing/stats sliders
-│       └── PageMisc.cs       Read-only stats (RAM savings) + misc toggles
+│       ├── PageUI.cs         Panel scale slider, panel/overlay font pickers (family + weight, each option previewed in its own font), accent color
+│       ├── PageGameUi.cs     Game-text repaint: game font, title weight, size/spacing/stats sliders; per-element rows with visibility radio + weight
+│       ├── PageTweaks.cs     "Tweaks" tab — editor autoplay-pause enable toggle + key rebind
+│       └── PageMisc.cs       Read-only stats (RAM savings), Force reload, View log, Optimizations master-toggle dropdown, Debug (GameProbe dumps + sweep trace)
 └── Util/
     ├── AttemptsStore.cs      Persists per-level attempt counts to `BismuthAttempts.txt`
     ├── BismuthLog.cs         File-based session logger → `BismuthLog.txt`
-    ├── FontLoader.cs         Font bundle scan → FontEntry list (legacy Font + lazy TMP_FontAsset with weight table); name matching; weight parsing
+    ├── FontLoader.cs         Font scan (bundle + loose .ttf/.otf in Fonts/) → FontEntry list; lazy TMP_FontAsset (dynamic SDF, weight table); family/weight linking; name matching
+    ├── GameFontApplier.cs    Repaints ALL game text with the chosen font: legacy Text + 3D TextMesh via shadows, game TMP swapped in place; bold/scale/fit decisions; per-element weights; sweep scoping
+    ├── GameTextShadow.cs     Per-legacy-Text shadow renderer: hides the original, mirrors it into a TMP child (FitMode, strip-size, bold-label lines, collapse-newlines, no-wrap, explicit drop shadow)
+    ├── GameTextMeshShadow.cs Same idea for 3D `TextMesh` (world-space) — TMP child matched to the mesh's world size
     ├── TmpShadow.cs          TMP drop-shadow component — drives the SDF underlay (legacy Shadow doesn't affect TMP)
-    ├── GameUiLayout.cs       Game-HUD layout overrides: wrapper transforms over scrUIController elements + error meter UpdateLayout override
+    ├── GameUiLayout.cs       Game-HUD layout overrides: wrapper transforms over scrUIController elements + per-element visibility + error meter UpdateLayout override
+    ├── GameProbe.cs          Runtime inspector (Misc → Debug): dump texts/images/assets/components filtered by substring
+    ├── Tweaks.cs             "Tweaks" tab support — AutoPauseKeyCode() injected into scnEditor.Update by a transpiler
     └── UpdateChecker.cs      Self-updater: Repository.json check, zip download/install, duplicate-install resolution
 ```
 
@@ -114,7 +120,7 @@ The settings panel is a self-owned UGUI canvas (the old IMGUI panel was removed 
 
 Modeled on KorenResourcePack v2's UI structure, stripped to the minimum:
 
-- **No dependencies added** — the panel uses `UnityEngine.UI.Text` (legacy, deliberately — the TMP migration covers the HUD only), reuses `RoundedRectGraphic`, no tween library. Panel font comes from the bundled fonts via `Theme.ApplyFont` (default Pretendard-Regular); a 2×2 white texture generated once at runtime is the only sprite.
+- **No dependencies added** — the panel renders with `TextMeshProUGUI` (`UIBuilder.Tmp`/`Label`), reuses `RoundedRectGraphic`, no tween library. Panel font is a `TMP_FontAsset` from the font scan via `Theme.ApplyFont` (default Paperlogy-4Regular; missing/stale names fall back to `fonts[0]`); a 2×2 white texture generated once at runtime is the only sprite.
 - **Static-only** — `UICore` is a static class, not a MonoBehaviour. UMM's `modEntry.OnUpdate` drives `UICore.HandleUpdate()` every frame. `UICore.Initialize(modEntry, settings, onChanged)` builds the canvas; `UICore.Dispose()` tears it down on mod disable.
 - **Sharp/minimal aesthetic** — flat rectangles, 1px hairline borders (`UIBuilder.AddBorder`), no rounded panels, no fades. The only rounded geometry is the radio-button widget via `RoundedRectGraphic`.
 
@@ -171,7 +177,7 @@ This applies to all future hotkeys: **never bind Option + letter on macOS.** Cmd
 | `ShowAttempts` | `false` | Show attempts counter |
 | `ShowFullAttempts` | `false` | Show full-attempts counter (attempts started at 0% — checkpoint restarts excluded). Renders as a second row under Attempts in the same container |
 | `Scale` | `1.0` | Scale applied to left/right overlay columns |
-| `FontName` | `"Pretendard-Regular"` | Font used for all overlay text (bundle asset names are hyphenated; `FontLoader.Find` matches ignoring spaces/hyphens/case) |
+| `FontName` | `"Paperlogy-4Regular"` | Font used for all overlay text (also the level name's fallback source; Paperlogy carries CJK. `FontLoader.Find` matches ignoring spaces/hyphens/case) |
 | `StatSeparator` | `" \| "` | Text between a stat row's label and value; empty falls back to `" \| "`. Trailing spaces become HLG spacing (TMP never measures trailing whitespace — see Fonts section) |
 | `StatLabelWeight` | `"Medium"` | Weight override for stat row labels (`""` = match the overlay font). Honored only when the family has that weight |
 | `StatValueWeight` | `""` | Weight override for stat row values |
@@ -328,7 +334,7 @@ The KeyLimiter, ChatterBlocker, and Ghost-key suppression all share a single pre
 
 **Ghost-key suppression** is collected at `Apply` time from the active hand preset's `GhostKeys` into `_ghosts: HashSet<KeyCode>`. It always applies, independent of the limiter and chatter toggles, so pressing a ghost key never registers as a tile hit. The postfix gate fires when any of `_active`, `_chatterActive`, or `_ghosts.Count > 0` is true.
 
-**Menu input block**: the game reads the keyboard through **four independent layers**, all gated on `BlockInputs` (`_blockWhileOpen && UICore.IsOpen`):
+**Menu input block**: the game reads the keyboard through **four independent layers**, all gated on `BlockInputs` (`_blockWhileOpen && UICore.IsOpen && !RDC.auto`). **Autoplay is exempt** (`!RDC.auto`): the game drives an autoplay run through the same input pipeline (`PlayerControl_Update` → planet hits), so blocking it while the panel is open starved the hit tracker — the results showed 0 counts / `NaN%` accuracy. `HitInputEvent` force-hits on `auto`, so a stray keystroke can't double-count. The four layers:
 
 | Layer | Used by | Patch |
 | ----- | ------- | ----- |
@@ -371,14 +377,16 @@ The `0xE1`/`0xE5` codes were confirmed via diagnostic logging. Earlier guesses b
 | ----- | ------- | ------- |
 | `LevelNameScale` | `0.3` | `localScale` applied to `txtLevelName.rectTransform` |
 | `LevelNameY` | `30` | Additive Y offset from `_levelNameOrigPos` (px) |
-| `LevelNameUseOverlayFont` | `true` | Repaint the game's song title/artist with the overlay font (legacy `Font` — `txtLevelName` is uGUI Text) and give it the Bismuth drop shadow; the game's own Shadow/Outline are suspended while active and restored on toggle-off |
+| `LevelNameUseOverlayFont` | `true` | Repaint the song title with the Bismuth font via an owned `GameTextShadow` (TMP) + explicit drop shadow; off → the vanilla original shows. `_levelNameFont` resolves from the **game** font family (see Song title in Fonts) |
+| `AutoplayPauseEnabled` | `false` | **Tweaks tab.** Whether the editor's play-mode autoplay pause fires at all. When off, `Tweaks.AutoPauseKeyCode()` returns `KeyCode.None` (never matches) |
+| `AutoplayPauseKey` | `Space` | **Tweaks tab.** Key that pauses/resumes autoplay while play-testing in the editor. Injected into `scnEditor.Update` by a transpiler (see below), so it's rebindable — the game otherwise hardcodes Space |
 
 ### UGUI panel preferences (UI shell)
 
 | Field | Default | Purpose |
 | ----- | ------- | ------- |
 | `UiScale` | `1.0` | Panel UI scale (0.5–2). Implemented by shrinking the CanvasScaler reference resolution; panel sizeDelta is counter-scaled so on-screen size stays constant |
-| `UiFontName` | `"Pretendard-Regular"` | Selected panel font (from `FontLoader` scan); missing/stale names fall back to Pretendard-Regular |
+| `UiFontName` | `"Paperlogy-4Regular"` | Selected panel font (from `FontLoader` scan); missing/stale names fall back to `fonts[0]` |
 | `UiAccentCustom` | `false` | If true, the accent color picker is shown instead of preset swatches |
 | `UiAccentR/G/B` | periwinkle | Saved accent color, applied via `Theme.ApplyAccent` on init |
 | `UiPanelWidth` / `UiPanelHeight` | `840` / `540` | Panel dimensions in canonical scale-1.0 units, saved on Close. Position is **not** saved — the panel always re-centers on Open |
@@ -405,16 +413,22 @@ ColorStop
 
 ## Fonts & text rendering
 
-The HUD (Overlay + KeyViewer) is **TextMeshPro** (`TextMeshProUGUI`); the settings panel and the game's `txtLevelName` are legacy uGUI `Text`. The game ships `Unity.TextMeshPro.dll` + TextCore modules (referenced in the csproj).
+Everything Bismuth draws is **TextMeshPro** (`TextMeshProUGUI` / world-space `TextMeshPro`) — HUD, settings panel, and the game's own text (via the shadow renderers below). The legacy `Font` is gone from the render path; the only fonts used are runtime `TMP_FontAsset`s. The game ships `Unity.TextMeshPro.dll` + TextCore modules (referenced in the csproj).
 
 ### FontLoader (`Util/FontLoader.cs`)
 
-- `ScanFonts(modPath)` loads `Resources/bismuth-fonts` (a Unity AssetBundle of legacy `Font` assets — names are hyphenated: `Pretendard-Regular`, `Maplestory-Bold`, …) into `FontEntry` objects, then `LinkFamilies` wires each entry's `BoldSibling`.
-- `FontEntry.TmpFont` lazily creates a dynamic-SDF `TMP_FontAsset` via `TMP_FontAsset.CreateFontAsset(Font)` on first use, naming it `"<name> (TMP)"` and wiring the family's real Bold into `fontWeightTable[7]` so `<b>`/`FontStyles.Bold` render true bold glyphs instead of synthetic dilation.
-- `Find(fonts, name)` matches names ignoring spaces/hyphens/case — heals old saves that spell `"Maplestory Bold"` with a space. Missing names fall back to the hard default (`Pretendard-Regular`) in `MainClass.ApplySelectedFont` / `UICore.ResolveSavedFont`, **not** to `fonts[0]`.
-- `SplitWeight` / `WeightRank` parse `"Family-Weight"` names against the canonical weight order (Thin → … → Black); shared by the font pickers and weight-table wiring.
+- `ScanFonts(modPath)` gathers fonts from two sources into `FontEntry` objects: the bundled `Resources/bismuth-fonts` AssetBundle, and **loose `.ttf`/`.otf` files** the user drops in `<mod>/Fonts/` (or `Resources/`). Then `LinkFamilies` groups by family and wires each entry's bold sibling (exact `Bold`, else the heaviest ≥ Bold).
+- `FontEntry.TmpFont` lazily builds a dynamic-SDF `TMP_FontAsset`, naming it `"<name> (TMP)"` and wiring the family's real Bold into `fontWeightTable[7]` so `<b>`/`FontStyles.Bold` render true bold glyphs. Bundled entries use `CreateFontAsset(Font)`; loose files use Unity 6's `CreateFontAsset(filePath, …)`, which stores the path and reloads the face on demand (`AtlasPopulationMode.Dynamic`) — so Korean/CJK glyphs rasterize from the file as needed and persist across scenes.
+- `SplitWeight` strips a leading digit from the weight token (`4Regular` → `Regular`, `8ExtraBold` → `ExtraBold`) so numbered-weight families (`Paperlogy-4Regular`) sort correctly; `WeightRank` orders against the canonical Thin → … → Black scale. Shared by the font pickers and weight-table wiring.
+- `Find(fonts, name)` matches names ignoring spaces/hyphens/case. Missing names fall back (game font → overlay font `target`; overlay/UI font → `fonts[0]`) in `MainClass.ApplySelectedFont` / `UICore.ResolveSavedFont`.
 - `WeightHeaviest` (`"Heaviest"`) is a sentinel: `MainClass.FindFamilyWeight` resolves it to the family's max-rank weight at apply time.
-- `DestroyTmpAssets` runs in `StopMod` so runtime SDF atlases/materials don't pile up across hot reloads.
+- `DestroyTmpAssets` runs in `StopMod` (and on Force reload) so runtime SDF atlases/materials don't pile up across hot reloads.
+
+**Defaults (Settings.cs):** overlay font `FontName` and panel/game fonts (`UiFontName`/`GameFontName`) default to **`Paperlogy-4Regular`** — Paperlogy carries CJK glyphs, so Japanese/Korean level titles render without falling back. (`FontName` was 에이투지체 until 1.2.x; 에이투지체 lacks kana, which drew Japanese titles undersized via the global fallback.)
+
+### Font pickers (font preview)
+
+`PageUI.BuildFontSelector` builds a family dropdown + a weight sub-dropdown. `UIBuilder.Dropdown` takes an optional `IList<TMP_FontAsset> optionFonts` so **each option renders in its own typeface** (family option = its Regular/lightest weight; weight option = that weight). The "Game default" sentinel option keeps the panel font.
 
 ### Per-part weight overrides
 
@@ -439,7 +453,11 @@ Legacy `Shadow`/`Outline` are mesh modifiers TMP ignores. `TmpShadow` drives the
 
 ### Game text repaint (`Util/GameFontApplier.cs`)
 
-`GameTextUseOverlayFont` sweeps ALL game text (legacy `Text`, `TMP_Text` with the original asset kept as a fallback, 3D `TextMesh`) onto the **game font** (`GameFontName`, decoupled from the overlay font). Each component's original font, size, line spacing, style, and best-fit max are cached for toggle-off restore.
+`GameTextUseOverlayFont` sweeps ALL game text onto the **game font** (`GameFontName`, decoupled from the overlay font) — but the render path differs by component type, because the legacy `Font` no longer draws anything:
+
+- **Legacy `Text`** → the original is left alive and layout-contributing but hidden (`canvasRenderer` alpha 0); a `GameTextShadow` child `TextMeshProUGUI` mirrors its text/color/alignment/size live in `LateUpdate` with the Bismuth font. Bold/scale/fit/no-wrap decisions are pushed via `Configure`.
+- **3D `TextMesh`** → same, via `GameTextMeshShadow` (world-space TMP sized to the mesh).
+- **Game `TMP_Text`** → swapped in place (`t.font = target`), with the original asset appended to `fallbackFontAssetTable` so glyphs the Bismuth font lacks still render. Its original font/size/lineSpacing/style/best-fit bounds are cached for toggle-off restore.
 
 #### Sizing
 
@@ -447,7 +465,7 @@ Every swap scales by the line-height/em ratio of original vs ours (clamped; `Tex
 
 #### Enabling
 
-No on/off toggle. The "Game font" selector has a prepended "Game default" entry (BuildFontSelector's `defaultOption`/`onDefault`): picking it sets `GameTextUseOverlayFont=false` and hides the options block, picking any family enables the swap. Defaults ON (Pretendard-Regular). The sliders call `RequestResize()`, a debounced (+15 frame) `Restore()`+`Apply()`, needed because `Apply` skips text already on our font.
+No on/off toggle. The "Game font" selector has a prepended "Game default" entry (BuildFontSelector's `defaultOption`/`onDefault`): picking it sets `GameTextUseOverlayFont=false` and hides the options block, picking any family enables the swap. Defaults ON (Paperlogy-4Regular). The sliders call `RequestResize()`, a debounced (+15 frame) `Restore()`+`Apply()`, needed because `Apply` skips text already on our font.
 
 #### Idempotency (three rules, each fixed a compounding bug)
 
@@ -474,7 +492,7 @@ Gate on the _active_ scene (`InLevelSelect()`), not the component's own scene: t
 
 #### How bold renders (differs by system)
 
-The bundled Black **legacy `Font` asset silently renders as regular** (dynamic-font name fallback), so legacy `Text`/`TextMesh` keep the regular font and get engine faux bold via `fontStyle` (original style cached). TMP gets the real Black TMP asset (proven by the overlay combo) with the faux Bold flag stripped to avoid double-bolding. The heaviest weight is resolved in `ApplySelectedFont` (literal "Bold" as fallback).
+Since every path is now TMP, bold is a **real Bold `TMP_FontAsset`**, not faux dilation — the shadow/swap gets the family's bold weight (or the regular weight with `fontWeightTable[7]` pointing at the Bold asset, so a `<b>` line renders true bold). The faux-`FontStyles.Bold` flag is only used as a fallback when no bold asset exists for the family. The heaviest weight is resolved in `ApplySelectedFont` (`WeightHeaviest` sentinel). Individual label lines inside a mixed component (guest-track "label\nname") are bolded with `<b>` tags in the shadow's mirrored text.
 
 #### Per-element weights (Game UI tab → Element weights)
 
@@ -482,7 +500,7 @@ The bundled Black **legacy `Font` asset silently renders as regular** (dynamic-f
 
 #### Sweep triggers and scoping (fixed lag spikes at start/death/retry)
 
-Full `FindObjectsByType`×3 scans (expensive on large maps) run only on scene change, first level entry, and toggle-resize, frame-deduped via `_lastSweepFrame` (`SetFonts` bypasses, since font identity changed). Everything else — the +2/+30 state-change ticks and `Play(isRestart=true)` retries — uses `ReapplyHud()`, a `GetComponentsInChildren` sweep of just `scrUIController.canvas`, where all mid-scene text spawns and re-stamps (death %, results, congrats, rewind re-localization). Exceptions and additions:
+Full `FindObjectsByType`×3 scans (expensive on large maps) are reserved for MENU scene loads, first level entry, and toggle-resize, frame-deduped via `_lastSweepFrame` (`SetFonts` bypasses, since font identity changed). A retry reloads the **gameplay scene (`scnGame`)** on every attempt, so `OnActiveSceneChanged` scopes it: `scnGame` → `ReapplyHud()` (+ delayed scoped re-sweep); menu scenes → full `Reapply()` + `RequestFullSweepSoon()`. `ReapplyHud()` is a `GetComponentsInChildren` sweep of just `scrUIController.canvas` **plus the world-space autoplay label** (`GameUiLayout.AutoplayTextObject()`), where all mid-scene text spawns and re-stamps (death %, results, congrats, rewind re-localization). First entry still full-sweeps via `OnLevelStart`, so nothing is missed. Exceptions and additions:
 
 - **scnLevelSelect:** state-change ticks sweep _fully_ (`StateSweep()`). Portal labels and world names activate late on approach and live outside any canvas.
 - **Scene entry** needs delayed FULL sweeps (`RequestFullSweepSoon`, +2/+30, from `OnActiveSceneChanged` and `SetFonts`): localization assigns fonts in `Start()`, one frame after `sceneLoaded`, stomping the immediate sweep (cold launch left the title screen vanilla until the toggle was cycled).
@@ -493,7 +511,7 @@ Full `FindObjectsByType`×3 scans (expensive on large maps) run only on scene ch
 #### Other hooks
 
 - **Pause-menu bolding:** `ShouldBold` bolds everything under a `PauseMenu` ancestor except the `SettingsMenu` subtree (keeps its designed weight). The `SettingsMenu` check runs first, so it holds even when Settings is opened from the main menu where `LevelSelectBold` would otherwise catch it.
-- **Localized re-stamp:** `RDString.SetLocalizedFont` (Text/TMP/TextMesh) is postfixed → `OnLocalizedFontSet` re-applies our font immediately. The language-selector previews stamp each language's own font over ours; a script Pretendard lacks will tofu (acceptable per request).
+- **Localized re-stamp:** `RDString.SetLocalizedFont` (Text/TMP/TextMesh) is postfixed → `OnLocalizedFontSet` re-applies our font immediately. The language-selector previews stamp each language's own font over ours; a script the chosen font lacks falls back to the game's original asset (kept as a TMP fallback) or tofus.
 - **News sign:** `NewsSign.ShowNews` is postfixed with `ApplyTo` (it fills its text only when the async fetch lands, after the scene sweep).
 - **Editor exemption:** `Text`/`TMP_Text` in the `scnEditor` scene get metric normalization only (no `GameTextScale`, no leading change), because the hand-fitted form panels break under resizing. `TextMesh` is resized everywhere.
 - **Diagnostics (opt-in):** set `GameFontApplier.DiagEnabled = true` to dump (capped 16 lines/sweep, `GameFontDiag` prefix) each matching text's path/scene/textChanger/title/lsBold/applied font. `DiagFilter` is a substring list (empty = all <40-char texts). Sweeps also log "GameFont: sweep bold-swapped N" (debug) when the count changes.
@@ -501,7 +519,7 @@ Full `FindObjectsByType`×3 scans (expensive on large maps) run only on scene ch
 
 ### Song title (`txtLevelName`)
 
-Legacy uGUI `Text` owned by the game. When `LevelNameUseOverlayFont` is on, `ApplyLevelNameTransform` swaps in the selected entry's legacy `Font` (original cached per scene), adds a Bismuth `Shadow` (offset divided by `LevelNameScale` since `localScale` shrinks the subtree), and suspends the game's own enabled Shadow/Outline components so effects don't stack — all restored on toggle-off / scene unload. Legacy dynamic fonts fall back to OS fonts for missing glyphs (e.g. kana in custom titles).
+Legacy uGUI `Text` owned by the game. When `LevelNameUseOverlayFont` is on, `ApplyLevelNameTransform` attaches an **owned** `GameTextShadow` (`_levelNameFont` is a `TMP_FontAsset`) configured `collapseNewlines` + `noWrap` (the game appends the speed-trial multiplier `\n(1.1배)` to this same Text) and gives it an explicit Bismuth drop shadow (`SetShadow`, offset divided by `LevelNameScale` since `localScale` shrinks the subtree). Off → `Detach()` restores the vanilla original. `_levelNameFont` resolves from the **game** font family (`MainClass.ApplySelectedFont` → `SetLevelNameFont`), defaulting to the title weight; the `levelname` element weight overrides it. **CJK caveat:** the font must contain the title's glyphs — a Latin/Korean-only font (e.g. 에이투지체) lacks kana, so Japanese falls back to a mismatched-scale global font and renders undersized; hence the Paperlogy (CJK) default. Note the game font can resolve a frame *after* the level name is first set, leaving it on the earlier fallback font until a later re-apply.
 
 ---
 
@@ -537,8 +555,7 @@ All HUD text is `TextMeshProUGUI`; every text carries a `TmpShadow` component (s
 | `_comboLabelWrapper` | `RectTransform` | `ignoreLayout=true` wrapper; `anchoredPosition.y = ComboLabelY` |
 | `_levelNameOrigPos` | `Vector2?` | First-seen `anchoredPosition` of `txtLevelName.rectTransform`; reset on scene unload |
 | `_levelNameOrigFontSize` | `int?` | First-seen `fontSize` of `txtLevelName`; restored when the previous fontSize-based scale path is detected on disk |
-| `_levelNameFont` / `_levelNameOrigFont` | `Font` | Selected overlay entry's legacy Font (set by `SetLevelNameFont`) / per-scene cache of the game's original |
-| `_levelNameShadow` / `_levelNameGameEffects` | `Shadow` / `Shadow[]` | Bismuth drop shadow on the title / the game's own enabled Shadow+Outline, suspended while ours shows; per-scene |
+| `_levelNameFont` | `TMP_FontAsset` | Song-title font (game family; set by `SetLevelNameFont`). Rendered via an owned `GameTextShadow` — the old legacy-`Font` swap + `_levelNameOrigFont`/`_levelNameShadow`/`_levelNameGameEffects` fields are gone (the shadow's alpha-0 hide suppresses the game's own Shadow/Outline, and it carries its own drop shadow via `SetShadow`) |
 | `_comboLabelShadow` / `_comboValueShadow` | `TmpShadow` | Cached refs to the combo label / count shadow components; written every `ApplySettings` |
 | `ShadowBaseOffset` | `const float = 2f` | Per-text drop-shadow base offset px; stat rows / timing scale / judgement texts each scale this by their own size slider |
 | `RowBaseFontSize` | `const int = 27` | Base font size of every stat row / timing scale / judgement text; multiplied by the relevant size slider (attempts rows are fixed 18, FPS 22) |
@@ -559,7 +576,7 @@ All HUD text is `TextMeshProUGUI`; every text carries a `TmpShadow` component (s
 | `UpdateDisplay(acc, xacc, margin)` | `AddHitPatch` (every tile hit) | Updates acc/xacc colors; combo logic; judgement counts |
 | `ApplySettings(settings)` | Settings change callback | Re-applies all positions, scales, active states; recomposes stat labels (`ApplySeparators`); master shadow pass; ends with `LayoutRebuilder.ForceRebuildLayoutImmediate` on all four containers so edits reflow instantly |
 | `SetFont(font, label, value, comboLabel, comboValue)` | `MainClass.ApplySelectedFont` | Routes TMP font assets to stat labels/values and combo label/count (nulls = base); judgements/FPS use base; re-applies every `TmpShadow` (font change replaces materials) |
-| `SetLevelNameFont(font)` | `MainClass.ApplySelectedFont` | Stores the legacy `Font` for the song title and re-runs `ApplyLevelNameTransform` |
+| `SetLevelNameFont(font)` | `MainClass.ApplySelectedFont` | Stores the `TMP_FontAsset` for the song title and re-runs `ApplyLevelNameTransform` |
 | `ShowOrHideElements()` | Scene change / settings change | Toggles game-native UI visibility (noFail, difficulty, autoplay, song title, error meter) |
 | `ApplyLevelNameTransform()` | `ShowOrHideElements()` + `LevelNameTextRestorePatch` | Applies `LevelNameScale` and additive `LevelNameY` to `txtLevelName.rectTransform`; swaps font + Bismuth shadow when `LevelNameUseOverlayFont` (see Fonts section) |
 
@@ -750,6 +767,8 @@ The shadow body's rect height is `bodyH + ShadowSize` (with sharp-top) or `bodyH
 | `RDInput.GetState(InputAction, ButtonState)` | Postfix | Menu input block — Rewired action reads return false while the menu is open |
 | `UnityEngine.Input.GetKeyDown(KeyCode)` | Postfix | Menu input block — direct polls (menu number-nav) return false while open, except KeyCode.B and `RawReadExempt` reads. Applied separately via `TryPatchRawInput` |
 | `scrMistakesManager.AddHit(HitMargin)` | Prefix | Key Limiter — suppresses hit if no allowed key currently held, or unconditionally while the menu is open |
+| `scnEditor.Update` | **Transpiler** | Tweaks tab — swaps the hardcoded `Ldc_I4 32` (KeyCode.Space) feeding the autoplay-pause `Input.GetKeyDown` for a `call Tweaks.AutoPauseKeyCode()`, so the pause key is rebindable/disableable. Fails safe: no pattern match → vanilla Space |
+| `scnEditor.LateUpdate` | Postfix | `EditorLateUpdateShowHudPatch` — re-enables the HUD canvas while `GameUiEditor.IsActive` (the editor force-disables it outside play mode) |
 
 ### Optimizations (`Optimizations.cs`)
 
@@ -775,8 +794,8 @@ Moves/scales the **game's own** HUD elements (Game UI tab → "Edit game UI on s
 
 - **Wrapper transforms.** Each `scrUIController` element gets a full-stretch `BismuthGameUiWrap_<key>` RectTransform inserted above it. Targets (keyed by field name, all public): `txtPercent`, `txtCongrats`, `txtAllStrictClear`, `txtResults`, `txtPressToStart`, `txtCountdown`, `difficultyContainer`, `modifiersContainer`, `pauseButton`, plus the autoplay label (a `scrShowIfDebug` with no static accessor, found by type via a frame-throttled `FindObjectsByType` and cached).
   - The wrapper's rect equals the parent's, so the element's anchors/anchoredPosition keep their exact meaning, and everything the game does to the element (difficulty show/minimize `DOAnchorPosX` tweens, text rewrites) happens _inside_ the wrapper and never fights our offset/scale. Scale pivots on the element's measured center (recomputed each apply), so scaling doesn't slide elements toward screen center.
-  - Offsets live in `Settings.GameUiOverrides` (`List<GameUiOverride>`: `Key`/`OffX`/`OffY`/`Scale`, parent-canvas units).
-  - Fresh installs get a curated default layout (`MakeGameUiDefaults`, re-baked June 12 2026: presstostart/congrats/countdown/percent/results/strictclear/autoplay repositioned and scaled) and per-element text weights (`MakeGameUiWeightDefaults`: presstostart Thin, congrats Black, countdown/strictclear Bold, results/autoplay Light, judgement Black, levelname Medium). Both are seeded ONCE in `EnsureDefaults` behind the `GameUiDefaultsSeeded` flag, and `GameTextUseOverlayFont` defaults TRUE (swap on out of the box, Pretendard-Regular).
+  - Overrides live in `Settings.GameUiOverrides` (`List<GameUiOverride>`: `Key`/`OffX`/`OffY`/`Scale` in parent-canvas units, plus `Hidden` and `Align`). **Visibility:** `ApplyVisibility` puts a `CanvasGroup` on the wrapper (alpha 0 / `blocksRaycasts` false when `Hidden`), so the element stays hidden regardless of the game re-activating it, and the alpha also covers the TMP shadow child. PageGameUi's element rows carry a visibility **radio**. **Text alignment** (`Align`, text-bearing elements like the autoplay label): `ApplyAlign` sets the label's pivot.x (Left/Center/Right) once at a settled width and freezes the anchored position, so content changes grow symmetrically about a fixed point instead of drifting; autoplay's effective default is Center.
+  - Fresh installs get a curated default layout (`MakeGameUiDefaults`, re-baked June 12 2026: presstostart/congrats/countdown/percent/results/strictclear/autoplay repositioned and scaled) and per-element text weights (`MakeGameUiWeightDefaults`: presstostart Thin, congrats Black, countdown/strictclear Bold, results/autoplay Light, judgement Black, levelname Medium). Both are seeded ONCE in `EnsureDefaults` behind the `GameUiDefaultsSeeded` flag, and `GameTextUseOverlayFont` defaults TRUE (swap on out of the box, Paperlogy-4Regular).
   - Reset: right-click a handle → `ResetToDefault` (Bismuth default when the key has one, else vanilla). Game UI tab buttons "Reset layout to Bismuth defaults" (`ResetAllToDefaults`) and "Reset layout to game defaults" (`ResetAllToGame`, removes every override plus meter restore). An empty list is a legitimate "all vanilla" state, so emptiness alone must not re-seed (unlike the KV presets).
 - **Error meter** — `scrHitErrorMeter` already models position as a normalized anchor (`pos`, applied as anchorMin=anchorMax=pivot in `UpdateLayout`) and scale as `meterScale` → `localScale`. A postfix on `UpdateLayout` re-applies `Settings.GameErrorMeter{X,Y,Scale}` (absolute pos + multiplier on the in-game size setting, `GameErrorMeterOverride` gate) — covers `scrController.Awake` and the game's own settings-menu size changes, so no sweeps are needed. The game's per-size pixel offset (`anchoredPosition` 0,−30…0,−94) is zeroed when overriding. Original wrapper state is captured before the first override for restore.
 
@@ -851,7 +870,7 @@ Use `BismuthLog.Log(...)` for any Bismuth-specific diagnostic output, `Debug(...
 
 ### LogViewer (`UI/LogViewer.cs`)
 
-Misc → "View log" opens a standalone window (own canvas) showing `ReadTail()`, auto-scrolled to the newest lines. Buttons: Refresh, Open in Finder (`Application.OpenURL("file://" + ModPath)` — opens the mod folder), Debug on/off (`[dbg]` line filter, default off), Close.
+Misc → "View log" opens a standalone window (own canvas) showing `ReadTail()`, auto-scrolled to the newest lines. Buttons: Refresh, **Clear** (`BismuthLog.Clear`), Open in File Manager (`OsShell.OpenFolder(ModPath)`), Close. Each line is **numbered** — the number is a clickable TMP `<link>` (`LogLineCopier` → `FindIntersectingLink` → copies that raw line to the clipboard); the line's own `<color>`/`<size>` tags are wrapped in `<noparse>` so they show literally. `[dbg]` lines are hidden unless Debug mode is on.
 
 ---
 

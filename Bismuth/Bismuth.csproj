@@ -104,6 +104,7 @@
         <Compile Include="Util\GameTextMeshShadow.cs" />
         <Compile Include="Util\GameProbe.cs" />
         <Compile Include="Util\GameUiLayout.cs" />
+        <Compile Include="Util\Tweaks.cs" />
         <Compile Include="UI\UpdatePopup.cs" />
         <Compile Include="UI\LogViewer.cs" />
         <Compile Include="UI\Theme.cs" />
@@ -122,6 +123,7 @@
         <Compile Include="UI\Pages\PageUI.cs" />
         <Compile Include="UI\Pages\PageMisc.cs" />
         <Compile Include="UI\Pages\PageGameUi.cs" />
+        <Compile Include="UI\Pages\PageTweaks.cs" />
         <Compile Include="Properties\AssemblyInfo.cs" />
     </ItemGroup>
     <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
