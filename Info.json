@@ -2,7 +2,7 @@
   "Id": "Bismuth",
   "DisplayName": "Bismuth",
   "Author": "QuartzTeam",
-  "Version": "1.2.2",
+  "Version": "1.2.3",
   "ManagerVersion": "0.32.4.0",
   "AssemblyName": "Bismuth.dll",
   "EntryMethod": "Bismuth.Startup.Load",

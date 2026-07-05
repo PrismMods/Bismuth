@@ -109,7 +109,11 @@ namespace Bismuth
             BismuthLog.Init();
             harmony = new Harmony(modEntry.Info.Id);
             harmony.PatchAll(Assembly.GetExecutingAssembly());
-            KeyLimiter.TryPatchRawInput(harmony);
+            // Isolated so a Harmony-version issue in this optional layer can never abort the
+            // whole mod load (a MissingMethodException from an absent Patch overload on older
+            // Harmony surfaces at THIS call site, not inside the method's own try/catch).
+            try { KeyLimiter.TryPatchRawInput(harmony); }
+            catch (Exception e) { BismuthLog.Log("TryPatchRawInput skipped: " + e.Message); }
 
             SceneManager.sceneUnloaded += OnSceneUnloaded;
             SceneManager.sceneLoaded += OnSceneLoaded;

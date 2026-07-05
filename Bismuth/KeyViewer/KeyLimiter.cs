@@ -365,12 +365,21 @@ namespace Bismuth
         // Menu scenes read number-key navigation straight off Input.GetKeyDown, bypassing
         // RDInput. GetKeyDown is an extern icall, so it's patched outside PatchAll: if the
         // native detour fails, only this layer is lost instead of aborting every patch.
+        //
+        // Applied via PatchProcessor rather than harmony.Patch(m, postfix: …): the latter binds
+        // (at build time, against MelonLoader's HarmonyX 2.10) to the 6-arg Patch overload with
+        // the extra `ilmanipulator` HarmonyMethod, which native UMM's older 0Harmony lacks — so
+        // the method failed to JIT and threw MissingMethodException before the try even ran,
+        // aborting the whole mod load on Windows/native UMM. CreateProcessor/AddPostfix/Patch
+        // have been stable since Harmony 2.0.
         internal static void TryPatchRawInput(Harmony harmony)
         {
             try
             {
                 var m = AccessTools.Method(typeof(Input), "GetKeyDown", new[] { typeof(KeyCode) });
-                harmony.Patch(m, postfix: new HarmonyMethod(typeof(KeyLimiter), nameof(GetKeyDownPostfix)));
+                var proc = harmony.CreateProcessor(m);
+                proc.AddPostfix(new HarmonyMethod(typeof(KeyLimiter), nameof(GetKeyDownPostfix)));
+                proc.Patch();
             }
             catch (System.Exception e)
             {
