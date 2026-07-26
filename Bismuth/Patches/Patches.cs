@@ -250,32 +250,18 @@ namespace Bismuth
             }
         }
 
-        // Hide all scrShowIfDebug elements (autoplay text + rabbit) by temporarily setting
-        // RDC.auto = false so the component hides its own content, then restoring it. While
-        // the game-UI editor is open the opposite applies: Update force-disables the private
-        // Text every frame when autoplay is off (Behaviour.enabled, which force-show doesn't
-        // cover), so re-enable it with the real label.
+        /* The autoplay label is a scrShowIfDebug. 3.3.0 hides it through the game's own
+           flags — RDC.noHud (all HUD) and RDC.noAutoHud (autoplay HUD only) — both set from
+           Overlay.ShowOrHideElements. We no longer flip RDC.auto to hide it: the game's
+           autoplay toggle (Space / the auto button) reads RDC.auto, so flipping it mid-frame
+           made every play/toggle turn autoplay OFF (and made autoplay unusable with the
+           hide-autoplay-text option on). This postfix now only force-SHOWS the label while
+           the game-UI layout editor is open, so it can be positioned. */
         [HarmonyPatch(typeof(scrShowIfDebug), "Update")]
         private static class ShowIfDebugUpdatePatch
         {
-            private static bool _prevAuto;
-
-            public static void Prefix()
-            {
-                _prevAuto = RDC.auto;
-                /* Sapphire's Editor Mode must NOT use this flip: in the editor scene any
-                   code that reads RDC.auto mid-frame (or an exception skipping the
-                   postfix) sees autoplay off and it "turns itself off". Sapphire hides
-                   the label itself (Text disable in its own patch). */
-                if (Settings.ExternalEditorSuppress) return;
-                if (RDC.auto && (MainClass.Settings.ActiveHideAutoplayText || MainClass.Settings.ActiveHideAllUI)
-                    && Overlay.Instance != null && Overlay.Instance.InLevel)
-                    RDC.auto = false;
-            }
-
             public static void Postfix(scrShowIfDebug __instance)
             {
-                RDC.auto = _prevAuto;
                 if (!Bismuth.UI.GameUiEditor.IsActive) return;
                 var txt = __instance.GetComponent<UnityEngine.UI.Text>();
                 if (txt == null) return;
@@ -338,6 +324,16 @@ namespace Bismuth
             public static void Postfix() => HideErrorMeter();
         }
 
+        // 3.3.0 routes ALL error-meter showing through scrController.UpdateErrorMeterVisibility
+        // (it re-activates the meter root on pause/unpause, level setup, editor toggle), and
+        // it's called from sites the floor/pause hooks above don't cover — so the meter came
+        // back. Re-hide right after the game's own visibility pass.
+        [HarmonyPatch(typeof(scrController), "UpdateErrorMeterVisibility")]
+        private static class ErrorMeterVisibilityPatch
+        {
+            public static void Postfix() => HideErrorMeter();
+        }
+
         // The level editor force-disables the game's HUD canvas every frame outside play
         // mode (LateUpdate: canvas.enabled = playMode), so the game-UI editor showed handles
         // over nothing. Re-enable after the game's write while an edit session is open;
@@ -351,6 +347,51 @@ namespace Bismuth
                 var uic = scrUIController.instance;
                 if (uic != null && uic.canvas != null && !uic.canvas.enabled)
                     uic.canvas.enabled = true;
+            }
+        }
+
+        /* The beta-build label (scrEnableIfBeta) decides its own visibility in Awake and,
+           on a non-stable Steam branch, force-enables itself there — which runs after (or
+           independently of) our one-shot sweep, so a hidden label came back and stayed. The
+           component has no Update, so Awake is the only re-show path: re-hide right after it
+           whenever the setting is on. This makes "Hide beta build text" stick; it never
+           enables the label. */
+        [HarmonyPatch(typeof(scrEnableIfBeta), "Awake")]
+        private static class BetaBuildTextHidePatch
+        {
+            public static void Postfix(scrEnableIfBeta __instance)
+            {
+                var s = MainClass.Settings;
+                if (s != null && (s.ActiveHideBetaBuild || s.ActiveHideAllUI)
+                    && __instance != null && __instance.gameObject.activeSelf)
+                    __instance.gameObject.SetActive(false);
+            }
+        }
+
+        /* The editor play-test autoplay controls tip (scnEditor.controlsTip on ottoCanvas:
+           pan / stop-autoplay key help, new in 3.3.0) is re-shown every frame by
+           scnEditor.Update. Hide it via Text.enabled — GameTextShadow mirrors the original's
+           enabled state, so its Bismuth-font shadow hides with it. Stateful restore: we only
+           re-enable a tip WE disabled, so we never fight the game's own enable/disable. */
+        [HarmonyPatch(typeof(scnEditor), "Update")]
+        private static class EditorControlsTipHidePatch
+        {
+            private static bool _forcedOff;
+
+            public static void Postfix(scnEditor __instance)
+            {
+                var tip = __instance.controlsTip;
+                if (tip == null) return;
+                bool hide = MainClass.Settings.ActiveHideControlsTip || MainClass.Settings.ActiveHideAllUI;
+                if (hide)
+                {
+                    if (tip.enabled) { tip.enabled = false; _forcedOff = true; }
+                }
+                else if (_forcedOff)
+                {
+                    tip.enabled = true;
+                    _forcedOff = false;
+                }
             }
         }
 

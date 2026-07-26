@@ -251,12 +251,28 @@ namespace Bismuth
             }
 
             if (GetOverride("autoplay", create: false) == null) return;
-            var rt = AutoplayText();
-            var txt = rt != null ? rt.GetComponentInChildren<Text>(true) : null;
+            var txt = ResolveAutoplayText();
             if (txt == null) return;
             if (txt.text == _autoplayText) return;
             _autoplayText = txt.text;
             _autoplayReapplyFrame = Time.frameCount + 1;
+        }
+
+        // Cached autoplay-label Text. GetComponentInChildren is a per-frame tree walk, so
+        // resolve it once and re-resolve only when the underlying scrShowIfDebug changes
+        // (AutoplayText re-searches on scene swaps).
+        private static Text _autoplayTextComp;
+        private static scrShowIfDebug _autoplayTextFor;
+
+        private static Text ResolveAutoplayText()
+        {
+            var rt = AutoplayText(); // refreshes _autoplay (throttled)
+            if (_autoplay != _autoplayTextFor)
+            {
+                _autoplayTextFor = _autoplay;
+                _autoplayTextComp = rt != null ? rt.GetComponentInChildren<Text>(true) : null;
+            }
+            return _autoplayTextComp;
         }
 
         internal static void Reapply()

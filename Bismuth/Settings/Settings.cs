@@ -301,7 +301,14 @@ namespace Bismuth
         // into HideJudgementsPerfect, then cleared. Kept so old Settings.xml deserializes.
         public bool HidePerfectJudgements = false;
         public bool HideLevelName = false;
-        public bool HideBetaBuild = false;
+        /* Default ON: modding ADOFAI requires opting into a Steam beta branch, and the game
+           shows its "beta build" label for any non-public/older branch — so it appears for
+           every modded launch, not because the game is a beta. Hidden out of the box; still
+           toggleable. (No migration — existing installs keep their saved value.) */
+        public bool HideBetaBuild = true;
+        // The editor play-test autoplay controls tip (scnEditor.controlsTip: pan / stop-
+        // autoplay key help, new in 3.3.0).
+        public bool HideControlsTip = false;
 
         /* Sapphire's Editor Mode (clean-screen charting) hides Bismuth's overlays and the
            game HUD extras while in the editor. The editor suite lives in the Sapphire mod
@@ -320,6 +327,7 @@ namespace Bismuth
         [System.Xml.Serialization.XmlIgnore] public bool ActiveHideDifficulty        => (HideUiEnabled && HideDifficulty) || ExternalEditorSuppress;
         [System.Xml.Serialization.XmlIgnore] public bool ActiveHideLevelName         => HideUiEnabled && HideLevelName;
         [System.Xml.Serialization.XmlIgnore] public bool ActiveHideBetaBuild         => HideUiEnabled && HideBetaBuild;
+        [System.Xml.Serialization.XmlIgnore] public bool ActiveHideControlsTip       => (HideUiEnabled && HideControlsTip) || ExternalEditorSuppress;
 
         /* Whether a judgement hit-text popup of margin m should be suppressed. Gated by
            the section master (HideUiEnabled) like the Active* flags; HideJudgements hides

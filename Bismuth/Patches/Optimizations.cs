@@ -49,66 +49,13 @@ namespace Bismuth
         }
     }
 
-    // Object.Instantiate on a non-readable Texture2D produces a blank texture.
-    // Replace it with Graphics.CopyTexture (GPU→GPU blit) so variants by ImageOptions
-    // still work correctly after the base texture has been made non-readable.
-    [HarmonyPatch(typeof(TextureManager.CustomTexture), "GetTexture")]
-    internal static class TextureManagerCustomTextureGetTexturePatch
-    {
-        public static bool Prefix(
-            TextureManager.ImageOptions options,
-            Texture2D ___baseTexture,
-            Dictionary<TextureManager.ImageOptions, Texture2D> ___textures,
-            ref bool ___baseTextureUsed,
-            ref Texture2D __result)
-        {
-            if (!MainClass.Settings.OptimizationsEnabled || !MainClass.Settings.OptTextureNonReadable) return true;
-            if (___textures.TryGetValue(options, out __result)) return false;
-            if (!___baseTexture) { __result = null; return false; }
-            var tex = ___baseTextureUsed ? TextureOptUtil.CopyTexture(___baseTexture) : ___baseTexture;
-            tex.filterMode = options.HasFlag(TextureManager.ImageOptions.Smooth) ? FilterMode.Bilinear : FilterMode.Point;
-            ___baseTextureUsed = true;
-            ___textures[options] = tex;
-            __result = tex;
-            return false;
-        }
-    }
-
-    [HarmonyPatch(typeof(TextureManager.CustomSprite), "GetSprite")]
-    internal static class TextureManagerCustomSpriteGetSpritePatch
-    {
-        public static bool Prefix(
-            TextureManager.ImageOptions options,
-            Texture2D ___baseTexture,
-            Dictionary<TextureManager.ImageOptions, Sprite> ___sprites,
-            float ___pixelsPerUnit,
-            SpriteMeshType ___spriteType,
-            ref bool ___baseTextureUsed,
-            ref Sprite __result)
-        {
-            if (!MainClass.Settings.OptimizationsEnabled || !MainClass.Settings.OptTextureNonReadable) return true;
-            if (___sprites.TryGetValue(options, out __result)) return false;
-            if (!___baseTexture) { __result = null; return false; }
-            var tex = ___baseTextureUsed ? TextureOptUtil.CopyTexture(___baseTexture) : ___baseTexture;
-            tex.filterMode = options.HasFlag(TextureManager.ImageOptions.Smooth) ? FilterMode.Bilinear : FilterMode.Point;
-            ___baseTextureUsed = true;
-            var sprite = Sprite.Create(tex, new Rect(0f, 0f, tex.width, tex.height), Vector2.one / 2f, ___pixelsPerUnit, 0u, ___spriteType);
-            ___sprites[options] = sprite;
-            __result = sprite;
-            return false;
-        }
-    }
-
-    internal static class TextureOptUtil
-    {
-        internal static Texture2D CopyTexture(Texture2D orig)
-        {
-            var copy = new Texture2D(orig.width, orig.height, orig.format, false);
-            Graphics.CopyTexture(orig, copy);
-            copy.Apply(false, true);
-            return copy;
-        }
-    }
+    /* ADOFAI 3.3.0 removed TextureManager's per-ImageOptions variant system: CustomTexture
+       is now a plain holder and CustomSprite builds its single sprite in its ctor, so
+       CustomTexture.GetTexture / CustomSprite.GetSprite / the ImageOptions enum are gone.
+       The two variant-copy prefixes that lived here (keeping non-readable base textures
+       working through the old Instantiate-based duplication) no longer have a target — and
+       aren't needed, since nothing duplicates the texture anymore. The LoadTexture postfix
+       above still makes the loaded texture non-readable, which is now safe on its own. */
 
     // scrPlanet.Update's per-frame Physics2D.OverlapCircleAll allocates a Collider2D[]
     // each time. Use OverlapCircleNonAlloc into a static buffer, returning Array.Empty on

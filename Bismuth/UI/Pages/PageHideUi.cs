@@ -51,6 +51,8 @@ namespace Bismuth.UI.Pages
                 v => { s.HideLevelName = v; notify?.Invoke(); });
             UIBuilder.ToggleCard(grid, "Beta build text", s.HideBetaBuild,
                 v => { s.HideBetaBuild = v; notify?.Invoke(); });
+            UIBuilder.ToggleCard(grid, "Autoplay controls", s.HideControlsTip,
+                v => { s.HideControlsTip = v; notify?.Invoke(); });
 
             UIBuilder.Spacer(sub);
             UIBuilder.SectionHeaderWithHelp(sub, "Judgements",

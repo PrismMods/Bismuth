@@ -38,7 +38,15 @@ namespace Bismuth
         private static FieldInfo  _asyncKcKey;        // AsyncKeyCode.key (ushort raw OS scancode)
         private static MethodInfo _unityToAsync;      // SkyHook.SkyHookKeyMapper.UnityKeyToSkyHookKey(KeyCode) → KeyLabel
         private static MethodInfo _asyncToUnity;      // SkyHook.SkyHookKeyMapper.SkyHookKeyToUnityKey(KeyLabel) → KeyCode
-        private static object     _stateDown;         // ButtonState.Down (enum value 0)
+        private static object     _stateDown;         // ButtonState.WentDown (enum value 0)
+        private static object     _stateWentUp;       // ButtonState.WentUp (1)
+        private static object     _stateIsDown;       // ButtonState.IsDown (2)
+        /* Reused single-element args buffer for the per-frame GetStateKeys.Invoke (called
+           2-3× every frame while the key viewer runs). Reflection Invoke otherwise
+           allocates a fresh object[] each call — steady GC pressure during play. Safe to
+           share: all reads are main-thread and sequential, and the _inCount guard keeps the
+           GetMain postfix from re-entering GetStateKeys mid-Invoke. */
+        private static readonly object[] _stateArgs = new object[1];
 
         // Pre-computed set of allowed SkyHook KeyLabel values (ushort) for async keyboard path.
         // Built from _allowed via UnityKeyToSkyHookKey so we compare labels directly,
@@ -141,7 +149,11 @@ namespace Bismuth
             _asyncToUnity     = mapper      != null ? AccessTools.Method(mapper, "SkyHookKeyToUnityKey")  : null;
 
             _bsType           = AccessTools.TypeByName("ButtonState");
-            _stateDown        = _bsType     != null ? System.Enum.ToObject(_bsType, 0) : (object)0;
+            // Pre-box the three ButtonState values once, so the per-frame CollectStateKeys
+            // path never boxes an enum (Enum.ToObject allocates).
+            _stateDown        = _bsType     != null ? System.Enum.ToObject(_bsType, StateWentDown) : (object)StateWentDown;
+            _stateWentUp      = _bsType     != null ? System.Enum.ToObject(_bsType, StateWentUp)   : (object)StateWentUp;
+            _stateIsDown      = _bsType     != null ? System.Enum.ToObject(_bsType, StateIsDown)   : (object)StateIsDown;
 
             var plat = Application.platform;
             _rawToKeyCode = plat == RuntimePlatform.WindowsPlayer || plat == RuntimePlatform.WindowsEditor
@@ -189,18 +201,22 @@ namespace Bismuth
         internal const int StateWentUp   = 1;
         internal const int StateIsDown   = 2;
 
+        // Pre-boxed ButtonState for `state` (no per-call boxing). Falls back to WentDown.
+        private static object BoxedState(int state)
+        {
+            if (state == StateWentUp) return _stateWentUp;
+            if (state == StateIsDown) return _stateIsDown;
+            return _stateDown;
+        }
+
         internal static void CollectStateKeys(int state, HashSet<KeyCode> into)
         {
             EnsureReflection();
             if (_getStateKeys == null || _anyKcValue == null || _bsType == null) return;
 
-            object bs;
-            try { bs = System.Enum.ToObject(_bsType, state); }
-            catch { return; }
-
             _inCount = true; // GetStateKeys re-enters GetMain; keep the postfix out of the way
             IList list;
-            try   { list = _getStateKeys.Invoke(null, new object[] { bs }) as IList; }
+            try   { _stateArgs[0] = BoxedState(state); list = _getStateKeys.Invoke(null, _stateArgs) as IList; }
             catch { list = null; }
             finally { _inCount = false; }
             if (list == null) return;
@@ -329,7 +345,7 @@ namespace Bismuth
 
             _inCount = true;
             IList list;
-            try   { list = _getStateKeys.Invoke(null, new object[] { _stateDown }) as IList; }
+            try   { _stateArgs[0] = _stateDown; list = _getStateKeys.Invoke(null, _stateArgs) as IList; }
             finally { _inCount = false; }
 
             if (list == null) return 0;

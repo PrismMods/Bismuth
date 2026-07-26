@@ -127,12 +127,42 @@ namespace Bismuth
         {
             if (_patched) return;
             _patched = true;
-            harmony.PatchAll(Assembly.GetExecutingAssembly());
+            PatchAllResilient(harmony, Assembly.GetExecutingAssembly());
             // Isolated so a Harmony-version issue in this optional layer can never abort the
             // whole mod load (a MissingMethodException from an absent Patch overload on older
             // Harmony surfaces at THIS call site, not inside the method's own try/catch).
             try { KeyLimiter.TryPatchRawInput(harmony); }
             catch (Exception e) { BismuthLog.Log("TryPatchRawInput skipped: " + e.Message); }
+        }
+
+        /* Harmony's own PatchAll aborts the WHOLE batch the moment one patch class can't
+           resolve its target — so a single hook whose game method was renamed/removed by an
+           ADOFAI update bricks the entire mod (dead overlay, dead panel, no way back), which
+           is exactly what a 3.3.0 API removal did. Patch each class in isolation instead: a
+           broken hook drops only its own feature and logs which one, and every other patch
+           still applies. CreateClassProcessor/PatchClassProcessor are long-standing HarmonyX
+           APIs (verified present in the loaded 0Harmony). */
+        private static void PatchAllResilient(Harmony h, Assembly asm)
+        {
+            int applied = 0, skipped = 0;
+            foreach (var type in AccessTools.GetTypesFromAssembly(asm))
+            {
+                try
+                {
+                    // No-op (empty list) for types without [HarmonyPatch]; throws only when a
+                    // real patch class fails to bind its target — precisely what we isolate.
+                    var patched = h.CreateClassProcessor(type).Patch();
+                    if (patched != null && patched.Count > 0) applied++;
+                }
+                catch (Exception e)
+                {
+                    skipped++;
+                    BismuthLog.Log("[patch] SKIPPED " + type.FullName + " — " + e.Message
+                        + " (likely a game API change; other patches unaffected)");
+                }
+            }
+            BismuthLog.Log("[patch] applied " + applied + " class(es)"
+                + (skipped > 0 ? ", SKIPPED " + skipped + " (see above)" : ""));
         }
 
         // Time.frameCount == 0 during koren UMM's static-ctor injection window. Calling

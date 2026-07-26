@@ -19,7 +19,12 @@ namespace Bismuth
            select, etc). Falls back to the regular weight when absent. */
         private static TMP_FontAsset _boldTmpFont;
 
-        private struct TmpState { public TMP_FontAsset Font; public float Size; public float LineSpacing; public FontStyles Style; public bool AutoSize; public float SizeMin, SizeMax; }
+        /* Mat: the text's material at cache time. Restoring `.font` alone resets TMP to the
+           font asset's DEFAULT material, but the game configures text via per-instance
+           materials — RDString.SetLocalizedFont carries _UnderlayColor/_UnderlayDilate across
+           font stamps through `fontMaterial` — so e.g. the news sign got the default's dark
+           outline after a disable instead of its own clean instance. */
+        private struct TmpState { public TMP_FontAsset Font; public Material Mat; public float Size; public float LineSpacing; public FontStyles Style; public bool AutoSize; public float SizeMin, SizeMax; }
 
         // Legacy game Text and 3D TextMesh are rendered via shadows (TMP). Only game TMP
         // is still swapped in place; its original state is cached here for Restore.
@@ -791,7 +796,15 @@ namespace Bismuth
            Editor-scene text keeps metric normalization only: vanilla, just our font. */
         private static bool IsEditorUi(Component c)
         {
-            try { return c.gameObject.scene.name == "scnEditor"; }
+            try
+            {
+                if (c.gameObject.scene.name != "scnEditor") return false;
+                // The autoplay controls-tip (pan/stop-autoplay help, new in 3.3.0) is a
+                // HUD-style overlay, not a hand-fitted editor form panel, so it takes the
+                // normal game-text downscale like gameplay HUD text.
+                try { if (ReferenceEquals(c, scnEditor.instance?.controlsTip)) return false; } catch { }
+                return true;
+            }
             catch { return false; }
         }
 
@@ -1052,7 +1065,8 @@ namespace Bismuth
             {
                 st = new TmpState
                 {
-                    Font = t.font, Size = t.fontSize, LineSpacing = t.lineSpacing, Style = t.fontStyle,
+                    Font = t.font, Mat = t.fontSharedMaterial,
+                    Size = t.fontSize, LineSpacing = t.lineSpacing, Style = t.fontStyle,
                     AutoSize = t.enableAutoSizing, SizeMin = t.fontSizeMin, SizeMax = t.fontSizeMax,
                 };
                 _origTmp[t] = st;
@@ -1060,6 +1074,7 @@ namespace Bismuth
             else if (!IsOurTmpFont(t.font))
             {
                 st.Font = t.font; // re-stamped since cached, see ApplyText
+                st.Mat = t.fontSharedMaterial;
                 _origTmp[t] = st;
             }
             // CLS "신규!" badges (TMP) must not wrap — set before the early-out below so it
@@ -1155,6 +1170,8 @@ namespace Bismuth
                 if (kv.Key != null)
                 {
                     kv.Key.font = kv.Value.Font;
+                    // After the font, or set_font would stomp it back to the default again.
+                    if (kv.Value.Mat != null) kv.Key.fontSharedMaterial = kv.Value.Mat;
                     kv.Key.fontSize = kv.Value.Size;
                     kv.Key.lineSpacing = kv.Value.LineSpacing;
                     kv.Key.fontStyle = kv.Value.Style;

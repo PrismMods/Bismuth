@@ -134,17 +134,20 @@ namespace Bismuth
                 catch { }
                 if (editing) return true;
             }
-            if (s.HideKeyViewerInMainMenu &&
-                _mainMenuScenes.Contains(UnityEngine.SceneManagement.SceneManager.GetActiveScene().name))
+            if (s.HideKeyViewerInMainMenu && _mainMenuScenes.Contains(_activeScene))
                 return true;
             return false;
         }
 
         // Single source of truth for canvas visibility: enabled AND not scene-suppressed.
-        private void UpdateCanvasVisibility()
+        // The per-frame Update path passes its already-computed `hidden` to avoid a second
+        // HiddenForScene call; other callers compute it here.
+        private void UpdateCanvasVisibility() => UpdateCanvasVisibility(HiddenForScene(_settings));
+
+        private void UpdateCanvasVisibility(bool hidden)
         {
             if (_canvas == null || _settings == null) return;
-            bool show = AnyViewerOn(_settings) && !HiddenForScene(_settings) && !PauseMenuOpen;
+            bool show = AnyViewerOn(_settings) && !hidden && !PauseMenuOpen;
             if (_canvas.gameObject.activeSelf != show) _canvas.gameObject.SetActive(show);
         }
 
@@ -161,6 +164,11 @@ namespace Bismuth
             DontDestroyOnLoad(go);
             var kv = go.AddComponent<KeyViewer>();
             Instance = kv;
+            // Cache the active scene name off the change event: Scene.name allocates a fresh
+            // string every read, and HiddenForScene checked it every frame.
+            UnityEngine.SceneManagement.SceneManager.activeSceneChanged += OnActiveSceneChanged;
+            try { _activeScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name; }
+            catch { _activeScene = ""; }
             kv._settings = settings;
             kv.BuildCanvas();
             if (NeedsPersist(settings))
@@ -333,7 +341,16 @@ namespace Bismuth
 
         private void OnDestroy()
         {
+            UnityEngine.SceneManagement.SceneManager.activeSceneChanged -= OnActiveSceneChanged;
             if (Instance == this) Instance = null;
+        }
+
+        // Active scene name, refreshed only on scene change (not per frame).
+        private static string _activeScene = "";
+        private static void OnActiveSceneChanged(UnityEngine.SceneManagement.Scene from,
+                                                 UnityEngine.SceneManagement.Scene to)
+        {
+            try { _activeScene = to.name; } catch { _activeScene = ""; }
         }
 
         private void BuildCanvas()

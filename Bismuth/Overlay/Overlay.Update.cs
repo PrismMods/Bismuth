@@ -42,8 +42,12 @@ namespace Bismuth
             if (judgementTexts != null && judgementTexts.Length > 8)
             {
                 bool nf = scrController.instance?.noFail ?? false;
-                if (judgementTexts[0] != null) judgementTexts[0].gameObject.SetActive(nf);
-                if (judgementTexts[8] != null) judgementTexts[8].gameObject.SetActive(nf);
+                if (nf != _lastNoFail)
+                {
+                    _lastNoFail = nf;
+                    if (judgementTexts[0] != null) judgementTexts[0].gameObject.SetActive(nf);
+                    if (judgementTexts[8] != null) judgementTexts[8].gameObject.SetActive(nf);
+                }
             }
 
             if (settings.ShowComboDisplay && comboDisplayValue != null)
@@ -77,6 +81,7 @@ namespace Bismuth
             if (settings.Precision != _lastPrecision)
             {
                 _lastPrecision = settings.Precision;
+                _fmt = "F" + settings.Precision;
                 _lastProgressT = -1f;
                 _lastBpm = -1f;
                 _lastTileBpmVal = -1f;
@@ -86,7 +91,25 @@ namespace Bismuth
 
             if (!inLevel || scrController.instance == null) return;
 
-            string fmt = "F" + settings.Precision;
+            // Best % advances on full attempts even while the overlay is hidden, so track it
+            // before the visibility gate below.
+            if (_isFullAttempt)
+            {
+                float bp = Mathf.Floor(Mathf.Clamp01(scrController.instance.percentComplete) * 10000f) / 10000f;
+                if (bp > _bestPct)
+                {
+                    _bestPct = bp;
+                    _bestDirty = true;
+                    UpdateBestText();
+                }
+            }
+
+            // Nothing below is visible when the overlay/combo canvas is hidden (off, paused,
+            // hide-all) — skip the whole per-frame stat pipeline. `show` already includes
+            // _editMode, so the layout editor still renders.
+            if (!show) return;
+
+            string fmt = _fmt;
 
             if (settings.ShowProgress && progressValue != null)
             {
@@ -241,19 +264,6 @@ namespace Bismuth
                     }
                 }
             }
-
-            // Best % — only full (from-0%) attempts advance it. Quantized like the progress
-            // row so the text isn't rebuilt every frame of a record run.
-            if (_isFullAttempt)
-            {
-                float bp = Mathf.Floor(Mathf.Clamp01(scrController.instance.percentComplete) * 10000f) / 10000f;
-                if (bp > _bestPct)
-                {
-                    _bestPct = bp;
-                    _bestDirty = true;
-                    UpdateBestText();
-                }
-            }
         }
 
         private void UpdateBestText()
@@ -316,7 +326,7 @@ namespace Bismuth
         private void RefreshDisplay(bool includeAccuracy = true)
         {
             var s = MainClass.Settings;
-            string fmt = "F" + s.Precision;
+            string fmt = _fmt;
             var trackers = scrMistakesManager.marginTrackers;
             int playerCount = trackers?.Length ?? 0;
 

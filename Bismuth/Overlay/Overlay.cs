@@ -142,6 +142,11 @@ namespace Bismuth
         private float _lastTimingScale = -1f;
         private int _lastComboDisplay = -1;
         private int _lastPrecision = -1;
+        // Cached "F<precision>" numeric format, rebuilt only when Precision changes — the
+        // per-frame `"F" + Precision` string concat was a steady gameplay allocation.
+        private string _fmt = "F2";
+        // Last no-fail state pushed to the judgement toggles, so SetActive fires only on change.
+        private bool? _lastNoFail;
         // Duration rows show elapsed/total; totals computed lazily per attempt, elapsed
         // text rebuilt only when the displayed second ticks.
         private float _songDurTotal = -1f;
