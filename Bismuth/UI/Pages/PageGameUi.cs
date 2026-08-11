@@ -44,7 +44,7 @@ namespace Bismuth.UI.Pages
             var content = stack.Root;
             // A subpage's "Reset to default" can clear an element's Hidden flag — re-tint
             // the cards whenever a subpage pops back to the root.
-            stack.OnRootRevealed = RebuildElements;
+            stack.OnRootRevealed += RebuildElements;
 
             // ── Layout ─────────────────────────────────────────────────────
             UIBuilder.SectionHeaderWithHelp(content, "Layout",
@@ -80,7 +80,7 @@ namespace Bismuth.UI.Pages
                     RebuildTitleWeightRow();
                     if (optionsHost != null) optionsHost.SetActive(true);
                 },
-                defaultOption: "Game default",
+                defaultOption: Loc.T("Game default"),
                 defaultSelected: !s.GameTextUseOverlayFont,
                 onDefault: () =>
                 {
@@ -151,7 +151,7 @@ namespace Bismuth.UI.Pages
             UIBuilder.NavCard(grid, "Judgements",
                 () => _stack.Push("Judgements", BuildJudgementsBody), "size, weight");
             UIBuilder.NavCard(grid, "Level Name",
-                () => _stack.Push("Level Name", BuildLevelNameBody), "position, scale, weight, song title");
+                () => _stack.Push("Level Name", BuildLevelNameBody), "position, scale, weight, song title, overlay font, game font");
             UIBuilder.NavCard(grid, "Error Meter",
                 () => _stack.Push("Error Meter", BuildMeterBody), "override position, scale, reset, hitmeter");
         }
@@ -160,7 +160,7 @@ namespace Bismuth.UI.Pages
         private static void HideUiNote(Transform body, string toggleName)
         {
             var row = UIBuilder.Row(body, 22f);
-            var t = UIBuilder.Label(row.transform, "Visibility lives in Hide UI → " + toggleName,
+            var t = UIBuilder.Label(row.transform, Loc.T("Visibility lives in Hide UI → ") + toggleName,
                 (int)UIBuilder.LabelFontSize - 2, TextAnchor.MiddleLeft, Theme.TextMuted);
             t.rectTransform.offsetMin = new Vector2(8f, 0);
         }
@@ -181,6 +181,14 @@ namespace Bismuth.UI.Pages
         {
             var s = UICore.Settings;
             HideUiNote(body, "Song title");
+
+            /* The song title is the one game element the Game Font sweep deliberately skips —
+               GameFontApplier.Skip() excludes txtLevelName because it's rendered through the
+               overlay's shadow pipeline instead. That was only reachable by editing XML, so
+               "Game Font doesn't change the song title" looked like a bug. Surface the switch
+               here, where someone chasing that goes looking. */
+            UIBuilder.Collapsible(body, "Use overlay font", s.LevelNameUseOverlayFont,
+                v => { s.LevelNameUseOverlayFont = v; UICore.OnSettingsChanged?.Invoke(); }, null);
             UIBuilder.Slider(body, "Position X", s.LevelNameX, -LevelNameRange, LevelNameRange,
                 v => { s.LevelNameX = v; Overlay.Instance?.ApplyLevelNameTransform(); }, "0", 1f);
             UIBuilder.Slider(body, "Position Y", s.LevelNameY, -LevelNameRange, LevelNameRange,

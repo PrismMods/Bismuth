@@ -17,6 +17,8 @@ namespace Bismuth
         public string Token = "";    // "Tab" / "KPS" / "Total" / "A" / "[" / etc.
         public string Label = null;  // optional display override; null = auto from Token
         public float WidthMul = 1f;  // relative width within its row (default 1.0)
+        // Per-key label size override in pt. 0 = use the preset's Label size.
+        public int LabelSize = 0;
     }
 
     public class KeyViewerRow
@@ -24,6 +26,13 @@ namespace Bismuth
         public List<KeyViewerCell> Cells = new List<KeyViewerCell>();
         public float Height = 60f;
         public KvColor RainColor = null;
+        // Set once the user picks a rain color for this row. Accent-as-theme leaves those
+        // rows alone; without the flag it can't tell a chosen color from the factory blue.
+        public bool RainColorCustom = false;
+        /* Per-row rain width in px. 0 = derive from the preset's Width step by row depth,
+           which is what shipped — and why Width step could never narrow the TOP row (depth 0).
+           Set it per row to control the first row, or any row, independently. */
+        public float RainWidth = 0f;
         public bool ShowRain = true;
 
         public void EnsureDefaults()
@@ -217,6 +226,18 @@ namespace Bismuth
         public bool OptPhysicsNonAlloc = true;
         public bool OptUnloadAssets = true;
         public bool OptVolumeTrackDOTween = true;
+        // Ported from Quartz's optimizer module — skip ScreenTile/ScreenScroll shader passes
+        // that are configured to do nothing (1x tiling, zero scroll).
+        public bool OptSkipNoOpScreenFilters = true;
+        // Ported from Quartz's optimizer module — frees RenderTextures/Textures the game
+        // orphans (decoration materials, camera RT, workshop thumbnails, practice waveform).
+        public bool OptLeakGuard = true;
+        // Ported from Quartz's optimizer module — forces VideoBloom off its high-quality path.
+        public bool OptFastBloom = false;
+        /* Ported from Quartz's optimizer module — mixes the whole hit-sound track down on a
+           background thread instead of one scheduled AudioSource per hit. OFF by default:
+           it changes audio timing, which must be verified by ear, not by a build. */
+        public bool OptRenderAllHitSounds = false;
 
         // Developer mode: reveals the Misc → Debug tools and shows [dbg] lines in the log viewer.
         public bool DebugMode = false;
@@ -435,6 +456,11 @@ namespace Bismuth
         // ON out of the box — the "Default" profile IS the class defaults (red theme);
         // the "Azure" built-in restores the classic periwinkle, theme off.
         public bool AccentAsTheme = true;
+        // Panel language: 0 = follow the game's setting, 1 = English, 2 = Korean.
+        public int PanelLanguage = 0;
+        /* Name of the profile currently loaded, for display only. Set AFTER Profiles.CopyInto,
+           which would otherwise overwrite it with the value stored inside the loaded file. */
+        public string ActiveProfile = "Default";
 
         private ColorGradient _themeGradient;          // generic (BPM/TBPM/KPS): near-white pop at t=1
         private ColorGradient _themeProgressGradient;  // perfect = brightened accent

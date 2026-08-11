@@ -124,7 +124,7 @@ namespace Bismuth.UI.Pages
                     UnityEngine.Object.Destroy(c.gameObject);
                 }
 
-                MakeChip(stripGo.transform, listener.Active ? "■ Stop" : "● Listen",
+                MakeChip(stripGo.transform, listener.Active ? Loc.T("■ Stop") : Loc.T("● Listen"),
                     listener.Active, () =>
                     {
                         listener.Active = !listener.Active;

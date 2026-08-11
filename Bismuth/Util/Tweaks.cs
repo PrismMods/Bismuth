@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace Bismuth
 {
-    // Support hooks for the "Tweaks" tab. (The editor helpers — autoplay pause key, tile
+    // Support hooks for the Misc tab's custom-level section. (The editor helpers — autoplay pause key, tile
     // angle, Editor Mode — moved to the Sapphire mod.)
     internal static class Tweaks
     {

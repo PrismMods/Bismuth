@@ -91,6 +91,19 @@ namespace Bismuth
             }
             SetRow(timingScaleRow, timingScaleLabel, timingScaleValue, settings.TimingScaleSize);
 
+            // XPerfect may have been enabled since the row was built — rebuild it if the
+            // column set changed, else its columns never appear without a game restart.
+            XPerfectBridge.Rescan();
+            InvalidateJudgementColumns();
+            if (judgementsContainer != null && judgementTexts != null
+                && judgementTexts.Length != JudgementColumns.Length)
+            {
+                for (int i = judgementsContainer.childCount - 1; i >= 0; i--)
+                    Destroy(judgementsContainer.GetChild(i).gameObject);
+                judgementsRow = MakeJudgementsRow(judgementsContainer.gameObject, out judgementTexts);
+                _lastNoFail = null; // re-apply the no-fail column visibility to the new texts
+            }
+
             int judgementFs = Mathf.RoundToInt(RowBaseFontSize * settings.JudgementsSize);
             if (judgementsContainer != null)
             {

@@ -82,6 +82,7 @@ namespace Bismuth
                     {
                         _rainEnabled.Add(kc);
                         if (cfg.RainColor != null) _rainColors[kc] = cfg.RainColor;
+                        _rainRowCfg[kc] = cfg;
                     }
                 }
             }
@@ -139,7 +140,7 @@ namespace Bismuth
                         _totalCells.Add(CreateStatCell(panel, "Total", center, slotW, cellH, preset));
                     else if (TryParseKey(tok, out KeyCode kc))
                     {
-                        CreateKeyCell(panel, kc, center, slotW, cellH, preset);
+                        CreateKeyCell(panel, kc, center, slotW, cellH, preset, cell);
                         _rainX[kc] = cx;
                         _rainRowIndex[kc] = topRowGlobal;
                         topKeyX.Add(cx);
@@ -149,6 +150,7 @@ namespace Bismuth
                 _rowPanelH[topRowGlobal] = totalH;
                 _rowKeyW[topRowGlobal] = keyW;
                 _rowRainDepth[topRowGlobal] = 0;
+                _rowRainWidth[topRowGlobal] = rowCfgs[0].RainWidth;
                 _rowGap[topRowGlobal] = gap;
                 _rowPreset[topRowGlobal] = preset;
 
@@ -219,7 +221,7 @@ namespace Bismuth
                         _totalCells.Add(CreateStatCell(panel, "Total", center, slot, cellH, preset));
                     else if (TryParseKey(tok, out KeyCode kc))
                     {
-                        CreateKeyCell(panel, kc, center, slot, cellH, preset);
+                        CreateKeyCell(panel, kc, center, slot, cellH, preset, cell);
                         _rainX[kc] = cx;
                         _rainRowIndex[kc] = globalR;
                         _lowerRowRainKeys.Add(kc);
@@ -229,6 +231,7 @@ namespace Bismuth
                 _rowPanelH[globalR] = totalH;
                 _rowKeyW[globalR] = keyW;
                 _rowRainDepth[globalR] = mi;
+                _rowRainWidth[globalR] = rowCfgs[mi].RainWidth;
                 _rowGap[globalR] = gap;
                 _rowPreset[globalR] = preset;
 
@@ -267,7 +270,7 @@ namespace Bismuth
         }
 
         private void CreateKeyCell(Transform parent, KeyCode key, Vector2 center, float cellW, float cellH,
-            KeyViewerPreset preset)
+            KeyViewerPreset preset, KeyViewerCell cell = null)
         {
             string label = _customLabels.TryGetValue(key, out string custom) ? custom : GetDisplayName(key);
             var go = new GameObject(label);
@@ -296,7 +299,10 @@ namespace Bismuth
             Vector2 countMax = preset.ShowLabel ? new Vector2(1f, 0.5f) : new Vector2(1f, 1f);
 
             TextMeshProUGUI nameText  = preset.ShowLabel
-                ? MakeLabel(go.transform, label, labelMin, labelMax, preset.LabelSize, false, preset.TxtIdle.ToColor())
+                // Per-key size wins; 0 means "follow the preset".
+                ? MakeLabel(go.transform, label, labelMin, labelMax,
+                    (cell != null && cell.LabelSize > 0) ? cell.LabelSize : preset.LabelSize,
+                    false, preset.TxtIdle.ToColor())
                 : null;
             TextMeshProUGUI countText = preset.ShowCount
                 ? MakeLabel(go.transform, presetCounts[key].ToString(), countMin, countMax, preset.CountSize, true, preset.CountIdle.ToColor())

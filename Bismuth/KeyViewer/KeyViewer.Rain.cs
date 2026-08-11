@@ -254,15 +254,16 @@ namespace Bismuth
             }
         }
 
-        // Theme mode dictates rain outright: top row plain white, lower rows accent.
-        // Stored row colors are ignored while it's on — the factory presets ship a stock
-        // blue RainColor, so "only recolor defaults" left everything blue. Ghost rain
-        // keeps its own color (custom or the yellow default).
+        // Theme mode dictates rain: top row plain white, lower rows accent. It only overrides
+        // colors the user never chose — the factory presets ship a stock blue RainColor, so
+        // "only recolor defaults" left everything blue, but silently ignoring a color picked
+        // in row settings looked like a broken picker. Ghost rain keeps its own color too.
         private Color ThemeRain(KeyCode key, Color c)
         {
             var s = MainClass.Settings;
             if (s == null || !s.AccentAsTheme) return c;
             if (_ghostKeys.Contains(key)) return c;
+            if (_rainRowCfg.TryGetValue(key, out var row) && row.RainColorCustom) return c;
             return _lowerRowRainKeys.Contains(key)
                 ? new Color(s.UiAccentR, s.UiAccentG, s.UiAccentB, c.a)
                 : new Color(1f, 1f, 1f, c.a);
@@ -281,7 +282,9 @@ namespace Bismuth
             float rowGap = _rowGap.TryGetValue(rowIdx, out var gp) ? gp : 4f;
             float widthStep = preset != null ? preset.RainWidthStep : 14f;
 
-            float w = Mathf.Max(4f, rowKeyW - rainDepth * widthStep);
+            // Per-row override wins; otherwise narrow by depth (top row = depth 0 = full width).
+            float rowW = _rowRainWidth.TryGetValue(rowIdx, out var rw) ? rw : 0f;
+            float w = rowW > 0f ? rowW : Mathf.Max(4f, rowKeyW - rainDepth * widthStep);
             Transform layer = layerRt;
             float startY = rowPanelH * 0.5f + rowGap * 0.5f;
 

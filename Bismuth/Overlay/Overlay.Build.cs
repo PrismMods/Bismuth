@@ -201,9 +201,9 @@ namespace Bismuth
 
         private static GameObject MakeJudgementsRow(GameObject parent, out TextMeshProUGUI[] texts)
         {
-            texts = new TextMeshProUGUI[DisplayedMargins.Length];
+            texts = new TextMeshProUGUI[JudgementColumns.Length];
 
-            for (int i = 0; i < DisplayedMargins.Length; i++)
+            for (int i = 0; i < JudgementColumns.Length; i++)
             {
                 var go = new GameObject($"J{i}", typeof(RectTransform));
                 go.transform.SetParent(parent.transform, false);

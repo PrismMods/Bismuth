@@ -1,6 +1,6 @@
 namespace Bismuth.UI.Pages
 {
-    // "Tweaks" tab — small game-behaviour overrides (editor helpers live on the Editor tab).
+    // Custom-level tweaks, shown at the top of the Misc tab (editor helpers live in Sapphire).
     internal static class PageTweaks
     {
         public static void Build(PageStack stack)

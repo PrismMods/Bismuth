@@ -194,8 +194,11 @@ namespace Bismuth
             if (timingScaleValue != null)  { timingScaleValue.text  = "---%";   timingScaleValue.color  = Dim; }
             for (int i = 0; i < _judgementCounts.Length; i++) _judgementCounts[i] = 0;
             if (judgementTexts != null)
-                for (int i = 0; i < judgementTexts.Length; i++)
-                    if (judgementTexts[i] != null) { judgementTexts[i].text = "0"; judgementTexts[i].color = MarginColor(DisplayedMargins[i]); }
+            {
+                var cols = JudgementColumns;
+                for (int i = 0; i < judgementTexts.Length && i < cols.Length; i++)
+                    if (judgementTexts[i] != null) { judgementTexts[i].text = "0"; judgementTexts[i].color = ColumnColor(cols[i]); }
+            }
         }
 
         public void ResetAttempts()

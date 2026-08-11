@@ -44,13 +44,21 @@ namespace Bismuth.UI
             // <2 chars filters color-channel sliders (R/G/B/A) and other non-entries.
             if (_suspend > 0 || _tabIndex < 0 || string.IsNullOrEmpty(label) || label.Trim().Length < 2)
                 return;
+            /* Index the LOCALIZED label but keep the English as a keyword, so a setting is
+               findable by either name whatever the panel language is. Loc.T is identity for
+               anything it has no entry for, which also makes this safe if a caller localized
+               the label before registering. */
+            string localized = Loc.T(label);
+            if (localized != label)
+                keywords = string.IsNullOrEmpty(keywords) ? label : keywords + "," + label;
+
             string[] kw = null;
             if (!string.IsNullOrEmpty(keywords))
             {
                 kw = keywords.Split(',');
                 for (int i = 0; i < kw.Length; i++) kw[i] = kw[i].Trim();
             }
-            _entries.Add(new Entry { Label = label.Trim(), Tab = _tab, TabIndex = _tabIndex, Open = open, Keywords = kw });
+            _entries.Add(new Entry { Label = localized.Trim(), Tab = Loc.T(_tab), TabIndex = _tabIndex, Open = open, Keywords = kw });
         }
 
         internal static List<Result> Query(string q, int max)
@@ -348,7 +356,7 @@ namespace Bismuth.UI
             phRect.anchorMax = Vector2.one;
             phRect.offsetMin = new Vector2(8f, 0);
             phRect.offsetMax = new Vector2(-8f, 0);
-            var ph = UIBuilder.Tmp(phGo, "Search settings...", 13, TextAnchor.MiddleLeft, Theme.TextMuted);
+            var ph = UIBuilder.Tmp(phGo, Loc.T("Search settings..."), 13, TextAnchor.MiddleLeft, Theme.TextMuted);
 
             _searchInput = UIBuilder.BuildInputField(box, txt);
             _searchInput.placeholder = ph;
@@ -550,7 +558,7 @@ namespace Bismuth.UI
             fdImg.color = Theme.PanelBorder;
             fdImg.raycastTarget = false;
 
-            var hint = UIBuilder.Label(footer.transform, ToggleHint + " to toggle", 12, TextAnchor.MiddleLeft, Theme.TextMuted);
+            var hint = UIBuilder.Label(footer.transform, ToggleHint + Loc.T(" to toggle"), 12, TextAnchor.MiddleLeft, Theme.TextMuted);
             hint.rectTransform.offsetMin = new Vector2(10f, 0f);
             hint.rectTransform.offsetMax = new Vector2(-10f, 0f);
 

@@ -189,7 +189,7 @@ namespace Bismuth.UI
 
         private static void ChooseLoader(string keep, string del)
         {
-            _body.text = "Delete the unused copy?\n" + del +
+            _body.text = Loc.T("Delete the unused copy?\n") + del +
                          "\n(Your settings and counters are carried over if needed.)";
             _body.fontSize = 12;
             SetButtons(
@@ -202,14 +202,14 @@ namespace Bismuth.UI
             if (UpdateChecker.DeleteInstall(keep, del, out string error, out bool deletedActive))
             {
                 _body.text = deletedActive
-                    ? "Deleted. This session keeps running; restart the game with your selected loader."
-                    : "Deleted the unused copy.";
+                    ? Loc.T("Deleted. This session keeps running; restart the game with your selected loader.")
+                    : Loc.T("Deleted the unused copy.");
                 SetButtons(("Close", Close));
                 return;
             }
             // Failed deletes re-prompt every launch; offer the opt-out here so a locked
             // file (seen under Wine) doesn't nag forever.
-            _body.text = "Delete failed: " + error +
+            _body.text = Loc.T("Delete failed: ") + error +
                 "\nClose the game and delete the folder manually, or stop asking.";
             SetButtons(("Stop asking", KeepBoth), ("Close", Close));
         }

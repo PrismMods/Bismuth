@@ -393,14 +393,14 @@ namespace Bismuth.UI
             bg.color = Theme.Accent;
             bg.raycastTarget = true;
 
-            var lbl = UIBuilder.Label(btn.transform, "✓ Done editing", (int)UIBuilder.LabelFontSize,
+            var lbl = UIBuilder.Label(btn.transform, Loc.T("✓ Done editing"), (int)UIBuilder.LabelFontSize,
                 TextAnchor.MiddleCenter, Color.black);
             lbl.fontStyle = FontStyles.Bold;
 
             ClickHandler.Attach(btn, Close);
 
             var hint = UIBuilder.Label(_canvasGo.transform,
-                "Drag to move (Shift: 1 axis)  ·  Grips / scroll to scale  ·  Right-click reset  ·  Ctrl/⌘+Z undo",
+                Loc.T("Drag to move (Shift: 1 axis)  ·  Grips / scroll to scale  ·  Right-click reset  ·  Ctrl/⌘+Z undo"),
                 (int)UIBuilder.SmallCapsFontSize, TextAnchor.MiddleCenter, Theme.TextMuted);
             var hintRect = hint.rectTransform;
             hintRect.anchorMin = hintRect.anchorMax = new Vector2(0.5f, 1f);

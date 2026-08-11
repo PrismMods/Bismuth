@@ -67,6 +67,8 @@ namespace Bismuth
                 Directory.CreateDirectory(Dir);
                 using (var w = new StreamWriter(Path.Combine(Dir, name + ".xml"), false))
                     new XmlSerializer(typeof(Settings)).Serialize(w, MainClass.Settings);
+                // Saving makes it the live profile — the settings on screen ARE its contents.
+                MainClass.Settings.ActiveProfile = name;
                 BismuthLog.Log("Profiles: saved '" + name + "'");
                 return true;
             }
@@ -111,6 +113,8 @@ namespace Bismuth
                 src.EnsureDefaults();
                 CopyInto(src, MainClass.Settings);
                 MainClass.Settings.EnsureDefaults();
+                // After CopyInto — it copies every field, including the file's own ActiveProfile.
+                MainClass.Settings.ActiveProfile = name;
                 BismuthLog.Log("Profiles: loaded '" + name + "'");
                 return true;
             }
