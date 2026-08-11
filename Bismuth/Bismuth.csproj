@@ -92,6 +92,8 @@
         <Compile Include="Settings\Settings.cs" />
         <Compile Include="Patches\Patches.cs" />
         <Compile Include="Patches\Optimizations.cs" />
+        <Compile Include="Patches\LeakGuard.cs" />
+        <Compile Include="Patches\HitSoundRenderer.cs" />
         <Compile Include="Util\AttemptsStore.cs" />
         <Compile Include="Util\LevelKey.cs" />
         <Compile Include="Util\BismuthLog.cs" />
@@ -101,6 +103,8 @@
         <Compile Include="Util\OsShell.cs" />
         <Compile Include="Util\GameFontApplier.cs" />
         <Compile Include="Util\GameTextShadow.cs" />
+        <Compile Include="Util\XPerfectBridge.cs" />
+        <Compile Include="Util\Loc.cs" />
         <Compile Include="Util\GameTextMeshShadow.cs" />
         <Compile Include="Util\GameProbe.cs" />
         <Compile Include="Util\GameUiLayout.cs" />

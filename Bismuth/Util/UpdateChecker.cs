@@ -25,7 +25,7 @@ namespace Bismuth
         /* UMMCompat doesn't populate modEntry.Info.Repository from Info.json, so
            the repo URL falls back to this hardcoded value. */
         private const string FallbackRepoUrl =
-            "https://raw.githubusercontent.com/sbrothers7/Bismuth/main/Repository.json";
+            "https://raw.githubusercontent.com/PrismMods/Bismuth/main/Repository.json";
 
         private static UpdateChecker _inst;
 
@@ -261,7 +261,7 @@ namespace Bismuth
             // ".../releases/download/v1.2.3/Bismuth.zip" → ".../releases"
             int cut = _downloadUrl?.IndexOf("/download/", StringComparison.Ordinal) ?? -1;
             string releasesPage = cut > 0 ? _downloadUrl.Substring(0, cut)
-                                          : "https://github.com/sbrothers7/Bismuth/releases";
+                                          : "https://github.com/PrismMods/Bismuth/releases";
 
             BismuthLog.Log($"Update available: v{_current} → v{latest}");
             UpdatePopup.Show(_current?.ToString() ?? "?", latest.ToString(), releasesPage,

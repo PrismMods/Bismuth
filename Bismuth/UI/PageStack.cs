@@ -42,6 +42,9 @@ namespace Bismuth.UI
 
         public void Push(string title, Action<Transform> build, bool rebuildOnReveal = false)
         {
+            // Subpage titles are the same nouns as the rows that open them, so this mostly
+            // reuses table entries that already exist.
+            title = Loc.T(title);
             var current = TopContainer();
             if (_views.Count > 0) _views[_views.Count - 1].SavedScrollY = _content.anchoredPosition.y;
             else _rootScrollY = _content.anchoredPosition.y;
@@ -167,7 +170,7 @@ namespace Bismuth.UI
             backLblRect.anchorMax = Vector2.one;
             backLblRect.offsetMin = Vector2.zero;
             backLblRect.offsetMax = Vector2.zero;
-            UIBuilder.Tmp(backLbl, "← Back", (int)UIBuilder.LabelFontSize, TextAnchor.MiddleCenter, Theme.Text);
+            UIBuilder.Tmp(backLbl, Loc.T("← Back"), (int)UIBuilder.LabelFontSize, TextAnchor.MiddleCenter, Theme.Text);
             ClickHandler.Attach(backBtn, Pop);
 
             var titleGo = UIBuilder.Rect("Title", topRow.transform);

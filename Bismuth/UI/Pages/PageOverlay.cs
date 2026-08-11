@@ -198,7 +198,7 @@ namespace Bismuth.UI.Pages
                     // the top edge, Progress perfect color at 100%.
                     var hintRow = UIBuilder.Row(body, 24f);
                     var hint = UIBuilder.Label(hintRow.transform,
-                        "Style 1: white fill along the top edge; flashes the Progress perfect color at 100%.",
+                        Loc.T("Style 1: white fill along the top edge; flashes the Progress perfect color at 100%."),
                         (int)UIBuilder.LabelFontSize - 2, TextAnchor.MiddleLeft, Theme.TextMuted);
                     hint.rectTransform.offsetMin = new Vector2(8f, 0);
                 }), "height, style");
@@ -399,7 +399,9 @@ namespace Bismuth.UI.Pages
             Func<string> get, Action<string> set, bool includeHeaviest = false,
             Func<string> fontName = null)
         {
+            // Host object keeps the ENGLISH label in its name (it's an id, not display text).
             var host = UIBuilder.VGroup(parent, "Weight_" + label);
+            label = Loc.T(label);
             var nameSource = fontName ?? (() => UICore.Settings.EffectiveStatsFont);
 
             Action rebuild = null;

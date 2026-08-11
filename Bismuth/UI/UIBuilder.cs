@@ -131,6 +131,7 @@ namespace Bismuth.UI
 
         public static GameObject SectionHeader(Transform parent, string text)
         {
+            text = Loc.T(text);
             SettingsSearch.Register(text);
             var go = Rect(text + "Header", parent);
             var le = go.AddComponent<LayoutElement>();
@@ -148,6 +149,7 @@ namespace Bismuth.UI
         // scroll viewport instead of being clipped by RectMask2D.
         public static GameObject SectionHeaderWithHelp(Transform parent, string text, string helpText)
         {
+            text = Loc.T(text); helpText = Loc.T(helpText);
             SettingsSearch.Register(text);
             var go = Rect(text + "Header", parent);
             var le = go.AddComponent<LayoutElement>();
@@ -250,6 +252,7 @@ namespace Bismuth.UI
 
         public static GameObject Toggle(Transform parent, string label, bool initial, Action<bool> onChange)
         {
+            label = Loc.T(label);
             SettingsSearch.Register(label);
             var row = Row(parent);
             bool value = initial;
@@ -317,6 +320,7 @@ namespace Bismuth.UI
             Action<bool> onToggle,
             Action<Transform> buildBody = null)
         {
+            title = Loc.T(title);
             SettingsSearch.Register(title);
             var container = Rect("Coll", parent);
             var clVlg = container.AddComponent<VerticalLayoutGroup>();
@@ -474,6 +478,7 @@ namespace Bismuth.UI
             bool hasToggle, bool initial, Action<bool> onToggle, Action onOpen, string keywords)
         {
             SettingsSearch.Register(title, onOpen, keywords);
+            title = Loc.T(title);
             var row = Row(parent);
             var bg = SolidImage(row, new Color(0, 0, 0, 0));
             bg.raycastTarget = true;
@@ -593,6 +598,7 @@ namespace Bismuth.UI
         {
             SettingsSearch.Register(label, onOpen, keywords);
             var card = Rect("Card_" + label, parent);
+            label = Loc.T(label);
             bool value = initial;
             bool hover = false;
 
@@ -715,6 +721,7 @@ namespace Bismuth.UI
 
         public static GameObject Button(Transform parent, string label, Action onClick)
         {
+            label = Loc.T(label);
             SettingsSearch.Register(label);
             var row = Row(parent);
             var bg = SolidImage(row, Theme.ButtonBg);
@@ -751,6 +758,7 @@ namespace Bismuth.UI
             float step = 0f)
         {
             SettingsSearch.Register(label);
+            label = Loc.T(label);
             var row = Row(parent);
             const float labelW = 140f;
             const float valueW = 56f;
@@ -888,7 +896,7 @@ namespace Bismuth.UI
             undoBg.AAFringe = 0.5f;
             undoBg.color = new Color(Theme.ToggleOn.r, Theme.ToggleOn.g, Theme.ToggleOn.b, 0.18f);
             undoBg.raycastTarget = true;
-            var undoLbl = Label(undoGo.transform, "Undo", 13, TextAnchor.MiddleCenter, Theme.Text);
+            var undoLbl = Label(undoGo.transform, Loc.T("Undo"), 13, TextAnchor.MiddleCenter, Theme.Text);
             undoLbl.raycastTarget = false;
             undoGo.SetActive(false);
 
@@ -1019,6 +1027,7 @@ namespace Bismuth.UI
             Action<int> onChange,
             IList<TMP_FontAsset> optionFonts = null)
         {
+            label = Loc.T(label);
             SettingsSearch.Register(label);
             int idx = Mathf.Clamp(currentIndex, 0, options.Count - 1);
 
@@ -1203,6 +1212,7 @@ namespace Bismuth.UI
             string initial,
             Action<string> onCommit)
         {
+            label = Loc.T(label);
             SettingsSearch.Register(label);
             var row = Row(parent);
             const float labelW = 140f;
@@ -1619,7 +1629,7 @@ namespace Bismuth.UI
                 {
                     var hintRow = Row(editorHost.transform, 24f);
                     var hint = Label(hintRow.transform,
-                        grad.Stops.Count == 0 ? "No stops yet — add one below" : "Click a stop on the strip to edit it",
+                        grad.Stops.Count == 0 ? Loc.T("No stops yet — add one below") : Loc.T("Click a stop on the strip to edit it"),
                         (int)LabelFontSize - 2, TextAnchor.MiddleLeft, Theme.TextMuted);
                     hint.rectTransform.offsetMin = new Vector2(8f, 0);
                     return;
@@ -1688,6 +1698,7 @@ namespace Bismuth.UI
             Action<Color> onChange)
         {
             SettingsSearch.Register(label);
+            label = Loc.T(label);
             var container = Rect("ColorPicker", parent);
             var clVlg = container.AddComponent<VerticalLayoutGroup>();
             clVlg.childControlWidth = true;
@@ -1806,9 +1817,115 @@ namespace Bismuth.UI
                 hexInput.characterLimit = 9;
             }
 
-            // --- RGB(A) sliders ---
-            // We use the existing Slider factory but bypass its individual onChange:
-            // every channel routes through a single ApplyComponent → RefreshDisplay → notify.
+            /* --- Palette: saturation/value square + hue strip (+ alpha strip) ---
+               H/S/V are kept alongside `current` because RGB→HSV round-tripping loses hue at
+               S=0 or V=0: dragging into the black or white corner would otherwise snap the
+               strip back to red and the square would change under the cursor. */
+            Color.RGBToHSV(current, out float h, out float sat, out float val);
+
+            // Pull H/S/V back out of an RGB edit (slider or HEX). Hue is undefined for black
+            // and greys, so keep the last one there rather than letting the strip snap to red.
+            Action<Color> syncHsv = c => {
+                Color.RGBToHSV(c, out float nh, out float ns, out float nv);
+                if (ns > 0f && nv > 0f) h = nh;
+                sat = ns; val = nv;
+            };
+
+            const float padH = 150f, stripW = 18f, stripGap = 8f;
+            var paletteRow = Rect("Palette", bodyGo.transform);
+            var paletteLe = paletteRow.AddComponent<LayoutElement>();
+            paletteLe.preferredHeight = padH;
+            paletteLe.minHeight = padH;
+            paletteRow.transform.SetAsFirstSibling(); // above the HEX row, which was built first
+
+            int stripCount = hasAlpha ? 2 : 1;
+            float stripsW = stripCount * (stripW + stripGap);
+
+            // Saturation/value square
+            var svGo = Rect("SV", paletteRow.transform);
+            var svRect = (RectTransform)svGo.transform;
+            svRect.anchorMin = new Vector2(0, 0);
+            svRect.anchorMax = new Vector2(1, 1);
+            svRect.pivot = new Vector2(0, 0.5f);
+            svRect.offsetMin = new Vector2(8f, 0f);
+            svRect.offsetMax = new Vector2(-(stripsW + 8f), 0f);
+            var svHue = svGo.AddComponent<Image>();
+            svHue.sprite = Theme.White;
+            svHue.raycastTarget = true;
+            Image Overlay(Transform p, Sprite sprite, Color tint)
+            {
+                var go = Rect("Ov", p);
+                var rt = (RectTransform)go.transform;
+                rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+                rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
+                var img = go.AddComponent<Image>();
+                img.sprite = sprite;
+                img.color = tint;
+                img.raycastTarget = false;
+                return img;
+            }
+            Overlay(svGo.transform, Theme.WhiteFadeRight, Color.white);
+            Overlay(svGo.transform, Theme.BlackFadeUp, Color.white);
+
+            var svKnob = Rect("Knob", svGo.transform);
+            var svKnobRect = (RectTransform)svKnob.transform;
+            svKnobRect.sizeDelta = new Vector2(12f, 12f);
+            var svKnobG = svKnob.AddComponent<RoundedRectGraphic>();
+            svKnobG.Radius = 6f;
+            svKnobG.BorderWidth = 2f;
+            svKnobG.BorderColor = Color.white;
+            svKnobG.color = new Color(0, 0, 0, 0);
+            svKnobG.raycastTarget = false;
+
+            // Vertical strip factory — index 0 sits rightmost.
+            GameObject Strip(string name, Sprite sprite, int slot, out RectTransform knob, out Image tintTarget)
+            {
+                var go = Rect(name, paletteRow.transform);
+                var rt = (RectTransform)go.transform;
+                rt.anchorMin = new Vector2(1, 0);
+                rt.anchorMax = new Vector2(1, 1);
+                rt.pivot = new Vector2(1, 0.5f);
+                rt.sizeDelta = new Vector2(stripW, 0f);
+                rt.anchoredPosition = new Vector2(-(slot * (stripW + stripGap)), 0f);
+                var img = go.AddComponent<Image>();
+                img.sprite = sprite;
+                img.raycastTarget = true;
+                tintTarget = img;
+
+                var k = Rect("Knob", go.transform);
+                knob = (RectTransform)k.transform;
+                knob.anchorMin = new Vector2(0, 0); knob.anchorMax = new Vector2(1, 0);
+                knob.pivot = new Vector2(0.5f, 0.5f);
+                knob.sizeDelta = new Vector2(6f, 4f);
+                var kg = k.AddComponent<RoundedRectGraphic>();
+                kg.Radius = 2f;
+                kg.BorderWidth = 1.5f;
+                kg.BorderColor = Color.white;
+                kg.color = new Color(0, 0, 0, 0.35f);
+                kg.raycastTarget = false;
+                return go;
+            }
+
+            var hueGo = Strip("Hue", Theme.HueRamp, 0, out RectTransform hueKnob, out _);
+            GameObject alphaGo = null;
+            RectTransform alphaKnob = null;
+            Image alphaTint = null;
+            if (hasAlpha)
+            {
+                // Dark plate behind the fading color so low alpha reads as transparent.
+                var plate = Rect("AlphaPlate", paletteRow.transform);
+                var pr = (RectTransform)plate.transform;
+                pr.anchorMin = new Vector2(1, 0); pr.anchorMax = new Vector2(1, 1);
+                pr.pivot = new Vector2(1, 0.5f);
+                pr.sizeDelta = new Vector2(stripW, 0f);
+                pr.anchoredPosition = new Vector2(-(stripW + stripGap), 0f);
+                var plateImg = plate.AddComponent<Image>();
+                plateImg.sprite = Theme.White;
+                plateImg.color = new Color(1, 1, 1, 0.16f);
+                plateImg.raycastTarget = false;
+                alphaGo = Strip("Alpha", Theme.WhiteFadeDown, 1, out alphaKnob, out alphaTint);
+            }
+
             SliderControl rCtrl = null, gCtrl = null, bCtrl = null, aCtrl = null;
 
             Action refresh = null;
@@ -1819,27 +1936,75 @@ namespace Bismuth.UI
                     : ColorUtility.ToHtmlStringRGB(current));
                 hexText.text = hex;
                 if (hexInput != null && !hexInput.isFocused) hexInput.text = hex;
+
                 if (rCtrl != null) { rCtrl.Value = current.r * 255f; rCtrl.ApplyVisuals(); }
                 if (gCtrl != null) { gCtrl.Value = current.g * 255f; gCtrl.ApplyVisuals(); }
                 if (bCtrl != null) { bCtrl.Value = current.b * 255f; bCtrl.ApplyVisuals(); }
                 if (aCtrl != null) { aCtrl.Value = current.a * 255f; aCtrl.ApplyVisuals(); }
+
+                svHue.color = Color.HSVToRGB(h, 1f, 1f);
+                svKnobRect.anchorMin = svKnobRect.anchorMax = new Vector2(sat, val);
+                svKnobRect.anchoredPosition = Vector2.zero;
+                hueKnob.anchorMin = new Vector2(0, h);
+                hueKnob.anchorMax = new Vector2(1, h);
+                hueKnob.anchoredPosition = Vector2.zero;
+                if (alphaKnob != null)
+                {
+                    alphaTint.color = new Color(current.r, current.g, current.b, 1f);
+                    alphaKnob.anchorMin = new Vector2(0, current.a);
+                    alphaKnob.anchorMax = new Vector2(1, current.a);
+                    alphaKnob.anchoredPosition = Vector2.zero;
+                }
             };
 
-            GameObject MakeChannel(string ch, Func<float> get, Action<float> set)
+            // HSV is the source of truth while dragging; alpha is carried through untouched.
+            Action commitHsv = () => {
+                var rgb = Color.HSVToRGB(h, sat, val);
+                current = new Color(rgb.r, rgb.g, rgb.b, current.a);
+                refresh();
+                onChange?.Invoke(current);
+            };
+
+            var svPad = svGo.AddComponent<ColorPadControl>();
+            svPad.Area = svRect;
+            svPad.OnChange = p => { sat = p.x; val = p.y; commitHsv(); };
+
+            var huePad = hueGo.AddComponent<ColorPadControl>();
+            huePad.Area = (RectTransform)hueGo.transform;
+            huePad.OnChange = p => { h = p.y; commitHsv(); };
+
+            if (alphaGo != null)
             {
-                var row = Slider(bodyGo.transform, ch, get() * 255f, 0f, 255f, v => {
+                var alphaPad = alphaGo.AddComponent<ColorPadControl>();
+                alphaPad.Area = (RectTransform)alphaGo.transform;
+                alphaPad.OnChange = p =>
+                {
+                    current.a = p.y;
+                    refresh();
+                    onChange?.Invoke(current);
+                };
+            }
+
+            /* --- R/G/B/A sliders, below the palette and HEX ---
+               Every channel routes through one refresh → notify, like the HEX row. RGB edits
+               re-derive H/S/V so a later square or hue drag resumes from what's on screen;
+               alpha is independent of HSV and leaves it alone. */
+            GameObject MakeChannel(string ch, Action<float> set, bool isAlpha)
+            {
+                float initialValue = (isAlpha ? current.a : ch == "R" ? current.r : ch == "G" ? current.g : current.b) * 255f;
+                return Slider(bodyGo.transform, ch, initialValue, 0f, 255f, v => {
                     set(Mathf.Clamp01(v / 255f));
+                    if (!isAlpha) syncHsv(current);
                     refresh();
                     onChange?.Invoke(current);
                 }, "0", 1f);
-                return row;
             }
 
-            rCtrl = MakeChannel("R", () => current.r, x => current.r = x).GetComponentInChildren<SliderControl>();
-            gCtrl = MakeChannel("G", () => current.g, x => current.g = x).GetComponentInChildren<SliderControl>();
-            bCtrl = MakeChannel("B", () => current.b, x => current.b = x).GetComponentInChildren<SliderControl>();
+            rCtrl = MakeChannel("R", x => current.r = x, false).GetComponentInChildren<SliderControl>();
+            gCtrl = MakeChannel("G", x => current.g = x, false).GetComponentInChildren<SliderControl>();
+            bCtrl = MakeChannel("B", x => current.b = x, false).GetComponentInChildren<SliderControl>();
             if (hasAlpha)
-                aCtrl = MakeChannel("A", () => current.a, x => current.a = x).GetComponentInChildren<SliderControl>();
+                aCtrl = MakeChannel("A", x => current.a = x, true).GetComponentInChildren<SliderControl>();
 
             // HEX commit — parse, apply, refresh + notify.
             hexInput.onEndEdit.AddListener(s => {
@@ -1849,6 +2014,9 @@ namespace Bismuth.UI
                 {
                     if (!hasAlpha) parsedColor.a = 1f;
                     current = parsedColor;
+                    // Re-derive HSV, else the next square/hue drag would resume from the
+                    // pre-typed color.
+                    syncHsv(current);
                     refresh();
                     onChange?.Invoke(current);
                 }
@@ -1888,6 +2056,7 @@ namespace Bismuth.UI
             Color current,
             Action<Color> onChange)
         {
+            label = Loc.T(label);
             var row = Row(parent, RowHeight + 8f);
             const float labelW = 140f;
             const float swatchSize = 18f;
@@ -1970,6 +2139,7 @@ namespace Bismuth.UI
         // Auto-reverts after 3s on its own timer if not confirmed.
         public static GameObject DangerButton(Transform parent, string label, Action onConfirm)
         {
+            label = Loc.T(label);
             SettingsSearch.Register(label);
             var row = Row(parent);
             var bg = SolidImage(row, Theme.DangerBg);
@@ -1997,7 +2167,7 @@ namespace Bismuth.UI
                 if (!armed)
                 {
                     armed = true;
-                    t.text = "Click again to confirm";
+                    t.text = Loc.T("Click again to confirm");
                     bg.color = Theme.DangerArmed;
                     state.StartTimer(3f);
                 }
@@ -2219,6 +2389,30 @@ namespace Bismuth.UI
     }
 
     // Click-and-drag handler living on the slider track. Pointer position → normalized t → value.
+    /* Normalized 0..1 drag over a rect, reported as (x, y) with y up. One control serves the
+       picker's saturation/value square (both axes) and its hue/alpha strips (y only) —
+       SliderControl can't, it's single-axis and owns a fill/handle/input triple. */
+    internal class ColorPadControl : MonoBehaviour, IPointerDownHandler, IDragHandler
+    {
+        public RectTransform Area;
+        public Action<Vector2> OnChange;
+
+        public void OnPointerDown(PointerEventData e) => Report(e);
+        public void OnDrag(PointerEventData e) => Report(e);
+
+        private void Report(PointerEventData e)
+        {
+            if (Area == null) return;
+            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(Area, e.position, e.pressEventCamera, out Vector2 local))
+                return;
+            var r = Area.rect;
+            if (r.width <= 0f || r.height <= 0f) return;
+            OnChange?.Invoke(new Vector2(
+                Mathf.Clamp01((local.x - r.xMin) / r.width),
+                Mathf.Clamp01((local.y - r.yMin) / r.height)));
+        }
+    }
+
     internal class SliderControl : MonoBehaviour, IPointerDownHandler, IDragHandler
     {
         public float Min, Max, Value;

@@ -31,7 +31,7 @@ namespace Bismuth.UI.Pages
             // Drop rebuild hooks accumulated by a previous panel build (force reload).
             _listRebuildAll = null;
             // Preset names can change while an editor subpage is open.
-            stack.OnRootRevealed = () => _listRebuildAll?.Invoke();
+            stack.OnRootRevealed += () => _listRebuildAll?.Invoke();
 
             BuildListView(stack.Root, s, notify, rebuild);
         }
@@ -104,7 +104,7 @@ namespace Bismuth.UI.Pages
             // Combine all preset-list rebuilds so returning to the root refreshes both hand and foot.
             _listRebuildAll = (_listRebuildAll ?? (Action)delegate { }) + listRebuild;
 
-            string label = isFoot ? "+ Add Foot Preset" : "+ Add Hand Preset";
+            string label = isFoot ? Loc.T("+ Add Foot Preset") : Loc.T("+ Add Hand Preset");
             UIBuilder.Button(parent, label, () =>
             {
                 var presets = isFoot ? s.KvFootPresets : s.KvHandPresets;
@@ -197,9 +197,17 @@ namespace Bismuth.UI.Pages
             });
 
             // Edit — opens the editor view
+            Action openEditor = () => OpenEditor(preset, isFoot, s, notify, rebuild);
             var editBtn = MakeMiniButton(row.transform, "Edit", editW,
                 anchoredX: -(delW + buttonGap * 2 + 8f),
-                onClick: () => OpenEditor(preset, isFoot, s, notify, rebuild));
+                onClick: openEditor);
+
+            /* This row is a bespoke widget, not a NavRow, so nothing registered it — which
+               left EVERY key viewer setting below it unsearchable (a user hunting "rain
+               color" had to know it lives under a row). Register the preset as the search
+               entry point with its subpages' contents as keywords, same as NavRow does. */
+            SettingsSearch.Register((isFoot ? Loc.T("Foot preset: ") : Loc.T("Hand preset: ")) + (preset.Name ?? "?"),
+                openEditor, EditorKeywords);
 
             // Delete (disabled when only 1 preset)
             var presets = isFoot ? s.KvFootPresets : s.KvHandPresets;
@@ -265,13 +273,25 @@ namespace Bismuth.UI.Pages
             return btn;
         }
 
+        /* Contents of the preset editor and its row/cell subpages, so search can reach
+           settings that only exist behind a drill-in. Keep in step with the labels those
+           pages build — `grep -oE '(Slider|Collapsible|ColorPicker|BindKv)\(body[^,]*, "[^"]+"'`
+           over this file lists them. */
+        private const string EditorKeywords =
+            "key width,radius,border,gap,scale,position,x,y,"
+            + "rain,rain color,key rain,fade start,track length,speed,width step,"
+            + "shadow size,shadow color,background,label text,count text,font size,"
+            + "persist counts,reset counters,ghost keys,custom rain color,"
+            + "row,row height,show rain,add row,cell,key,width,visible,"
+            + "hide in main menu,hide in level editor";
+
         // ── Editor view ────────────────────────────────────────────────────
 
         private static void OpenEditor(KeyViewerPreset preset, bool isFoot, Settings s, Action notify, Action rebuild)
         {
             // rebuildOnReveal: the row/cell submenus mutate the grid underneath, so the
             // editor re-reads the preset when they pop back to it.
-            _stack.Push((isFoot ? "Foot / " : "Hand / ") + preset.Name,
+            _stack.Push((isFoot ? Loc.T("Foot / ") : Loc.T("Hand / ")) + preset.Name,
                 body => BuildEditorContent(body, preset, isFoot, s, notify, rebuild),
                 rebuildOnReveal: true);
         }
@@ -288,7 +308,7 @@ namespace Bismuth.UI.Pages
 
             // Name + Reset Counters
             UIBuilder.TextInput(parent, "Name", preset.Name ?? "",
-                v => { preset.Name = v; _stack.RetitleTop((isFoot ? "Foot / " : "Hand / ") + v); notify?.Invoke(); });
+                v => { preset.Name = v; _stack.RetitleTop((isFoot ? Loc.T("Foot / ") : Loc.T("Hand / ")) + v); notify?.Invoke(); });
             UIBuilder.DangerButton(parent, "Reset counters for this preset", () =>
             {
                 if (KeyViewer.Instance != null)
@@ -383,7 +403,11 @@ namespace Bismuth.UI.Pages
             {
                 UIBuilder.Spacer(parent);
                 UIBuilder.SectionHeaderWithHelp(parent, "Ghost Keys",
-                    "Ghost keys spawn rain at the matching top-row position but don't count as input.");
+                    "Ghost keys spawn rain at the matching top-row position\n"
+                    + "but don't count as input.\n"
+                    + "Withholding them from the game needs the key limiter\n"
+                    + "on (Input tab) — with it off, they still spawn rain\n"
+                    + "but also hit tiles.");
                 BuildGhostSection(parent, preset, notify, rebuild);
             }
         }
@@ -462,7 +486,7 @@ namespace Bismuth.UI.Pages
 
                 if (slots == 0)
                 {
-                    MakeGhostChip(stripGo.transform, "(top row has no key cells)", false, null);
+                    MakeGhostChip(stripGo.transform, Loc.T("(top row has no key cells)"), false, null);
                     return;
                 }
 
@@ -574,12 +598,12 @@ namespace Bismuth.UI.Pages
                 {
                     var a = Theme.ToggleOn;
                     bg.color = new Color(a.r, a.g, a.b, hover ? 0.5f : 0.35f);
-                    label.text = "Rebind mode ON — click a key, press its new bind. Click here to finish.";
+                    label.text = Loc.T("Rebind mode ON — click a key, press its new bind. Click here to finish.");
                 }
                 else
                 {
                     bg.color = hover ? Theme.ButtonHover : Theme.ButtonBg;
-                    label.text = "Rebind Keys";
+                    label.text = Loc.T("Rebind Keys");
                 }
             }
             Paint();
@@ -750,7 +774,7 @@ namespace Bismuth.UI.Pages
         private static void BuildRowSettingsButton(Transform parent, KeyViewerPreset preset, bool isFoot, int rowIdx, Settings s, Action notify, Action rebuild)
         {
             const float w = 84f;
-            var btn = UIBuilder.Rect("Settings", parent);
+            var btn = UIBuilder.Rect(Loc.T("Settings"), parent);
             var le = btn.AddComponent<LayoutElement>();
             le.preferredWidth = w;
             le.preferredHeight = 32f;
@@ -931,7 +955,7 @@ namespace Bismuth.UI.Pages
             KeyViewerPreset preset, bool isFoot, int rowIdx,
             Settings s, Action notify, Action rebuild)
         {
-            _stack.Push("Row " + (rowIdx + 1), body =>
+            _stack.Push(Loc.T("Row") + " " + (rowIdx + 1), body =>
             {
                 var row = preset.Rows[rowIdx];
 
@@ -940,13 +964,17 @@ namespace Bismuth.UI.Pages
                     v => { row.Height = v; notify?.Invoke(); rebuild(); }, "0", 1f);
                 UIBuilder.Collapsible(body, "Show rain", row.ShowRain,
                     v => { row.ShowRain = v; notify?.Invoke(); rebuild(); }, null);
+                // 0 = follow the preset's Width step, which can't narrow the top row.
+                UIBuilder.Slider(body, "Rain width (0 = auto)", row.RainWidth, 0f, 200f,
+                    v => { row.RainWidth = v; notify?.Invoke(); rebuild(); }, "0", 1f);
 
                 EnsureKv(ref row.RainColor, 1, 1, 1, 1);
-                BindKv(body, "Rain color", row.RainColor, notify);
+                BindKv(body, "Rain color", row.RainColor,
+                    () => { row.RainColorCustom = true; notify?.Invoke(); });
 
                 UIBuilder.Spacer(body);
                 bool canDelete = preset.Rows.Count > 1;
-                UIBuilder.Button(body, canDelete ? "Delete this row" : "Delete this row (last row — disabled)", () =>
+                UIBuilder.Button(body, canDelete ? Loc.T("Delete this row") : Loc.T("Delete this row (last row — disabled)"), () =>
                 {
                     if (!canDelete) return;
                     preset.Rows.RemoveAt(rowIdx);
@@ -961,7 +989,7 @@ namespace Bismuth.UI.Pages
             KeyViewerPreset preset, bool isFoot, int rowIdx, int cellIdx,
             Settings s, Action notify, Action rebuild)
         {
-            _stack.Push("Row " + (rowIdx + 1) + " / Cell " + (cellIdx + 1), body =>
+            _stack.Push(Loc.T("Row") + " " + (rowIdx + 1) + " / " + Loc.T("Cell") + " " + (cellIdx + 1), body =>
             {
                 var cell = preset.Rows[rowIdx].Cells[cellIdx];
 
@@ -979,7 +1007,7 @@ namespace Bismuth.UI.Pages
                 tokenLblRect.pivot = new Vector2(0, 0.5f);
                 tokenLblRect.sizeDelta = new Vector2(140f, 0);
                 tokenLblRect.anchoredPosition = new Vector2(8f, 0);
-                UIBuilder.Tmp(tokenLblGo, "Bound key", (int)UIBuilder.LabelFontSize, TextAnchor.MiddleLeft, Theme.Text);
+                UIBuilder.Tmp(tokenLblGo, Loc.T("Bound key"), (int)UIBuilder.LabelFontSize, TextAnchor.MiddleLeft, Theme.Text);
                 var tokenValGo = UIBuilder.Rect("Val", tokenRow.transform);
                 var tokenValRect = (RectTransform)tokenValGo.transform;
                 tokenValRect.anchorMin = new Vector2(1, 0);
@@ -995,11 +1023,11 @@ namespace Bismuth.UI.Pages
                    the binding needs a first-class control here, not just row right-click. */
                 var listener = UIBuilder.Rect("CellRebindListener", body).AddComponent<KeyListener>();
                 TMPro.TextMeshProUGUI bindBtnLabel = null;
-                const string bindPrompt = "Change key — click, then press the new key";
+                string bindPrompt = Loc.T("Change key — click, then press the new key");
                 var bindBtn = UIBuilder.Button(body, bindPrompt, () =>
                 {
                     listener.Active = true;
-                    if (bindBtnLabel != null) bindBtnLabel.text = "Press a key… (Esc cancels)";
+                    if (bindBtnLabel != null) bindBtnLabel.text = Loc.T("Press a key… (Esc cancels)");
                 });
                 bindBtnLabel = bindBtn.GetComponentInChildren<TMPro.TextMeshProUGUI>();
                 listener.OnKey = kc =>
@@ -1027,6 +1055,9 @@ namespace Bismuth.UI.Pages
 
                 UIBuilder.Slider(body, "Width", cell.WidthMul, 0.25f, 4f,
                     v => { cell.WidthMul = v; notify?.Invoke(); rebuild(); }, "0.00");
+                // 0 = follow the preset's Label size (Main → Label Text).
+                UIBuilder.IntSlider(body, "Font size (0 = preset)", cell.LabelSize, 0, 48,
+                    v => { cell.LabelSize = v; notify?.Invoke(); rebuild(); });
 
                 UIBuilder.Spacer(body);
                 UIBuilder.Button(body, "Delete this cell", () =>

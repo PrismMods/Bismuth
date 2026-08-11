@@ -64,6 +64,8 @@ namespace Bismuth
 
         private static readonly Dictionary<ushort, KeyCode> _hidToKeyCode = new Dictionary<ushort, KeyCode>
         {
+            { 0x34, KeyCode.Quote },
+            { 0x35, KeyCode.BackQuote },
             { 0x39, KeyCode.CapsLock },
             { 0xE0, KeyCode.LeftControl },
             { 0xE1, KeyCode.LeftShift },
@@ -73,6 +75,28 @@ namespace Bismuth
             { 0xE5, KeyCode.RightShift },
             { 0xE6, KeyCode.RightAlt },
             { 0xE7, KeyCode.RightCommand },
+        };
+
+        // SkyHook.KeyLabel: 119 = IgnoredInternal, 120 = Unknown. Neither names a key, and
+        // UnityKeyToSkyHookKey returns Unknown for anything it can't map.
+        private const ushort LabelIgnored = 119;
+        private const ushort LabelUnknown = 120;
+
+        /* SkyHookKeyMapper's table has no entry for ' or ` — UnityKeyToSkyHookKey returns
+           Unknown for both and SkyHookKeyToUnityKey can't map their labels back. Two ways
+           that broke the limiter: an allowed ' / ` (the shipped 16k preset binds ` to the
+           Caps slot) put Unknown into _allowedLabels, so EVERY press the mapper couldn't
+           name counted as allowed; and their own presses resolved to nothing. Supply the
+           missing pairs ourselves — the labels exist, only the mapper's rows are absent. */
+        private static readonly Dictionary<KeyCode, ushort> _extraKeyToLabel = new Dictionary<KeyCode, ushort>
+        {
+            { KeyCode.Quote,     64 },  // KeyLabel.Apostrophe
+            { KeyCode.BackQuote, 25 },  // KeyLabel.Grave
+        };
+        private static readonly Dictionary<ushort, KeyCode> _extraLabelToKey = new Dictionary<ushort, KeyCode>
+        {
+            { 64, KeyCode.Quote },
+            { 25, KeyCode.BackQuote },
         };
 
         private static Dictionary<ushort, KeyCode> BuildVkMap()
@@ -165,6 +189,28 @@ namespace Bismuth
 
         private static System.Type _bsType;
 
+        // SkyHook label → Unity KeyCode. `label` is the boxed KeyLabel read off the entry;
+        // labelVal is its numeric value. KeyCode.None = the label names no key we know.
+        private static KeyCode KeyFromLabel(object label, ushort labelVal)
+        {
+            if (_extraLabelToKey.TryGetValue(labelVal, out KeyCode extra)) return extra;
+            if (labelVal == LabelIgnored || labelVal == LabelUnknown || _asyncToUnity == null)
+                return KeyCode.None;
+            var resolved = _asyncToUnity.Invoke(null, new object[] { label });
+            if (resolved == null) return KeyCode.None;
+            int kc = System.Convert.ToInt32(resolved);
+            return kc == (int)KeyCode.None ? KeyCode.None : (KeyCode)kc;
+        }
+
+        // Unity KeyCode → SkyHook label, or LabelUnknown when the key has none.
+        private static ushort LabelFromKey(KeyCode k)
+        {
+            if (_extraKeyToLabel.TryGetValue(k, out ushort extra)) return extra;
+            if (_unityToAsync == null) return LabelUnknown;
+            var lbl = _unityToAsync.Invoke(null, new object[] { k });
+            return lbl == null ? LabelUnknown : (ushort)System.Convert.ToInt32(lbl);
+        }
+
         // Resolve one GetStateKeys entry to a Unity KeyCode: direct KeyCode, SkyHook
         // label mapping, then the raw-key fallback table. KeyCode.None = unresolvable.
         private static KeyCode ResolveEntry(object val)
@@ -175,16 +221,8 @@ namespace Bismuth
 
             object label = _asyncKcLabel.GetValue(val);
             if (label == null) return KeyCode.None;
-            ushort labelVal = (ushort)System.Convert.ToInt32(label);
-            if (labelVal != 119 /* KeyLabel.Unknown */ && _asyncToUnity != null)
-            {
-                var resolved = _asyncToUnity.Invoke(null, new object[] { label });
-                if (resolved != null)
-                {
-                    int kc = System.Convert.ToInt32(resolved);
-                    if (kc != (int)KeyCode.None) return (KeyCode)kc;
-                }
-            }
+            var byLabel = KeyFromLabel(label, (ushort)System.Convert.ToInt32(label));
+            if (byLabel != KeyCode.None) return byLabel;
             if (_asyncKcKey != null)
             {
                 ushort raw = (ushort)System.Convert.ToInt32(_asyncKcKey.GetValue(val));
@@ -235,6 +273,7 @@ namespace Bismuth
             // Re-arm the per-session press diagnostics on every apply, so a tester can
             // refresh the log window by touching any setting before pressing keys.
             _pressDiagLeft = 24;
+            _failOpenLogged = false;
 
             _active = settings.KeyLimiterEnabled;
             _blockWhileOpen = settings.BlockInputsWhileMenuOpen;
@@ -244,17 +283,7 @@ namespace Bismuth
             _allowedLabels.Clear();
             _ghosts.Clear();
 
-            // Collect ghost keys from the active hand preset (foot doesn't support ghosts).
-            if (settings.Hand != null && settings.Hand.GhostKeysEnabled && settings.Hand.GhostKeys != null)
-            {
-                foreach (var tok in settings.Hand.GhostKeys)
-                {
-                    if (string.IsNullOrEmpty(tok) || tok == "None") continue;
-                    if (KeyViewer.TryParseKey(tok, out KeyCode kc)) _ghosts.Add(kc);
-                }
-            }
-
-            if (_chatterActive || _ghosts.Count > 0) EnsureReflection();
+            if (_chatterActive) EnsureReflection();
             if (!_active) return;
 
             EnsureReflection();
@@ -265,12 +294,10 @@ namespace Bismuth
             foreach (var k in source)
             {
                 _allowed.Add(k);
-                if (_unityToAsync != null)
-                {
-                    var lbl = _unityToAsync.Invoke(null, new object[] { k });
-                    if (lbl != null)
-                        _allowedLabels.Add((ushort)System.Convert.ToInt32(lbl));
-                }
+                // Unknown is the mapper's "no idea" answer — adding it would make every
+                // unnameable press match the allowed set.
+                ushort lbl = LabelFromKey(k);
+                if (lbl != LabelUnknown) _allowedLabels.Add(lbl);
             }
 
             // Fail-safe: an empty allowed set would block EVERY key — never a sensible
@@ -282,9 +309,24 @@ namespace Bismuth
                 BismuthLog.Debug("KeyLimiter.Apply: allowed set is empty — limiter treated as disabled");
             }
 
+            /* Ghost keys (active hand preset only — foot has none) spawn rain without hitting
+               a tile, so suppressing them is a second way Bismuth withholds presses from the
+               game. It rides the limiter toggle: collected only once the limiter is confirmed
+               active, so "limiter off" means every key reaches the game. Before this, a preset
+               with ghost keys ate them with the limiter disabled and nothing in the Input tab
+               could stop it. */
+            if (_active && settings.Hand != null && settings.Hand.GhostKeysEnabled && settings.Hand.GhostKeys != null)
+            {
+                foreach (var tok in settings.Hand.GhostKeys)
+                {
+                    if (string.IsNullOrEmpty(tok) || tok == "None") continue;
+                    if (KeyViewer.TryParseKey(tok, out KeyCode kc)) _ghosts.Add(kc);
+                }
+            }
+
             // Apply fires on every settings notify (incl. per-tick slider drags) — only
             // log when the effective state actually changed.
-            string state = $"KeyLimiter.Apply: enabled={_active} useKv={settings.KeyLimiterUseKvKeys} hand={(settings.Hand?.Name ?? "<null>")} foot={(settings.Foot?.Name ?? "<null>")} allowed=[{string.Join(",", _allowed)}] labels={_allowedLabels.Count}";
+            string state = $"KeyLimiter.Apply: enabled={_active} useKv={settings.KeyLimiterUseKvKeys} hand={(settings.Hand?.Name ?? "<null>")} foot={(settings.Foot?.Name ?? "<null>")} allowed=[{string.Join(",", _allowed)}] labels={_allowedLabels.Count} ghosts=[{string.Join(",", _ghosts)}]";
             if (state != _lastApplyLog)
             {
                 _lastApplyLog = state;
@@ -331,15 +373,13 @@ namespace Bismuth
         // Counts keys in the game's press list this frame that pass our filters (KeyLimiter
         // allowed-set + ChatterBlocker). Uses GetStateKeys (the game's own source, immune to
         // async timing) and is idempotent within a frame (chatter state is frame-cached).
-        // entryCount/anyResolved report how much of the press list we could even identify —
-        // the caller fails open when nothing resolves (platform key tables differ; a Linux
+        // Entries we can't name pass through untouched (platform key tables differ; a Linux
         // tester had every press eaten because SkyHook labels didn't match ours).
         private static bool _inCount;
+        private static bool _failOpenLogged;
         private static int _pressDiagLeft = 16; // one-time per-session press dump for ports
-        private static int CountAllowedInPressedKeys(out int entryCount, out bool anyResolved)
+        private static int CountAllowedInPressedKeys()
         {
-            entryCount = 0;
-            anyResolved = false;
             EnsureReflection();
             if (_getStateKeys == null || _anyKcValue == null) return 0;
 
@@ -349,7 +389,6 @@ namespace Bismuth
             finally { _inCount = false; }
 
             if (list == null) return 0;
-            entryCount = list.Count;
 
             if (_chatterActive && _chatterFrame != Time.frameCount)
             {
@@ -375,7 +414,6 @@ namespace Bismuth
                     int ki = (int)directKc;
                     isMouse = (ki >= (int)KeyCode.Mouse0 && ki <= (int)KeyCode.Mouse6);
                     allowed = isMouse || _allowed.Contains(directKc);
-                    anyResolved = true;
                     if (_pressDiagLeft > 0)
                     {
                         _pressDiagLeft--;
@@ -388,17 +426,8 @@ namespace Bismuth
                     if (label == null) continue;
                     ushort labelVal = (ushort)System.Convert.ToInt32(label);
 
-                    // Try the label-based resolution for known labels.
-                    if (labelVal != 119 /* KeyLabel.Unknown */ && _asyncToUnity != null)
-                    {
-                        var resolved = _asyncToUnity.Invoke(null, new object[] { label });
-                        if (resolved != null)
-                        {
-                            int kc = System.Convert.ToInt32(resolved);
-                            if (kc != (int)KeyCode.None) resolvedKey = (KeyCode)kc;
-                        }
-                        allowed = _allowedLabels.Contains(labelVal);
-                    }
+                    resolvedKey = KeyFromLabel(label, labelVal);
+                    allowed = _allowedLabels.Contains(labelVal);
 
                     // Raw-key fallback (platform table) for label=Unknown entries.
                     ushort rawKey = 0;
@@ -417,7 +446,6 @@ namespace Bismuth
                     if (!allowed && resolvedKey != KeyCode.None)
                         allowed = _allowed.Contains(resolvedKey);
 
-                    if (resolvedKey != KeyCode.None) anyResolved = true;
                     if (_pressDiagLeft > 0)
                     {
                         _pressDiagLeft--;
@@ -427,6 +455,21 @@ namespace Bismuth
 
                 // Ghost filter — always applies. Ghost-key presses are never input to the game.
                 if (resolvedKey != KeyCode.None && _ghosts.Contains(resolvedKey)) continue;
+
+                /* Fail open, per ENTRY: this platform's label/raw tables don't name this key,
+                   so filtering it would eat an input we can't identify. Was a whole-frame
+                   bail-out, which meant one unnameable key (' and ` resolved to nothing until
+                   _extraLabelToKey existed) let every key pressed alongside it through too. */
+                if (resolvedKey == KeyCode.None)
+                {
+                    n++;
+                    if (!_failOpenLogged)
+                    {
+                        _failOpenLogged = true;
+                        BismuthLog.Log("KeyLimiter: a press entry is unrecognized on this platform — it bypasses the limiter/chatter blocker. Please report with the [dbg] 'KeyLimiter press' lines.");
+                    }
+                    continue;
+                }
 
                 // Limiter filter
                 if (_active && !allowed) continue;
@@ -495,29 +538,13 @@ namespace Bismuth
                 return t != null ? AccessTools.Method(t, "GetMain") : null;
             }
 
-            private static bool _failOpenLogged;
-
             public static void Postfix(ButtonState __0, ref int __result)
             {
                 if (BlockInputs && __0 == ButtonState.WentDown) { __result = 0; return; }
                 // Skip when re-entering (GetStateKeys calls GetMain internally)
                 if ((!_active && !_chatterActive && _ghosts.Count == 0) || __result == 0 || __0 != ButtonState.WentDown || _inCount) return;
 
-                int allowed = CountAllowedInPressedKeys(out int entries, out bool anyResolved);
-                // Fail open: the game reports presses but not one of them resolved to a key
-                // identity we know. That means this platform's press entries don't match our
-                // label/HID tables (hit on Linux SkyHook) — filtering would eat every input,
-                // so leave the game's count untouched rather than brick gameplay.
-                if (entries > 0 && !anyResolved)
-                {
-                    if (!_failOpenLogged)
-                    {
-                        _failOpenLogged = true;
-                        BismuthLog.Log("KeyLimiter: press entries unrecognized on this platform — failing open (limiter/chatter inactive). Please report with the [dbg] 'KeyLimiter press' lines.");
-                    }
-                    return;
-                }
-                __result = Mathf.Min(__result, allowed);
+                __result = Mathf.Min(__result, CountAllowedInPressedKeys());
             }
         }
 

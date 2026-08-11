@@ -25,135 +25,12 @@ namespace Bismuth.UI.Pages
             UIBuilder.Button(content, "View log", LogViewer.Show);
 
             UIBuilder.Spacer(content);
-            BuildProfiles(content);
 
             // Debug sits under Profiles — its dumps/sweep traces write to the log above.
             BuildDebug(content, s, notify);
 
             UIBuilder.Spacer(content);
             BuildOptimizations(stack, content, s, notify);
-        }
-
-        // ── Profiles ───────────────────────────────────────────────────────
-        // Full-settings snapshots; the .xml files in the Profiles folder ARE the
-        // import/export format. Loading copies into the live Settings then rides the
-        // force-reload path (deferred, so the panel isn't torn down inside its own
-        // button handler).
-        private static void BuildProfiles(Transform content)
-        {
-            UIBuilder.SectionHeaderWithHelp(content, "Profiles",
-                "A profile snapshots ALL Bismuth settings.\n" +
-                "Load applies it and rebuilds the panel.\n" +
-                "Profiles are .xml files in the Profiles folder —\n" +
-                "share them, or drop one in and Rescan to import.");
-
-            var listHost = UIBuilder.VGroup(content, "ProfileList");
-            string pendingName = "";
-
-            System.Action rebuildList = null;
-            rebuildList = () =>
-            {
-                for (int i = listHost.transform.childCount - 1; i >= 0; i--)
-                {
-                    var c = listHost.transform.GetChild(i);
-                    c.SetParent(null);
-                    UnityEngine.Object.Destroy(c.gameObject);
-                }
-                foreach (var name in Profiles.BuiltIn)
-                    BuildProfileRow(listHost.transform, name, builtIn: true, rebuildList);
-                foreach (var name in Profiles.ListSaved())
-                    BuildProfileRow(listHost.transform, name, builtIn: false, rebuildList);
-            };
-            rebuildList();
-
-            UIBuilder.TextInput(content, "New profile name", "", v => pendingName = v);
-            UIBuilder.Button(content, "Save current settings as profile", () =>
-            {
-                if (Profiles.SaveCurrent(pendingName, out string err))
-                    rebuildList();
-                else
-                    BismuthLog.Log("Profiles: " + err);
-            });
-            UIBuilder.Button(content, "Rescan profiles folder", rebuildList);
-            UIBuilder.Button(content, "Open profiles folder", () => OsShell.OpenFolder(Profiles.ProfilesDir()));
-        }
-
-        private static void BuildProfileRow(Transform parent, string name, bool builtIn, System.Action rebuildList)
-        {
-            var row = UIBuilder.Row(parent);
-            var bg = UIBuilder.SolidImage(row, Theme.RowBg);
-            bg.raycastTarget = true;
-
-            var label = UIBuilder.Label(row.transform, builtIn ? name + "  (built-in)" : name,
-                (int)UIBuilder.LabelFontSize, TextAnchor.MiddleLeft, Theme.Text);
-            label.rectTransform.offsetMin = new Vector2(8f, 0);
-            label.rectTransform.offsetMax = new Vector2(-140f, 0);
-
-            MiniButton(row.transform, "Load", 56f, builtIn ? -8f : -44f, () =>
-            {
-                if (Profiles.Load(name, out string err))
-                    MainClass.RequestForceReload();
-                else
-                    BismuthLog.Log("Profiles: " + err);
-            });
-            if (!builtIn)
-                MiniButton(row.transform, "×", 28f, -8f, () =>
-                {
-                    if (Profiles.Delete(name, out string err)) rebuildList();
-                    else BismuthLog.Log("Profiles: " + err);
-                });
-        }
-
-        private static void MiniButton(Transform parent, string label, float width, float anchoredX, System.Action onClick)
-        {
-            var btn = UIBuilder.Rect(label, parent);
-            var rect = (RectTransform)btn.transform;
-            rect.anchorMin = rect.anchorMax = new Vector2(1f, 0.5f);
-            rect.pivot = new Vector2(1f, 0.5f);
-            rect.anchoredPosition = new Vector2(anchoredX, 0);
-            rect.sizeDelta = new Vector2(width, 22f);
-            var bg = btn.AddComponent<RoundedRectGraphic>();
-            bg.Radius = 3f;
-            bg.AAFringe = 0.5f;
-            bg.color = Theme.ButtonBg;
-            bg.raycastTarget = true;
-            var t = UIBuilder.Label(btn.transform, label, (int)UIBuilder.LabelFontSize - 1, TextAnchor.MiddleCenter, Theme.Text);
-            ClickHandler.Attach(btn, () => onClick());
-        }
-
-        // Optimizations drill into a subpage; the NavRow's ring is the master switch
-        // (Settings.OptimizationsEnabled gates every flag below it).
-        private static void BuildOptimizations(PageStack stack, Transform content, Settings s, System.Action notify)
-        {
-            UIBuilder.NavRow(content, "Optimizations", s.OptimizationsEnabled,
-                v => { s.OptimizationsEnabled = v; notify?.Invoke(); },
-                () => stack.Push("Optimizations", body =>
-                {
-                    UIBuilder.Collapsible(body, "Spectrum Throttle (every 2nd frame)", s.OptSpectrumThrottle,
-                        v => { s.OptSpectrumThrottle = v; notify?.Invoke(); }, null);
-                    Desc(body, "Halves AudioSource.GetSpectrumData FFT cost on levels that use audio visualization.");
-
-                    UIBuilder.Collapsible(body, "Texture Non-Readable", s.OptTextureNonReadable,
-                        v => { s.OptTextureNonReadable = v; notify?.Invoke(); }, null);
-                    Desc(body, "Frees CPU-side pixel data after GPU upload. Halves RAM per custom level texture.");
-
-                    UIBuilder.Collapsible(body, "DXT Compression (lossy)", s.OptTextureDXT,
-                        v => { s.OptTextureDXT = v; notify?.Invoke(); }, null);
-                    Desc(body, "Compresses textures to DXT before upload. 4-6x VRAM savings, slight quality loss. Requires Non-Readable.");
-
-                    UIBuilder.Collapsible(body, "Physics NonAlloc", s.OptPhysicsNonAlloc,
-                        v => { s.OptPhysicsNonAlloc = v; notify?.Invoke(); }, null);
-                    Desc(body, "Eliminates per-frame Collider2D[] allocation from decoration hitbox checks.");
-
-                    UIBuilder.Collapsible(body, "Unload Assets on Scene Change", s.OptUnloadAssets,
-                        v => { s.OptUnloadAssets = v; notify?.Invoke(); }, null);
-                    Desc(body, "Forces GC and unloads unused textures/audio between levels to reclaim memory.");
-
-                    UIBuilder.Collapsible(body, "Volume Track DOTween Fix", s.OptVolumeTrackDOTween,
-                        v => { s.OptVolumeTrackDOTween = v; notify?.Invoke(); }, null);
-                    Desc(body, "Prevents abandoned DOTween sequences from being created every frame on Volume-type track colors.");
-                }),
-                "spectrum throttle, texture non-readable, dxt compression, physics nonalloc, unload assets, dotween, volume track, performance, ram");
         }
 
         // Developer tools, revealed by the Debug mode toggle. Polls live game objects /
@@ -230,6 +107,7 @@ namespace Bismuth.UI.Pages
         // group's childControlHeight lets the Text's preferred height drive the row height.
         private static void Desc(Transform parent, string text)
         {
+            text = Loc.T(text);
             var wrap = UIBuilder.Rect("Desc", parent);
             var vlg = wrap.AddComponent<VerticalLayoutGroup>();
             vlg.childControlWidth = true;
@@ -240,6 +118,56 @@ namespace Bismuth.UI.Pages
 
             var t = UIBuilder.Label(wrap.transform, text, (int)UIBuilder.LabelFontSize - 2, TextAnchor.UpperLeft, Theme.TextMuted);
             t.textWrappingMode = TextWrappingModes.Normal;
+        }
+        // Optimizations drill into a subpage; the NavRow's ring is the master switch
+        // (Settings.OptimizationsEnabled gates every flag below it).
+        private static void BuildOptimizations(PageStack stack, Transform content, Settings s, System.Action notify)
+        {
+            UIBuilder.NavRow(content, "Optimizations", s.OptimizationsEnabled,
+                v => { s.OptimizationsEnabled = v; notify?.Invoke(); },
+                () => stack.Push("Optimizations", body =>
+                {
+                    UIBuilder.Collapsible(body, "Spectrum Throttle (every 2nd frame)", s.OptSpectrumThrottle,
+                        v => { s.OptSpectrumThrottle = v; notify?.Invoke(); }, null);
+                    Desc(body, "Halves AudioSource.GetSpectrumData FFT cost on levels that use audio visualization.");
+
+                    UIBuilder.Collapsible(body, "Texture Non-Readable", s.OptTextureNonReadable,
+                        v => { s.OptTextureNonReadable = v; notify?.Invoke(); }, null);
+                    Desc(body, "Frees CPU-side pixel data after GPU upload. Halves RAM per custom level texture.");
+
+                    UIBuilder.Collapsible(body, "DXT Compression (lossy)", s.OptTextureDXT,
+                        v => { s.OptTextureDXT = v; notify?.Invoke(); }, null);
+                    Desc(body, "Compresses textures to DXT before upload. 4-6x VRAM savings, slight quality loss. Requires Non-Readable.");
+
+                    UIBuilder.Collapsible(body, "Physics NonAlloc", s.OptPhysicsNonAlloc,
+                        v => { s.OptPhysicsNonAlloc = v; notify?.Invoke(); }, null);
+                    Desc(body, "Eliminates per-frame Collider2D[] allocation from decoration hitbox checks.");
+
+                    UIBuilder.Collapsible(body, "Unload Assets on Scene Change", s.OptUnloadAssets,
+                        v => { s.OptUnloadAssets = v; notify?.Invoke(); }, null);
+                    Desc(body, "Forces GC and unloads unused textures/audio between levels to reclaim memory.");
+
+                    UIBuilder.Collapsible(body, "Volume Track DOTween Fix", s.OptVolumeTrackDOTween,
+                        v => { s.OptVolumeTrackDOTween = v; notify?.Invoke(); }, null);
+                    Desc(body, "Prevents abandoned DOTween sequences from being created every frame on Volume-type track colors.");
+
+                    UIBuilder.Collapsible(body, "Skip No-Op Screen Filters", s.OptSkipNoOpScreenFilters,
+                        v => { s.OptSkipNoOpScreenFilters = v; notify?.Invoke(); }, null);
+                    Desc(body, "Skips the screen tile/scroll shader passes when they are set to do nothing.");
+
+                    UIBuilder.Collapsible(body, "Leak Guard", s.OptLeakGuard,
+                        v => { s.OptLeakGuard = v; notify?.Invoke(); }, null);
+                    Desc(body, "Frees textures the game replaces without destroying (decorations, camera, thumbnails, waveforms).");
+
+                    UIBuilder.Collapsible(body, "Fast Bloom", s.OptFastBloom,
+                        v => { s.OptFastBloom = v; notify?.Invoke(); }, null);
+                    Desc(body, "Drops bloom to its cheaper path. Visibly softer glow — off by default.");
+
+                    UIBuilder.Collapsible(body, "Render All Hit Sounds", s.OptRenderAllHitSounds,
+                        v => { s.OptRenderAllHitSounds = v; if (!v) HitSoundRenderer.StopAll("setting off"); notify?.Invoke(); }, null);
+                    Desc(body, "Pre-mixes hit sounds on a background thread instead of scheduling one voice each. Experimental — check timing by ear.");
+                }),
+                "spectrum throttle, texture non-readable, dxt compression, physics nonalloc, unload assets, dotween, volume track, screen filters, tile, scroll, leak guard, vram, textures, bloom, hit sounds, audio, performance, ram");
         }
     }
 }

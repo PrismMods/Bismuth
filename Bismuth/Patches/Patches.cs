@@ -150,6 +150,17 @@ namespace Bismuth
 
         // RDString.SetLocalizedFont stamps each language's OWN font over our swap (the
         // language-selector previews reverted while cycling). Re-apply ours right after.
+        // Panel strings are resolved at build time, so a mid-session language switch needs a
+        // rebuild to take effect. Force reload already re-runs BuildUI.
+        [HarmonyPatch(typeof(RDString), "ChangeLanguage")]
+        private static class LanguageChangePatch
+        {
+            public static void Postfix()
+            {
+                if (MainClass.IsEnabled) MainClass.RequestForceReload();
+            }
+        }
+
         [HarmonyPatch(typeof(RDString), "SetLocalizedFont", new[] { typeof(Text) })]
         private static class LocalizedFontTextPatch
         {

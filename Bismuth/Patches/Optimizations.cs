@@ -57,6 +57,65 @@ namespace Bismuth
        aren't needed, since nothing duplicates the texture anymore. The LoadTexture postfix
        above still makes the loaded texture non-readable, which is now safe on its own. */
 
+    /* Ported from Quartz's optimizer module (UserData/Quartz/Module/optimizer.qmod,
+       NoOpScreenTilePatch / NoOpScreenScrollPatch). Both of these full-screen image effects
+       run their shader pass every frame even when configured to do nothing — tiling of 1x1,
+       or zero scroll offset AND speed. In that case a straight Blit is identical output for
+       one less material pass. Quartz reaches the fields by reflection because it must run on
+       many game versions; Bismuth compiles against Assembly-CSharp, and both classes' fields
+       are public, so it can read them directly.
+
+       Thresholds match Quartz's helpers exactly: IsOne = |v - 1| <= 1e-4, IsZero =
+       sqrMagnitude <= 1e-8. Parameters bind by name against the game's own
+       (sourceTexture, destTexture). */
+    /* Ported from Quartz's optimizer module (FastBloomPatch). VideoBloom's high-quality path
+       costs extra downsample/blur passes every frame; forcing it off for the duration of the
+       render and restoring it afterwards keeps the game's own setting untouched (it's a public
+       field the game and its options menu still own). Postfix restores unconditionally, so a
+       throw inside OnRenderImage can't strand the flag off. */
+    [HarmonyPatch(typeof(VideoBloom), "OnRenderImage")]
+    internal static class FastBloomPatch
+    {
+        public static void Prefix(VideoBloom __instance, out bool __state)
+        {
+            __state = __instance.HighQuality;
+            if (MainClass.Settings.OptimizationsEnabled && MainClass.Settings.OptFastBloom)
+                __instance.HighQuality = false;
+        }
+
+        public static void Postfix(VideoBloom __instance, bool __state) => __instance.HighQuality = __state;
+    }
+
+    [HarmonyPatch(typeof(ScreenTile), "OnRenderImage")]
+    internal static class ScreenTileNoOpPatch
+    {
+        public static bool Prefix(ScreenTile __instance, RenderTexture sourceTexture, RenderTexture destTexture)
+        {
+            if (!MainClass.Settings.OptimizationsEnabled || !MainClass.Settings.OptSkipNoOpScreenFilters)
+                return true;
+            if (!IsOne(__instance.tileX) || !IsOne(__instance.tileY)) return true;
+            Graphics.Blit(sourceTexture, destTexture);
+            return false;
+        }
+
+        internal static bool IsOne(float v) => Mathf.Abs(v - 1f) <= 0.0001f;
+    }
+
+    [HarmonyPatch(typeof(ScreenScroll), "OnRenderImage")]
+    internal static class ScreenScrollNoOpPatch
+    {
+        public static bool Prefix(ScreenScroll __instance, RenderTexture sourceTexture, RenderTexture destTexture)
+        {
+            if (!MainClass.Settings.OptimizationsEnabled || !MainClass.Settings.OptSkipNoOpScreenFilters)
+                return true;
+            if (!IsZero(__instance.scrollOffset) || !IsZero(__instance.scrollSpeed)) return true;
+            Graphics.Blit(sourceTexture, destTexture);
+            return false;
+        }
+
+        private static bool IsZero(Vector2 v) => v.sqrMagnitude <= 1e-08f;
+    }
+
     // scrPlanet.Update's per-frame Physics2D.OverlapCircleAll allocates a Collider2D[]
     // each time. Use OverlapCircleNonAlloc into a static buffer, returning Array.Empty on
     // the common zero-hit case, to eliminate the per-frame allocation.

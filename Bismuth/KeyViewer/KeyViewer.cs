@@ -65,6 +65,11 @@ namespace Bismuth
         // Keys registered on a non-top row — accent-as-theme recolors only these (top-row
         // rain stays white by design).
         private readonly HashSet<KeyCode>             _lowerRowRainKeys = new HashSet<KeyCode>();
+        /* Row config per rain key, so accent-as-theme can read RainColorCustom LIVE. Snapshotting
+           it into a set meant picking a color did nothing until the next structural rebuild —
+           the picker only fires ApplySettings, so users had to toggle "Show rain" to see it.
+           _rainColors already holds live KvColor references for the same reason. */
+        private readonly Dictionary<KeyCode, KeyViewerRow> _rainRowCfg = new Dictionary<KeyCode, KeyViewerRow>();
         // Ghost keys: spawn rain only — no key cell, not in _keyCells, no count++, no KPS/Total contribution.
         private readonly HashSet<KeyCode>             _ghostKeys    = new HashSet<KeyCode>();
         private readonly Dictionary<int, RectTransform>      _rainLayers   = new Dictionary<int, RectTransform>();
@@ -72,6 +77,8 @@ namespace Bismuth
         private readonly Dictionary<int, float>              _rowPanelH    = new Dictionary<int, float>();
         private readonly Dictionary<int, float>              _rowKeyW      = new Dictionary<int, float>();
         private readonly Dictionary<int, int>                _rowRainDepth = new Dictionary<int, int>();
+        // Per-row rain width override in px; absent/0 = use the Width step formula.
+        private readonly Dictionary<int, float>              _rowRainWidth = new Dictionary<int, float>();
         private readonly Dictionary<int, float>              _rowGap       = new Dictionary<int, float>();
         private readonly Dictionary<int, KeyViewerPreset>    _rowPreset    = new Dictionary<int, KeyViewerPreset>();
 
@@ -386,6 +393,7 @@ namespace Bismuth
             _rainColors.Clear();
             _rainEnabled.Clear();
             _lowerRowRainKeys.Clear();
+            _rainRowCfg.Clear();
             _ghostKeys.Clear();
             _heldKeys.Clear();
             _rainX.Clear();
@@ -395,6 +403,7 @@ namespace Bismuth
             _rowPanelH.Clear();
             _rowKeyW.Clear();
             _rowRainDepth.Clear();
+            _rowRainWidth.Clear();
             _rowGap.Clear();
             _rowPreset.Clear();
             foreach (var p in _allPanels) if (p != null) Destroy(p);

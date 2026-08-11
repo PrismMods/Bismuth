@@ -119,5 +119,37 @@ namespace Bismuth.UI
                 return _whiteSprite;
             }
         }
+
+        /* Color-picker ramps. Built once and shared by every picker: the saturation/value
+           square is three stacked Images (hue fill, white fade right, black fade up) rather
+           than a texture regenerated on each hue drag, so nothing is rebuilt while dragging. */
+        private static Sprite _hueRamp, _whiteFadeRight, _blackFadeUp, _whiteFadeDown;
+
+        public static Sprite HueRamp => _hueRamp ?? (_hueRamp =
+            Ramp(1, 256, (x, y) => Color.HSVToRGB(y, 1f, 1f)));
+
+        public static Sprite WhiteFadeRight => _whiteFadeRight ?? (_whiteFadeRight =
+            Ramp(256, 1, (x, y) => new Color(1f, 1f, 1f, 1f - x)));
+
+        public static Sprite BlackFadeUp => _blackFadeUp ?? (_blackFadeUp =
+            Ramp(1, 256, (x, y) => new Color(0f, 0f, 0f, 1f - y)));
+
+        // Tinted by the picker to show the current color fading out downward.
+        public static Sprite WhiteFadeDown => _whiteFadeDown ?? (_whiteFadeDown =
+            Ramp(1, 256, (x, y) => new Color(1f, 1f, 1f, y)));
+
+        private static Sprite Ramp(int w, int h, System.Func<float, float, Color> f)
+        {
+            var t = new Texture2D(w, h, TextureFormat.RGBA32, false);
+            var px = new Color[w * h];
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                    px[y * w + x] = f(w > 1 ? x / (float)(w - 1) : 0f, h > 1 ? y / (float)(h - 1) : 0f);
+            t.SetPixels(px);
+            t.Apply();
+            t.wrapMode = TextureWrapMode.Clamp;
+            t.filterMode = FilterMode.Bilinear;
+            return Sprite.Create(t, new Rect(0, 0, w, h), new Vector2(0.5f, 0.5f));
+        }
     }
 }

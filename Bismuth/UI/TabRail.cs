@@ -77,9 +77,14 @@ namespace Bismuth.UI
             lr.anchorMax = new Vector2(1, 1);
             lr.offsetMin = new Vector2(12f, 0f);
             lr.offsetMax = Vector2.zero;
-            var lbl = UIBuilder.Tmp(labelGo, name, 15, TextAnchor.MiddleLeft, Theme.TextMuted);
+            /* The guard pins the LOCALIZED name. The game's source-text pass is what made the
+               guard necessary (it matched our English "Misc" and wrote 기타); once the label is
+               already Korean there's nothing for that pass to match, and the guard defends the
+               translated string rather than reverting to English. */
+            string shown = Loc.T(name);
+            var lbl = UIBuilder.Tmp(labelGo, shown, 15, TextAnchor.MiddleLeft, Theme.TextMuted);
             var guard = labelGo.AddComponent<TabLabelGuard>();
-            guard.Label = lbl; guard.Expected = name;
+            guard.Label = lbl; guard.Expected = shown;
 
             var pageGo = UIBuilder.Rect("Page_" + name, _pageHost);
             var pr = (RectTransform)pageGo.transform;
@@ -171,6 +176,7 @@ namespace Bismuth.UI
            Same ring+dot radio as UIBuilder.Toggle; the label dims while the mod is off. */
         public void AddMasterSwitch(string label, bool initial, Action<bool> onChange)
         {
+            label = Loc.T(label);
             const float rowH = 34f;
             var item = UIBuilder.Rect("MasterSwitch", _rail);
             var r = (RectTransform)item.transform;

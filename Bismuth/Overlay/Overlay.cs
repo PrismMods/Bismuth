@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -124,6 +125,65 @@ namespace Bismuth
             HitMargin.LatePerfect, HitMargin.VeryLate, HitMargin.TooLate,
             HitMargin.FailMiss,
         };
+
+        /* A judgement column is a HitMargin cast to int, except for these three: with the
+           XPerfect mod loaded, the Perfect column splits into its breakdown and the counts
+           come from XPerfect rather than _judgementCounts. Negative so they can never
+           collide with a HitMargin value. */
+        private const int ColXPerfect = -1, ColPlusPerfect = -2, ColMinusPerfect = -3;
+
+        private static int[] _columns;
+        // Dropped whenever XPerfect's availability might have changed, so the row can be rebuilt.
+        private static void InvalidateJudgementColumns() => _columns = null;
+
+        private static int[] JudgementColumns
+        {
+            get
+            {
+                if (_columns != null) return _columns;
+                var list = new List<int>(DisplayedMargins.Length + 2);
+                foreach (var m in DisplayedMargins)
+                {
+                    if (m == HitMargin.Perfect && XPerfectBridge.Available)
+                    {
+                        /* Early → late, matching the rest of the row (and the hit error meter
+                           above it). XPerfect's GetDetailedJudge assigns PlusPerfect when its
+                           signed delta is NEGATIVE, and its delta is (hitAngle - refAngle)
+                           flipped for direction — negative means the planet hadn't reached the
+                           reference angle yet, i.e. early. So +Perfect is the early side. */
+                        list.Add(ColPlusPerfect);
+                        list.Add(ColXPerfect);
+                        list.Add(ColMinusPerfect);
+                    }
+                    else list.Add((int)m);
+                }
+                return _columns = list.ToArray();
+            }
+        }
+
+        // XPerfect maintains its own counters (including across a checkpoint revive, which is
+        // why RebuildFromTracker doesn't touch them) — read, never derive.
+        private int ColumnCount(int col)
+        {
+            switch (col)
+            {
+                case ColXPerfect:     return XPerfectBridge.XPerfect;
+                case ColPlusPerfect:  return XPerfectBridge.PlusPerfect;
+                case ColMinusPerfect: return XPerfectBridge.MinusPerfect;
+                default:              return _judgementCounts[col];
+            }
+        }
+
+        private static Color ColumnColor(int col)
+        {
+            switch (col)
+            {
+                case ColXPerfect:     return XPerfectBridge.XColor;
+                case ColPlusPerfect:
+                case ColMinusPerfect: return XPerfectBridge.PlusColor;
+                default:              return MarginColor((HitMargin)col);
+            }
+        }
 
         private bool inLevel;
         private float _lastTileBpmTime = -1f;

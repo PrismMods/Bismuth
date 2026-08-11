@@ -275,14 +275,39 @@ namespace Bismuth
                 GameUiLayout.Reapply();
             }, availableFonts);
             UICore.OnKeyViewerRebuild = () => keyViewer?.Rebuild(Settings);
-            UICore.Tabs.AddTab("Overlay", PageOverlay.Build);
+            /* Tabs are grouped by WHOSE pixels they change, not by widget type. The old rail had
+               three tabs with "UI" in the name (Hide UI / UI / Game UI) that meant three
+               different things, and the position editor sat under panel styling instead of
+               with the overlay and key viewer it actually moves.
+                 Overlay    — Bismuth's own on-screen stuff
+                 Game UI    — the game's own UI
+                 Appearance — how Bismuth itself is drawn
+               Key Viewer keeps its own tab despite also being Bismuth's own UI — it's far too
+               big to sit as a section under Overlay. Composition order matters in two places:
+               PageKeyViewer's font-weight rows need PageOverlay to have run first (it resets
+               RefreshFontWeightRows, hence the tab order below), and pages composed into one
+               tab append to a shared root, so composition order is also section order. */
+            UICore.Tabs.AddTab("Overlay", stack =>
+            {
+                PageOverlay.Build(stack);
+                UIBuilder.Spacer(stack.Root);
+                PageUI.BuildLocations(stack);
+            });
             UICore.Tabs.AddTab("Key Viewer", PageKeyViewer.Build);
             UICore.Tabs.AddTab("Input", PageInput.Build);
-            UICore.Tabs.AddTab("Hide UI", PageHideUi.Build);
-            UICore.Tabs.AddTab("UI", PageUI.Build);
-            UICore.Tabs.AddTab("Game UI", PageGameUi.Build);
-            UICore.Tabs.AddTab("Tweaks", PageTweaks.Build);
-            UICore.Tabs.AddTab("Misc", PageMisc.Build);
+            UICore.Tabs.AddTab("Game UI", stack =>
+            {
+                PageHideUi.Build(stack);
+                UIBuilder.Spacer(stack.Root);
+                PageGameUi.Build(stack);
+            });
+            UICore.Tabs.AddTab("Appearance", PageUI.Build);
+            UICore.Tabs.AddTab("Misc", stack =>
+            {
+                PageTweaks.Build(stack);
+                UIBuilder.Spacer(stack.Root);
+                PageMisc.Build(stack);
+            });
             // Master kill-switch pinned under the tabs — flips the whole mod on/off
             // without a trip to UMM's own settings window.
             UICore.Tabs.AddMasterSwitch("Mod enabled", Settings.ModEnabled, SetMasterEnabled);
@@ -345,7 +370,12 @@ namespace Bismuth
 
         private static void OnSceneUnloaded(Scene scene)
         {
-            if (!_featuresOn || !Settings.OptimizationsEnabled || !Settings.OptUnloadAssets) return;
+            if (!_featuresOn) return;
+            /* Before the unload pass, not after: pruning the filter dictionaries drops the last
+               managed reference to those entries, so UnloadUnusedAssets can then actually
+               reclaim them. Gated on its own setting (Leak Guard), not on OptUnloadAssets. */
+            LeakGuard.SweepStaticCaches();
+            if (!Settings.OptimizationsEnabled || !Settings.OptUnloadAssets) return;
             // Measure synchronously: op.completed fires after the next scene starts allocating,
             // which makes before-after read as negative noise.
             long before = UnityEngine.Profiling.Profiler.GetTotalAllocatedMemoryLong();

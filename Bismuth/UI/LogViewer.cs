@@ -103,7 +103,7 @@ namespace Bismuth.UI
             hover.Highlight = hlRt;
             hover.Viewport = vr;
 
-            // "Copied" flash shown at the cursor when a line is copied.
+            // Loc.T("Copied") flash shown at the cursor when a line is copied.
             var toastGo = UIBuilder.Rect("CopyToast", panel.transform);
             var toastRt = (RectTransform)toastGo.transform;
             toastRt.anchorMin = toastRt.anchorMax = new Vector2(0.5f, 0.5f);

@@ -8,6 +8,8 @@ namespace Bismuth
         {
             GameFontApplier.Tick();
             GameUiLayout.Tick();
+            // Queues/schedules pre-mixed hit-sound segments; no-ops unless the setting is on.
+            HitSoundRenderer.Pump();
             if (inLevel && scrController.instance == null)
                 inLevel = false;
 
@@ -39,14 +41,18 @@ namespace Bismuth
                 }
             }
 
-            if (judgementTexts != null && judgementTexts.Length > 8)
+            if (judgementTexts != null)
             {
                 bool nf = scrController.instance?.noFail ?? false;
                 if (nf != _lastNoFail)
                 {
                     _lastNoFail = nf;
-                    if (judgementTexts[0] != null) judgementTexts[0].gameObject.SetActive(nf);
-                    if (judgementTexts[8] != null) judgementTexts[8].gameObject.SetActive(nf);
+                    // Locate the fail columns by their column code — they were indices 0 and 8
+                    // until XPerfect's split started shifting everything after Perfect.
+                    var cols = JudgementColumns;
+                    for (int i = 0; i < cols.Length && i < judgementTexts.Length; i++)
+                        if (cols[i] == (int)HitMargin.FailOverload || cols[i] == (int)HitMargin.FailMiss)
+                            judgementTexts[i]?.gameObject.SetActive(nf);
                 }
             }
 
@@ -398,13 +404,13 @@ namespace Bismuth
 
             if (s.ShowJudgements && judgementTexts != null)
             {
-                for (int i = 0; i < DisplayedMargins.Length; i++)
+                var cols = JudgementColumns;
+                for (int i = 0; i < cols.Length && i < judgementTexts.Length; i++)
                 {
                     var t = judgementTexts[i];
                     if (t == null) continue;
-                    int count = _judgementCounts[(int)DisplayedMargins[i]];
-                    t.text = count.ToString();
-                    t.color = MarginColor(DisplayedMargins[i]);
+                    t.text = ColumnCount(cols[i]).ToString();
+                    t.color = ColumnColor(cols[i]);
                 }
             }
         }

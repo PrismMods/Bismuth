@@ -2,10 +2,10 @@
   "Id": "Bismuth",
   "DisplayName": "Bismuth",
   "Author": "QuartzTeam",
-  "Version": "1.3.2",
+  "Version": "1.3.4",
   "ManagerVersion": "0.32.4.0",
   "AssemblyName": "Bismuth.dll",
   "EntryMethod": "Bismuth.Startup.Load",
   "HomePage": "",
-  "Repository": "https://raw.githubusercontent.com/QuartzTeam/Bismuth/main/Repository.json"
+  "Repository": "https://raw.githubusercontent.com/PrismMods/Bismuth/main/Repository.json"
 }

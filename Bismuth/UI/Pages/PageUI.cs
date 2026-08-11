@@ -5,6 +5,9 @@ using UnityEngine.UI;
 
 namespace Bismuth.UI.Pages
 {
+    // "Appearance" tab — how Bismuth itself looks (panel scale, font, accent). The on-screen
+    // POSITION editor moved to the Overlay tab: it moves the overlay and key viewer, so it
+    // belongs with the things it moves, not with panel styling.
     internal static class PageUI
     {
         public static void Build(PageStack stack)
@@ -12,8 +15,31 @@ namespace Bismuth.UI.Pages
             var content = stack.Root;
             var s = UICore.Settings;
 
-            // Bismuth-element on-screen position editor (moved from the old Locations tab).
-            UIBuilder.SectionHeaderWithHelp(content, "Locations",
+            UIBuilder.SectionHeader(content, "Language");
+            // Rebuild on change: every panel string is resolved at build time.
+            UIBuilder.Dropdown(content, "Language",
+                new[] { Loc.T("Follow game"), Loc.T("English"), Loc.T("Korean") },
+                Mathf.Clamp(s.PanelLanguage, 0, 2),
+                i => { s.PanelLanguage = i; UICore.OnSettingsChanged?.Invoke(); MainClass.RequestForceReload(); });
+
+            UIBuilder.Spacer(content);
+            UIBuilder.SectionHeader(content, "Scale");
+            UIBuilder.Slider(content, "UI scale", s.UiScale, 0.5f, 2.0f, v => UICore.ApplyScale(v), "0.00");
+
+            UIBuilder.Spacer(content);
+            BuildFontAndAccent(stack);
+
+            UIBuilder.Spacer(content);
+            BuildProfiles(content);
+        }
+
+        // Built by the Overlay tab — positions Bismuth's on-screen elements.
+        public static void BuildLocations(PageStack stack)
+        {
+            var content = stack.Root;
+            var s = UICore.Settings;
+
+            UIBuilder.SectionHeaderWithHelp(content, "Positions",
                 "Drag elements directly on screen to adjust positions.");
             UIBuilder.Button(content, "Edit positions on screen", LocationEditor.Open);
             UIBuilder.DangerButton(content, "Reset all positions", () =>
@@ -31,12 +57,13 @@ namespace Bismuth.UI.Pages
                 if (s.Foot != null) { s.Foot.X = 0.01f; s.Foot.Y = 0.01f; }
                 UICore.OnSettingsChanged?.Invoke();
             });
+        }
 
-            UIBuilder.Spacer(content);
-            UIBuilder.SectionHeader(content, "Scale");
-            UIBuilder.Slider(content, "UI scale", s.UiScale, 0.5f, 2.0f, v => UICore.ApplyScale(v), "0.00");
+        private static void BuildFontAndAccent(PageStack stack)
+        {
+            var content = stack.Root;
+            var s = UICore.Settings;
 
-            UIBuilder.Spacer(content);
             UIBuilder.SectionHeader(content, "Font");
             // Overlay fonts live on the Overlay tab (master + apply-to-all) and next to
             // their part's weight rows (stats / combo / key viewer).
@@ -102,7 +129,7 @@ namespace Bismuth.UI.Pages
         {
             if (fonts == null || fonts.Count == 0)
             {
-                UIBuilder.Dropdown(parent, label, new[] { "(none loaded)" }, 0, null);
+                UIBuilder.Dropdown(parent, label, new[] { Loc.T("(none loaded)") }, 0, null);
                 return;
             }
 
@@ -222,6 +249,119 @@ namespace Bismuth.UI.Pages
                 if (!(defaultSelected && offset == 1))
                     rebuildWeights(familyIdx - offset, curWeight);
             }
+        }
+        // ── Profiles ───────────────────────────────────────────────────────
+        // Full-settings snapshots; the .xml files in the Profiles folder ARE the
+        // import/export format. Loading copies into the live Settings then rides the
+        // force-reload path (deferred, so the panel isn't torn down inside its own
+        // button handler).
+        private static void BuildProfiles(Transform content)
+        {
+            UIBuilder.SectionHeaderWithHelp(content, "Profiles",
+                "A profile snapshots ALL Bismuth settings.\n" +
+                "Load applies it and rebuilds the panel.\n" +
+                "Profiles are .xml files in the Profiles folder —\n" +
+                "share them, or drop one in and Rescan to import.");
+
+            var listHost = UIBuilder.VGroup(content, "ProfileList");
+            string pendingName = "";
+
+            System.Action rebuildList = null;
+            rebuildList = () =>
+            {
+                for (int i = listHost.transform.childCount - 1; i >= 0; i--)
+                {
+                    var c = listHost.transform.GetChild(i);
+                    c.SetParent(null);
+                    UnityEngine.Object.Destroy(c.gameObject);
+                }
+                foreach (var name in Profiles.BuiltIn)
+                    BuildProfileRow(listHost.transform, name, builtIn: true, rebuildList);
+                foreach (var name in Profiles.ListSaved())
+                    BuildProfileRow(listHost.transform, name, builtIn: false, rebuildList);
+            };
+            rebuildList();
+
+            UIBuilder.TextInput(content, "New profile name", "", v => pendingName = v);
+            UIBuilder.Button(content, "Save current settings as profile", () =>
+            {
+                if (Profiles.SaveCurrent(pendingName, out string err))
+                    rebuildList();
+                else
+                    BismuthLog.Log("Profiles: " + err);
+            });
+            UIBuilder.Button(content, "Rescan profiles folder", rebuildList);
+            UIBuilder.Button(content, "Open profiles folder", () => OsShell.OpenFolder(Profiles.ProfilesDir()));
+        }
+
+        private static void BuildProfileRow(Transform parent, string name, bool builtIn, System.Action rebuildList)
+        {
+            var row = UIBuilder.Row(parent);
+            var bg = UIBuilder.SolidImage(row, Theme.RowBg);
+            bg.raycastTarget = true;
+
+            bool active = name == UICore.Settings.ActiveProfile;
+
+            // Accent dot marks the loaded profile, matching the Key Viewer preset rows.
+            if (active)
+            {
+                var dotGo = UIBuilder.Rect("ActiveDot", row.transform);
+                var dr = (RectTransform)dotGo.transform;
+                dr.anchorMin = dr.anchorMax = new Vector2(0, 0.5f);
+                dr.pivot = new Vector2(0, 0.5f);
+                dr.anchoredPosition = new Vector2(8f, 0);
+                dr.sizeDelta = new Vector2(6f, 6f);
+                var dot = dotGo.AddComponent<RoundedRectGraphic>();
+                dot.Radius = 3f;
+                dot.color = Theme.ToggleOn;
+                dot.raycastTarget = false;
+                dotGo.AddComponent<AccentFill>();
+            }
+
+            var label = UIBuilder.Label(row.transform, builtIn ? name + "  (built-in)" : name,
+                (int)UIBuilder.LabelFontSize, TextAnchor.MiddleLeft,
+                active ? Theme.Text : Theme.TextMuted);
+            label.rectTransform.offsetMin = new Vector2(active ? 20f : 8f, 0);
+            label.rectTransform.offsetMax = new Vector2(-140f, 0);
+
+            // Loading what's already loaded does nothing useful — say so instead.
+            if (active)
+            {
+                var act = UIBuilder.Label(row.transform, Loc.T("Active"),
+                    (int)UIBuilder.LabelFontSize - 1, TextAnchor.MiddleRight, Theme.TextMuted);
+                act.rectTransform.offsetMin = new Vector2(0f, 0);
+                act.rectTransform.offsetMax = new Vector2(builtIn ? -12f : -48f, 0);
+            }
+            else MiniButton(row.transform, "Load", 56f, builtIn ? -8f : -44f, () =>
+            {
+                if (Profiles.Load(name, out string err))
+                    MainClass.RequestForceReload();
+                else
+                    BismuthLog.Log("Profiles: " + err);
+            });
+            if (!builtIn)
+                MiniButton(row.transform, "×", 28f, -8f, () =>
+                {
+                    if (Profiles.Delete(name, out string err)) rebuildList();
+                    else BismuthLog.Log("Profiles: " + err);
+                });
+        }
+
+        private static void MiniButton(Transform parent, string label, float width, float anchoredX, System.Action onClick)
+        {
+            var btn = UIBuilder.Rect(label, parent);
+            var rect = (RectTransform)btn.transform;
+            rect.anchorMin = rect.anchorMax = new Vector2(1f, 0.5f);
+            rect.pivot = new Vector2(1f, 0.5f);
+            rect.anchoredPosition = new Vector2(anchoredX, 0);
+            rect.sizeDelta = new Vector2(width, 22f);
+            var bg = btn.AddComponent<RoundedRectGraphic>();
+            bg.Radius = 3f;
+            bg.AAFringe = 0.5f;
+            bg.color = Theme.ButtonBg;
+            bg.raycastTarget = true;
+            var t = UIBuilder.Label(btn.transform, label, (int)UIBuilder.LabelFontSize - 1, TextAnchor.MiddleCenter, Theme.Text);
+            ClickHandler.Attach(btn, () => onClick());
         }
     }
 }
