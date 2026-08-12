@@ -61,7 +61,11 @@ namespace Bismuth
         public float  RainSpeed         = 500f;
         public float  RainWidthStep     = 14f;
         public float  RainShadowSize    = 0f;
+        public float  RainGlowSize      = 0f;
+        public int    RainRadius        = 0;
         public KvColor RainShadowColor  = null;
+        // Multiplies the column color, so white = glow in the key's own color.
+        public KvColor RainGlowColor    = null;
         public KvColor BgIdle           = null;
         public KvColor BgHeld           = null;
         public KvColor TxtIdle          = null;
@@ -72,6 +76,19 @@ namespace Bismuth
         public KvColor CountHeld        = null;
         public int     CountSize        = 13;
         public bool    ShowCount        = true;
+        public bool    ShowBackground   = true;
+        public bool    ShowBorder       = true;
+        public bool    ShowRain         = true;
+
+        /* Effective cell colors. Turning the Background / Border cards off clears their
+           layer instead of touching the picked colors, so flipping back restores them —
+           and both the initial build and the per-press repaint route through here, so a
+           disabled layer can't come back on the next keypress. */
+        public UnityEngine.Color CellBg(bool held)
+            => ShowBackground ? (held ? BgHeld : BgIdle).ToColor() : UnityEngine.Color.clear;
+        public UnityEngine.Color CellBorder(bool held)
+            => ShowBorder ? (held ? BorderHeld : BorderIdle).ToColor() : UnityEngine.Color.clear;
+        public float CellBorderWidth => ShowBorder ? BorderWidth : 0f;
 
         // Ghost keys: keys whose press only spawns rain (no key cell, no count, no tile-hit).
         // Indexed against the top row's non-stat cells. Token "None" or empty = unassigned slot.
@@ -88,6 +105,7 @@ namespace Bismuth
             if (CountIdle == null) CountIdle = new KvColor { R = 0.7f, G = 0.7f, B = 0.7f, A = 1f };
             if (CountHeld == null) CountHeld = new KvColor { R = 0f,   G = 0f,   B = 0f,   A = 1f };
             if (RainShadowColor == null) RainShadowColor = new KvColor { R = 0f, G = 0f, B = 0f, A = 0.05f };
+            if (RainGlowColor   == null) RainGlowColor   = new KvColor { R = 1f, G = 1f, B = 1f, A = 0.5f };
             if (BorderIdle      == null) BorderIdle      = new KvColor { R = 1f, G = 1f, B = 1f, A = 1f };
             if (BorderHeld      == null) BorderHeld      = new KvColor { R = 1f, G = 1f, B = 1f, A = 1f };
             if (Rows != null) foreach (var r in Rows) r?.EnsureDefaults();

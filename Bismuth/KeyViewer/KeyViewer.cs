@@ -12,7 +12,7 @@ namespace Bismuth
     //   KeyViewer.cs         (this) — class shell, state fields, internal cell/column types, lifecycle
     //   KeyViewer.Build.cs   — BuildLayout / BuildPresetPanel / cell + layer construction
     //   KeyViewer.Rain.cs    — per-frame Update, StartRainColumn / StopRainColumn
-    //   KeyViewer.Sprites.cs — rounded sprite + shadow body sprite + shadow tip texture + gradient texture
+    //   KeyViewer.Sprites.cs — rain column + halo (shadow/glow) sprite bakes
     //   KeyViewer.Keys.cs    — TryParseKey + GetDisplayName
     internal partial class KeyViewer : MonoBehaviour
     {
@@ -86,11 +86,25 @@ namespace Bismuth
         private readonly List<GameObject> _allPanels   = new List<GameObject>();
         private readonly List<Sprite>     _allSprites  = new List<Sprite>();
         private readonly List<Texture2D>  _allTextures = new List<Texture2D>();
-        private readonly Dictionary<int, Sprite>    _shadowBodySprites       = new Dictionary<int, Sprite>();
-        private readonly Dictionary<int, Sprite>    _shadowBodySpritesSoftTop = new Dictionary<int, Sprite>();
-        private readonly Dictionary<int, Texture2D> _shadowTipTextures       = new Dictionary<int, Texture2D>();
-        private Texture2D _gradTex;
+        // Halo = the shadow and glow layers behind a rain column; keyed by size/radius/variant.
+        private readonly Dictionary<int, Sprite>    _haloBodySprites         = new Dictionary<int, Sprite>();
+        private readonly Dictionary<int, Sprite>    _rainSprites             = new Dictionary<int, Sprite>();
         private int _nextRowIdx;
+
+        // Soft layer behind a rain column — a dark drop shadow or a colored glow. Same
+        // geometry as the column, only the falloff curve and color differ.
+        private class Halo
+        {
+            public RectTransform BodyRt;
+            public Image         BodyImg;
+            public RectTransform TipRt;
+            public Image         TipImg;
+            public VerticalFade  TipFade;
+            public Color         Color;
+            public float         Size;
+            public int           Radius;
+            public bool          Glow;
+        }
 
         private class RainColumn
         {
@@ -98,15 +112,13 @@ namespace Bismuth
             public RectTransform BodyRt;
             public Image         BodyImg;
             public RectTransform TipRt;
-            public RawImage      TipImg;
-            public RectTransform ShadowBodyRt;
-            public Image         ShadowBodyImg;
-            public RectTransform ShadowTipRt;
-            public RawImage      ShadowTipImg;
+            public Image         TipImg;
+            public VerticalFade  TipFade;
+            public Halo          Shadow;
+            public Halo          Glow;
             public Color         BaseColor;
-            public Color         ShadowColor;
             public float         Width;
-            public float         ShadowSize;
+            public int           Radius;
             public float         Height;
             public float         BotY;
             public float         PanelHeight;
@@ -212,7 +224,7 @@ namespace Bismuth
                 foreach (var c in kvp.Value)
                 {
                     if (c?.Preset == null) continue;
-                    if (c.Bg    != null) { c.Bg.color = c.Preset.BgIdle.ToColor(); c.Bg.BorderColor = c.Preset.BorderIdle.ToColor(); }
+                    if (c.Bg    != null) { c.Bg.color = c.Preset.CellBg(false); c.Bg.BorderColor = c.Preset.CellBorder(false); }
                     if (c.Name  != null) { c.Name.color  = c.Preset.TxtIdle.ToColor();   c.Name.fontSize  = c.Preset.LabelSize; }
                     if (c.Count != null) { c.Count.color = c.Preset.CountIdle.ToColor(); c.Count.fontSize = c.Preset.CountSize; }
                 }
@@ -225,7 +237,7 @@ namespace Bismuth
             foreach (var s in cells)
             {
                 if (s?.Preset == null) continue;
-                if (s.Bg    != null) { s.Bg.color = s.Preset.BgIdle.ToColor(); s.Bg.BorderColor = s.Preset.BorderIdle.ToColor(); }
+                if (s.Bg    != null) { s.Bg.color = s.Preset.CellBg(false); s.Bg.BorderColor = s.Preset.CellBorder(false); }
                 if (s.Name  != null) { s.Name.color  = s.Preset.TxtIdle.ToColor();   s.Name.fontSize  = s.Preset.LabelSize; }
                 if (s.Value != null) { s.Value.color = s.Preset.CountIdle.ToColor(); s.Value.fontSize = s.Preset.CountSize; }
             }
@@ -386,8 +398,8 @@ namespace Bismuth
             {
                 if (col.BodyRt != null) Destroy(col.BodyRt.gameObject);
                 if (col.TipRt  != null) Destroy(col.TipRt.gameObject);
-                if (col.ShadowBodyRt != null) Destroy(col.ShadowBodyRt.gameObject);
-                if (col.ShadowTipRt  != null) Destroy(col.ShadowTipRt.gameObject);
+                DestroyHalo(col.Shadow);
+                DestroyHalo(col.Glow);
             }
             _rainColumns.Clear();
             _rainColors.Clear();
@@ -414,9 +426,8 @@ namespace Bismuth
             _allSprites.Clear();
             foreach (var t in _allTextures) if (t != null) Destroy(t);
             _allTextures.Clear();
-            _shadowBodySprites.Clear();
-            _shadowBodySpritesSoftTop.Clear();
-            _shadowTipTextures.Clear();
+            _haloBodySprites.Clear();
+            _rainSprites.Clear();
             _keyCells.Clear();
             _kpsCells.Clear();
             _totalCells.Clear();

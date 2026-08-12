@@ -83,6 +83,7 @@
         <Compile Include="KeyViewer\KeyViewer.Keys.cs" />
         <Compile Include="KeyViewer\KeyLimiter.cs" />
         <Compile Include="KeyViewer\RoundedRectGraphic.cs" />
+        <Compile Include="KeyViewer\VerticalFade.cs" />
         <Compile Include="Overlay\Overlay.cs" />
         <Compile Include="Overlay\Overlay.Build.cs" />
         <Compile Include="Overlay\Overlay.Update.cs" />

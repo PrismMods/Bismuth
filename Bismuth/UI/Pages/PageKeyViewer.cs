@@ -281,7 +281,8 @@ namespace Bismuth.UI.Pages
             "key width,radius,border,gap,scale,position,x,y,"
             + "rain,rain color,key rain,fade start,track length,speed,width step,"
             + "shadow size,shadow color,background,label text,count text,font size,"
-            + "persist counts,reset counters,ghost keys,custom rain color,"
+            + "persist counts,reset counters,ghost keys,custom rain color,style,"
+            + "glow size,glow tint,corner radius,released,pressed,"
             + "row,row height,show rain,add row,cell,key,width,visible,"
             + "hide in main menu,hide in level editor";
 
@@ -344,71 +345,113 @@ namespace Bismuth.UI.Pages
             BuildRowsSection(parent, preset, isFoot, s, notify, rebuild);
 
             UIBuilder.Spacer(parent);
-            UIBuilder.SectionHeader(parent, "Background");
-            EnsureKv(ref preset.BgIdle, 0, 0, 0, 0.7f);
-            EnsureKv(ref preset.BgHeld, 1, 1, 1, 1);
-            BindKv(parent, "Released", preset.BgIdle, notify);
-            BindKv(parent, "Pressed",  preset.BgHeld, notify);
+            UIBuilder.SectionHeaderWithHelp(parent, "Style",
+                "Click a card to turn that part on or off\n"
+                + "(highlighted = on).\n"
+                + "Click the ··· button on a card for its settings.");
 
-            UIBuilder.Spacer(parent);
-            UIBuilder.SectionHeader(parent, "Border");
-            UIBuilder.IntSlider(parent, "Radius", preset.Radius, 0, 64,
-                v => { preset.Radius = v; structural(); });
-            UIBuilder.Slider(parent, "Width", preset.BorderWidth, 0f, 16f,
-                v => { preset.BorderWidth = v; structural(); }, "0.0", 0.5f);
-            EnsureKv(ref preset.BorderIdle, 1, 1, 1, 1);
-            EnsureKv(ref preset.BorderHeld, 1, 1, 1, 1);
-            BindKv(parent, "Released", preset.BorderIdle, notify);
-            BindKv(parent, "Pressed",  preset.BorderHeld, notify);
+            var grid = UIBuilder.CardGrid(parent).transform;
 
-            UIBuilder.Spacer(parent);
-            UIBuilder.SectionHeader(parent, "Label Text");
-            UIBuilder.Collapsible(parent, "Visible", preset.ShowLabel,
-                v => { preset.ShowLabel = v; structural(); }, null);
-            UIBuilder.IntSlider(parent, "Font size", preset.LabelSize, 6, 48,
-                v => { preset.LabelSize = v; notify?.Invoke(); });
-            EnsureKv(ref preset.TxtIdle, 1, 1, 1, 1);
-            EnsureKv(ref preset.TxtHeld, 0, 0, 0, 1);
-            BindKv(parent, "Released", preset.TxtIdle, notify);
-            BindKv(parent, "Pressed",  preset.TxtHeld, notify);
+            UIBuilder.NavCard(grid, "Background", preset.ShowBackground,
+                v => { preset.ShowBackground = v; structural(); },
+                () => _stack.Push("Background", body =>
+            {
+                EnsureKv(ref preset.BgIdle, 0, 0, 0, 0.7f);
+                EnsureKv(ref preset.BgHeld, 1, 1, 1, 1);
+                BindKv(body, "Released", preset.BgIdle, notify);
+                BindKv(body, "Pressed",  preset.BgHeld, notify);
+            }));
 
-            UIBuilder.Spacer(parent);
-            UIBuilder.SectionHeader(parent, "Count Text");
-            UIBuilder.Collapsible(parent, "Visible", preset.ShowCount,
-                v => { preset.ShowCount = v; structural(); }, null);
-            UIBuilder.IntSlider(parent, "Font size", preset.CountSize, 6, 48,
-                v => { preset.CountSize = v; notify?.Invoke(); });
-            EnsureKv(ref preset.CountIdle, 0.7f, 0.7f, 0.7f, 1);
-            EnsureKv(ref preset.CountHeld, 0, 0, 0, 1);
-            BindKv(parent, "Released", preset.CountIdle, notify);
-            BindKv(parent, "Pressed",  preset.CountHeld, notify);
+            UIBuilder.NavCard(grid, "Border", preset.ShowBorder,
+                v => { preset.ShowBorder = v; structural(); },
+                () => _stack.Push("Border", body =>
+            {
+                UIBuilder.IntSlider(body, "Radius", preset.Radius, 0, 64,
+                    v => { preset.Radius = v; structural(); });
+                UIBuilder.Slider(body, "Width", preset.BorderWidth, 0f, 16f,
+                    v => { preset.BorderWidth = v; structural(); }, "0.0", 0.5f);
+                EnsureKv(ref preset.BorderIdle, 1, 1, 1, 1);
+                EnsureKv(ref preset.BorderHeld, 1, 1, 1, 1);
+                BindKv(body, "Released", preset.BorderIdle, notify);
+                BindKv(body, "Pressed",  preset.BorderHeld, notify);
+            }));
 
-            UIBuilder.Spacer(parent);
-            UIBuilder.SectionHeader(parent, "Key Rain");
-            UIBuilder.Slider(parent, "Track length", preset.RainTrackLength, 50f, 1000f,
-                v => { preset.RainTrackLength = v; notify?.Invoke(); }, "0", 1f);
-            UIBuilder.Slider(parent, "Fade start", preset.RainDistance, 0f, 1000f,
-                v => { preset.RainDistance = v; notify?.Invoke(); }, "0", 1f);
-            UIBuilder.Slider(parent, "Speed (px/sec)", preset.RainSpeed, 50f, 2000f,
-                v => { preset.RainSpeed = v; notify?.Invoke(); }, "0", 10f);
-            UIBuilder.Slider(parent, "Width step", preset.RainWidthStep, 0f, 30f,
-                v => { preset.RainWidthStep = v; notify?.Invoke(); }, "0.0", 0.5f);
-            UIBuilder.Slider(parent, "Shadow size", preset.RainShadowSize, 0f, 40f,
-                v => { preset.RainShadowSize = v; notify?.Invoke(); }, "0.0", 0.5f);
-            EnsureKv(ref preset.RainShadowColor, 0, 0, 0, 0.05f);
-            BindKv(parent, "Shadow color", preset.RainShadowColor, notify);
+            UIBuilder.NavCard(grid, "Label Text", preset.ShowLabel,
+                v => { preset.ShowLabel = v; structural(); },
+                () => _stack.Push("Label Text", body =>
+                {
+                    UIBuilder.IntSlider(body, "Font size", preset.LabelSize, 6, 48,
+                        v => { preset.LabelSize = v; notify?.Invoke(); });
+                    EnsureKv(ref preset.TxtIdle, 1, 1, 1, 1);
+                    EnsureKv(ref preset.TxtHeld, 0, 0, 0, 1);
+                    BindKv(body, "Released", preset.TxtIdle, notify);
+                    BindKv(body, "Pressed",  preset.TxtHeld, notify);
+                }));
 
-            // Ghost Keys — hand presets only. Foot doesn't use them.
+            UIBuilder.NavCard(grid, "Count Text", preset.ShowCount,
+                v => { preset.ShowCount = v; structural(); },
+                () => _stack.Push("Count Text", body =>
+                {
+                    UIBuilder.IntSlider(body, "Font size", preset.CountSize, 6, 48,
+                        v => { preset.CountSize = v; notify?.Invoke(); });
+                    EnsureKv(ref preset.CountIdle, 0.7f, 0.7f, 0.7f, 1);
+                    EnsureKv(ref preset.CountHeld, 0, 0, 0, 1);
+                    BindKv(body, "Released", preset.CountIdle, notify);
+                    BindKv(body, "Pressed",  preset.CountHeld, notify);
+                }));
+
+            UIBuilder.NavCard(grid, "Key Rain", preset.ShowRain,
+                v => { preset.ShowRain = v; structural(); },
+                () => _stack.Push("Key Rain", body =>
+            {
+                UIBuilder.SectionHeader(body, "Track");
+                UIBuilder.Slider(body, "Track length", preset.RainTrackLength, 50f, 1000f,
+                    v => { preset.RainTrackLength = v; notify?.Invoke(); }, "0", 1f);
+                UIBuilder.Slider(body, "Fade start", preset.RainDistance, 0f, 1000f,
+                    v => { preset.RainDistance = v; notify?.Invoke(); }, "0", 1f);
+                UIBuilder.Slider(body, "Speed (px/sec)", preset.RainSpeed, 50f, 2000f,
+                    v => { preset.RainSpeed = v; notify?.Invoke(); }, "0", 10f);
+
+                UIBuilder.Spacer(body);
+                UIBuilder.SectionHeader(body, "Shape");
+                UIBuilder.Slider(body, "Width step", preset.RainWidthStep, 0f, 30f,
+                    v => { preset.RainWidthStep = v; notify?.Invoke(); }, "0.0", 0.5f);
+                UIBuilder.IntSlider(body, "Corner radius", preset.RainRadius, 0, 20,
+                    v => { preset.RainRadius = v; notify?.Invoke(); });
+
+                UIBuilder.Spacer(body);
+                UIBuilder.SectionHeader(body, "Shadow");
+                UIBuilder.Slider(body, "Size", preset.RainShadowSize, 0f, 40f,
+                    v => { preset.RainShadowSize = v; notify?.Invoke(); }, "0.0", 0.5f);
+                EnsureKv(ref preset.RainShadowColor, 0, 0, 0, 0.05f);
+                BindKv(body, "Color", preset.RainShadowColor, notify);
+
+                UIBuilder.Spacer(body);
+                UIBuilder.SectionHeaderWithHelp(body, "Glow",
+                    "The tint multiplies the rain color, so white glows\n"
+                    + "in each key's own color.");
+                UIBuilder.Slider(body, "Size", preset.RainGlowSize, 0f, 60f,
+                    v => { preset.RainGlowSize = v; notify?.Invoke(); }, "0.0", 0.5f);
+                EnsureKv(ref preset.RainGlowColor, 1, 1, 1, 0.5f);
+                BindKv(body, "Tint", preset.RainGlowColor, notify);
+            }));
+
+            // Ghost Keys — hand presets only. Foot doesn't use them. The card carries the
+            // enable flag, so the subpage is just the slots and their rain color.
             if (!isFoot)
             {
-                UIBuilder.Spacer(parent);
-                UIBuilder.SectionHeaderWithHelp(parent, "Ghost Keys",
-                    "Ghost keys spawn rain at the matching top-row position\n"
-                    + "but don't count as input.\n"
-                    + "Withholding them from the game needs the key limiter\n"
-                    + "on (Input tab) — with it off, they still spawn rain\n"
-                    + "but also hit tiles.");
-                BuildGhostSection(parent, preset, notify, rebuild);
+                UIBuilder.NavCard(grid, "Ghost Keys", preset.GhostKeysEnabled,
+                    v => { preset.GhostKeysEnabled = v; structural(); },
+                    () => _stack.Push("Ghost Keys", body =>
+                    {
+                        UIBuilder.SectionHeaderWithHelp(body, "Slots",
+                            "Ghost keys spawn rain at the matching top-row position\n"
+                            + "but don't count as input.\n"
+                            + "Withholding them from the game needs the key limiter\n"
+                            + "on (Input tab) — with it off, they still spawn rain\n"
+                            + "but also hit tiles.");
+                        BuildGhostSection(body, preset, notify, rebuild);
+                    }));
             }
         }
 
@@ -433,16 +476,7 @@ namespace Bismuth.UI.Pages
         {
             Action structural = () => { notify?.Invoke(); rebuild(); };
 
-            GameObject body = null;
-            UIBuilder.Collapsible(parent, "Enable", preset.GhostKeysEnabled,
-                v =>
-                {
-                    preset.GhostKeysEnabled = v;
-                    if (body != null) body.SetActive(v);
-                    structural();
-                }, null);
-
-            body = UIBuilder.Rect("GhostBody", parent);
+            var body = UIBuilder.Rect("GhostBody", parent);
             var vlg = body.AddComponent<VerticalLayoutGroup>();
             vlg.childControlWidth = true;
             vlg.childControlHeight = true;
@@ -497,7 +531,7 @@ namespace Bismuth.UI.Pages
                     bool assigned = tok != "None" && !string.IsNullOrEmpty(tok);
                     bool listeningThis = listenIdx == si;
                     string label = listeningThis ? "…" : (assigned ? KeyTokens.PrettyTokenLabel(tok) : "None");
-                    MakeGhostChip(stripGo.transform, label, listeningThis, () =>
+                    var chipGo = MakeGhostChip(stripGo.transform, label, listeningThis, () =>
                     {
                         if (listeningThis) { listenIdx = -1; listener.Active = false; }
                         else if (assigned)
@@ -508,6 +542,7 @@ namespace Bismuth.UI.Pages
                         else { listenIdx = si; listener.Active = true; }
                         rebuildSlots();
                     });
+                    if (listeningThis) listener.CancelRect = (RectTransform)chipGo.transform;
                 }
             };
             listener.OnKey = kc =>
@@ -545,11 +580,9 @@ namespace Bismuth.UI.Pages
                     notify?.Invoke();
                 });
             pickerGo.SetActive(preset.GhostRainColor != null);
-
-            body.SetActive(preset.GhostKeysEnabled);
         }
 
-        private static void MakeGhostChip(Transform parent, string text, bool active, Action onClick)
+        private static GameObject MakeGhostChip(Transform parent, string text, bool active, Action onClick)
         {
             var go = UIBuilder.Rect("Chip", parent);
             float width = Mathf.Max(36f, text.Length * 8f + 14f);
@@ -576,6 +609,7 @@ namespace Bismuth.UI.Pages
                 onClick != null ? Theme.Text : Theme.TextMuted);
 
             if (onClick != null) ClickHandler.Attach(go, onClick);
+            return go;
         }
 
         // ── Rebind mode ────────────────────────────────────────────────────
@@ -820,7 +854,13 @@ namespace Bismuth.UI.Pages
             bg.AAFringe = 0.5f;
             bg.color = isRebinding ? Theme.ToggleOn : Theme.ButtonBg;
             bg.raycastTarget = true;
-            if (isRebinding) btn.AddComponent<AccentFill>();
+            if (isRebinding)
+            {
+                btn.AddComponent<AccentFill>();
+                // Re-pointed on every rebuild, so clicking the armed cell cancels rather
+                // than binding a mouse button to it.
+                _rebindListener.CancelRect = (RectTransform)btn.transform;
+            }
 
             var txtGo = UIBuilder.Rect("L", btn.transform);
             var txtRect = (RectTransform)txtGo.transform;
@@ -973,15 +1013,18 @@ namespace Bismuth.UI.Pages
                     () => { row.RainColorCustom = true; notify?.Invoke(); });
 
                 UIBuilder.Spacer(body);
-                bool canDelete = preset.Rows.Count > 1;
-                UIBuilder.Button(body, canDelete ? Loc.T("Delete this row") : Loc.T("Delete this row (last row — disabled)"), () =>
-                {
-                    if (!canDelete) return;
-                    preset.Rows.RemoveAt(rowIdx);
-                    notify?.Invoke();
-                    rebuild();
-                    _stack.Pop();
-                });
+                // Only the live action gets the danger styling — arming a two-click confirm
+                // on a button that can't do anything would just look broken.
+                if (preset.Rows.Count > 1)
+                    UIBuilder.DangerButton(body, "Delete this row", () =>
+                    {
+                        preset.Rows.RemoveAt(rowIdx);
+                        notify?.Invoke();
+                        rebuild();
+                        _stack.Pop();
+                    });
+                else
+                    UIBuilder.Button(body, "Delete this row (last row — disabled)", null);
             });
         }
 
@@ -1060,7 +1103,7 @@ namespace Bismuth.UI.Pages
                     v => { cell.LabelSize = v; notify?.Invoke(); rebuild(); });
 
                 UIBuilder.Spacer(body);
-                UIBuilder.Button(body, "Delete this cell", () =>
+                UIBuilder.DangerButton(body, "Delete this cell", () =>
                 {
                     preset.Rows[rowIdx].Cells.RemoveAt(cellIdx);
                     notify?.Invoke();

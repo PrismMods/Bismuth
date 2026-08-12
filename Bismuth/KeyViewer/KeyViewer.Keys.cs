@@ -38,6 +38,8 @@ namespace Bismuth
                 case "`":         result = KeyCode.BackQuote; return true;
                 case "-":         result = KeyCode.Minus; return true;
                 case "=":         result = KeyCode.Equals; return true;
+                case "LMB":       result = KeyCode.Mouse0; return true;
+                case "RMB":       result = KeyCode.Mouse1; return true;
                 default:
                     if (token.Length == 1)
                     {
@@ -80,6 +82,8 @@ namespace Bismuth
                 case KeyCode.DownArrow:    return "↓";
                 case KeyCode.LeftArrow:    return "←";
                 case KeyCode.RightArrow:   return "→";
+                case KeyCode.Mouse0:       return "LMB";
+                case KeyCode.Mouse1:       return "RMB";
                 default:
                     string s = key.ToString();
                     if (s.StartsWith("Alpha")) return s.Substring(5);

@@ -124,17 +124,19 @@ namespace Bismuth.UI.Pages
                     UnityEngine.Object.Destroy(c.gameObject);
                 }
 
-                MakeChip(stripGo.transform, listener.Active ? Loc.T("■ Stop") : Loc.T("● Listen"),
+                var listenChip = MakeChip(stripGo.transform, listener.Active ? Loc.T("■ Stop") : Loc.T("● Listen"),
                     listener.Active, () =>
                     {
                         listener.Active = !listener.Active;
                         rebuild();
                     });
+                // Clicking Stop while listening must stop, not bind LMB to the strip.
+                if (listener.Active) listener.CancelRect = (RectTransform)listenChip.transform;
 
                 var tokens = ParseTokens(s.KeyLimiterCustomKeys);
                 foreach (var tok in tokens)
                 {
-                    string label = "× " + PrettyTokenLabel(tok);
+                    string label = "× " + KeyTokens.PrettyTokenLabel(tok);
                     string captured = tok;
                     MakeChip(stripGo.transform, label, false, () =>
                     {
@@ -149,8 +151,8 @@ namespace Bismuth.UI.Pages
 
             listener.OnKey = kc =>
             {
-                if (kc == KeyCode.Escape) return;
-                string tok = TokenFromKeyCode(kc);
+                if (kc == KeyCode.Escape) { listener.Active = false; rebuild(); return; }
+                string tok = KeyTokens.TokenFromKeyCode(kc);
                 var tokens = ParseTokens(s.KeyLimiterCustomKeys);
                 int existing = tokens.IndexOf(tok);
                 if (existing >= 0) tokens.RemoveAt(existing);
@@ -199,73 +201,6 @@ namespace Bismuth.UI.Pages
                 list.Add(t);
             return list;
         }
-
-        // Friendly display for a token.
-        private static string PrettyTokenLabel(string token)
-        {
-            if (!KeyViewer.TryParseKey(token, out KeyCode kc)) return token;
-            switch (kc)
-            {
-                case KeyCode.LeftShift:    return "LShift";
-                case KeyCode.RightShift:   return "RShift";
-                case KeyCode.LeftControl:  return "LCtrl";
-                case KeyCode.RightControl: return "RCtrl";
-                case KeyCode.LeftAlt:      return "LAlt";
-                case KeyCode.RightAlt:     return "RAlt";
-                case KeyCode.LeftCommand:  return "LCmd";
-                case KeyCode.RightCommand: return "RCmd";
-                case KeyCode.CapsLock:     return "Caps";
-                case KeyCode.Return:       return "Enter";
-                case KeyCode.Backspace:    return "Back";
-                case KeyCode.Escape:       return "Esc";
-                case KeyCode.UpArrow:      return "↑";
-                case KeyCode.DownArrow:    return "↓";
-                case KeyCode.LeftArrow:    return "←";
-                case KeyCode.RightArrow:   return "→";
-                default:                   return token;
-            }
-        }
-
-        // Captured-key → storage token. Mirrors KeyTokens.TokenFromKeyCode (subset).
-        private static string TokenFromKeyCode(KeyCode kc)
-        {
-            switch (kc)
-            {
-                case KeyCode.Tab:          return "Tab";
-                case KeyCode.CapsLock:     return "Caps";
-                case KeyCode.Space:        return "Space";
-                case KeyCode.Return:       return "Enter";
-                case KeyCode.Backspace:    return "Backspace";
-                case KeyCode.Escape:       return "Escape";
-                case KeyCode.LeftShift:    return "LShift";
-                case KeyCode.RightShift:   return "RShift";
-                case KeyCode.LeftControl:  return "LCtrl";
-                case KeyCode.RightControl: return "RCtrl";
-                case KeyCode.LeftAlt:      return "LAlt";
-                case KeyCode.RightAlt:     return "RAlt";
-                case KeyCode.LeftCommand:  return "LCmd";
-                case KeyCode.RightCommand: return "RCmd";
-                case KeyCode.UpArrow:      return "Up";
-                case KeyCode.DownArrow:    return "Down";
-                case KeyCode.LeftArrow:    return "Left";
-                case KeyCode.RightArrow:   return "Right";
-                case KeyCode.LeftBracket:  return "[";
-                case KeyCode.RightBracket: return "]";
-                case KeyCode.Backslash:    return "\\";
-                case KeyCode.Semicolon:    return ";";
-                case KeyCode.Quote:        return "'";
-                case KeyCode.Comma:        return ",";
-                case KeyCode.Period:       return ".";
-                case KeyCode.Slash:        return "/";
-                case KeyCode.BackQuote:    return "`";
-                case KeyCode.Minus:        return "-";
-                case KeyCode.Equals:       return "=";
-            }
-            // Alpha0–Alpha9 → "0".."9"; A–Z stays as-is via ToString(); F1-F12 likewise.
-            if (kc >= KeyCode.Alpha0 && kc <= KeyCode.Alpha9)
-                return ((int)(kc - KeyCode.Alpha0)).ToString();
-            return kc.ToString();
-        }
     }
 
     // Fires when its RectTransform's dimensions change (resize, scale, layout pass). Used
@@ -280,39 +215,84 @@ namespace Bismuth.UI.Pages
     // per key-down event; consumer is expected to clear / re-enable as needed.
     internal class KeyListener : MonoBehaviour
     {
-        public bool Active;
         public Action<KeyCode> OnKey;
+
+        // Rect of the control that armed this listen. A click inside it cancels the
+        // listen instead of binding a mouse button — reported to OnKey as Escape, which
+        // is the cancel every consumer already implements.
+        public RectTransform CancelRect;
+
+        private bool _active;
+        private int _armedFrame = -1;
+        private static int _activeCount;
+
+        public bool Active
+        {
+            get { return _active; }
+            set
+            {
+                if (_active == value) return;
+                _active = value;
+                _activeCount += value ? 1 : -1;
+                // Down and up of one click can land in the same frame; without this the
+                // click that arms a listen would immediately bind itself as LMB/RMB.
+                if (value) _armedFrame = Time.frameCount;
+            }
+        }
+
+        private void OnDisable() { Active = false; }   // also covers Destroy
+
+        // While a bind is pending, every panel click belongs to the listener. The captured
+        // click's release must not reach the widget under it either, hence the grace
+        // window — it is a deadline, not a latch, so a destroyed listener can't wedge the UI.
+        internal static float SwallowClicksUntil;
+        internal static bool ClicksSwallowed
+        {
+            get { return _activeCount > 0 || Time.unscaledTime < SwallowClicksUntil; }
+        }
 
         private static readonly KeyCode[] Watched = BuildWatched();
 
+        // Every keyboard KeyCode, not a hand-picked list — a curated one silently drops
+        // whatever it forgot (Menu, keypad, Print…). Filter by name, not by value: the
+        // keycodes are not one contiguous block (F16-F24 sit at 670+, well past the
+        // Mouse/Joystick range at 323-509). Mouse buttons are handled separately below.
         private static KeyCode[] BuildWatched()
         {
             var list = new List<KeyCode>();
-            for (int k = (int)KeyCode.A; k <= (int)KeyCode.Z; k++) list.Add((KeyCode)k);
-            for (int k = (int)KeyCode.Alpha0; k <= (int)KeyCode.Alpha9; k++) list.Add((KeyCode)k);
-            for (int k = (int)KeyCode.F1; k <= (int)KeyCode.F12; k++) list.Add((KeyCode)k);
-            list.AddRange(new[]
+            var seen = new HashSet<KeyCode>();   // Meta/Command/Apple share values
+            foreach (string name in Enum.GetNames(typeof(KeyCode)))
             {
-                KeyCode.LeftShift, KeyCode.RightShift,
-                KeyCode.LeftControl, KeyCode.RightControl,
-                KeyCode.LeftAlt, KeyCode.RightAlt,
-                KeyCode.LeftCommand, KeyCode.RightCommand,
-                KeyCode.Space, KeyCode.Return, KeyCode.Tab, KeyCode.CapsLock, KeyCode.Backspace,
-                KeyCode.UpArrow, KeyCode.DownArrow, KeyCode.LeftArrow, KeyCode.RightArrow,
-                KeyCode.LeftBracket, KeyCode.RightBracket, KeyCode.Backslash,
-                KeyCode.Semicolon, KeyCode.Quote, KeyCode.Comma, KeyCode.Period, KeyCode.Slash,
-                KeyCode.BackQuote, KeyCode.Minus, KeyCode.Equals,
-                KeyCode.Insert, KeyCode.Delete, KeyCode.Home, KeyCode.End,
-                KeyCode.PageUp, KeyCode.PageDown,
-            });
+                if (name.StartsWith("Mouse") || name.StartsWith("Joystick") || name.StartsWith("Wheel"))
+                    continue;
+                var k = (KeyCode)Enum.Parse(typeof(KeyCode), name);
+                if (k == KeyCode.None) continue;
+                if (seen.Add(k)) list.Add(k);
+            }
             return list.ToArray();
+        }
+
+        // LMB / RMB are bindable like any other key. Returns true once the click is spoken for.
+        private bool TryMouse()
+        {
+            KeyCode btn = Input.GetMouseButtonDown(0) ? KeyCode.Mouse0
+                        : Input.GetMouseButtonDown(1) ? KeyCode.Mouse1
+                        : KeyCode.None;
+            if (btn == KeyCode.None) return false;
+
+            SwallowClicksUntil = Time.unscaledTime + 0.5f;
+            bool onSelf = CancelRect != null && RectTransformUtility.RectangleContainsScreenPoint(
+                CancelRect, Input.mousePosition, null);   // ScreenSpaceOverlay → no camera
+            OnKey(onSelf ? KeyCode.Escape : btn);
+            return true;
         }
 
         private static readonly HashSet<KeyCode> _asyncDown = new HashSet<KeyCode>();
 
         private void Update()
         {
-            if (!Active || OnKey == null) return;
+            if (!_active || OnKey == null) return;
+            if (Time.frameCount > _armedFrame && TryMouse()) return;
             // Capture happens while the menu is open, i.e. exactly when the raw
             // GetKeyDown block is engaged — exempt these reads.
             KeyLimiter.RawReadExempt = true;

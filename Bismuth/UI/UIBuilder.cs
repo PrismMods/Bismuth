@@ -56,6 +56,26 @@ namespace Bismuth.UI
             return t;
         }
 
+        // Fixed-width left label for a settings row. Autosizes down and truncates —
+        // without it a long (or localized) label overflows its box and paints over the
+        // control to its right.
+        public static TextMeshProUGUI RowLabel(Transform row, string label, float width = 140f)
+        {
+            var labGo = Rect("Label", row);
+            var labRect = (RectTransform)labGo.transform;
+            labRect.anchorMin = new Vector2(0, 0);
+            labRect.anchorMax = new Vector2(0, 1);
+            labRect.pivot = new Vector2(0, 0.5f);
+            labRect.sizeDelta = new Vector2(width, 0);
+            labRect.anchoredPosition = new Vector2(8f, 0);
+            var lab = Tmp(labGo, label, (int)LabelFontSize, TextAnchor.MiddleLeft, Theme.Text);
+            lab.enableAutoSizing = true;
+            lab.fontSizeMin = 9;
+            lab.fontSizeMax = (int)LabelFontSize;
+            lab.overflowMode = TextOverflowModes.Truncate;
+            return lab;
+        }
+
         // TMP_InputField factory. TMP needs a viewport RectTransform with the text
         // component nested inside it (the caret is spawned under the viewport), so the
         // field GO becomes the viewport and `txt` its child. Returns the field; caller
@@ -769,14 +789,7 @@ namespace Bismuth.UI
             const float rightW = valueW + undoW + undoGap + trackGap; // reserved right cluster (track sizing)
 
             // Label
-            var labGo = Rect("Label", row.transform);
-            var labRect = (RectTransform)labGo.transform;
-            labRect.anchorMin = new Vector2(0, 0);
-            labRect.anchorMax = new Vector2(0, 1);
-            labRect.pivot = new Vector2(0, 0.5f);
-            labRect.sizeDelta = new Vector2(labelW, 0);
-            labRect.anchoredPosition = new Vector2(8f, 0);
-            var lab = Tmp(labGo, label, (int)LabelFontSize, TextAnchor.MiddleLeft, Theme.Text);
+            RowLabel(row.transform, label, labelW);
 
             // Value display (right) — a TMP_InputField (on `valGo`) for click-to-type. The
             // visible text is a child so it doesn't collide with the field's own. Boxed
@@ -953,14 +966,7 @@ namespace Bismuth.UI
             const float labelW = 140f;
             const float btnW = 22f;
 
-            var labGo = Rect("Label", row.transform);
-            var labRect = (RectTransform)labGo.transform;
-            labRect.anchorMin = new Vector2(0, 0);
-            labRect.anchorMax = new Vector2(0, 1);
-            labRect.pivot = new Vector2(0, 0.5f);
-            labRect.sizeDelta = new Vector2(labelW, 0);
-            labRect.anchoredPosition = new Vector2(8f, 0);
-            var lab = Tmp(labGo, label, (int)LabelFontSize, TextAnchor.MiddleLeft, Theme.Text);
+            RowLabel(row.transform, label, labelW);
 
             // Right cluster: ◀ value ▶
             var rightGo = Rect("Right", row.transform);
@@ -1036,14 +1042,7 @@ namespace Bismuth.UI
             bg.raycastTarget = true;
             HoverFill(row, bg, Theme.RowBgHover, new Color(0, 0, 0, 0));
 
-            var labGo = Rect("Label", row.transform);
-            var labRect = (RectTransform)labGo.transform;
-            labRect.anchorMin = new Vector2(0, 0);
-            labRect.anchorMax = new Vector2(0, 1);
-            labRect.pivot = new Vector2(0, 0.5f);
-            labRect.sizeDelta = new Vector2(140f, 0);
-            labRect.anchoredPosition = new Vector2(8f, 0);
-            Tmp(labGo, label, (int)LabelFontSize, TextAnchor.MiddleLeft, Theme.Text);
+            RowLabel(row.transform, label);
 
             var valGo = Rect("Value", row.transform);
             var valRect = (RectTransform)valGo.transform;
@@ -1217,14 +1216,7 @@ namespace Bismuth.UI
             var row = Row(parent);
             const float labelW = 140f;
 
-            var labGo = Rect("Label", row.transform);
-            var labRect = (RectTransform)labGo.transform;
-            labRect.anchorMin = new Vector2(0, 0);
-            labRect.anchorMax = new Vector2(0, 1);
-            labRect.pivot = new Vector2(0, 0.5f);
-            labRect.sizeDelta = new Vector2(labelW, 0);
-            labRect.anchoredPosition = new Vector2(8f, 0);
-            var lab = Tmp(labGo, label, (int)LabelFontSize, TextAnchor.MiddleLeft, Theme.Text);
+            RowLabel(row.transform, label, labelW);
 
             var inGo = Rect("Input", row.transform);
             var inRect = (RectTransform)inGo.transform;
@@ -1270,14 +1262,7 @@ namespace Bismuth.UI
             const float segW = 52f;
             const float gap = 2f;
 
-            var labGo = Rect("Label", row.transform);
-            var labRect = (RectTransform)labGo.transform;
-            labRect.anchorMin = new Vector2(0, 0);
-            labRect.anchorMax = new Vector2(0, 1);
-            labRect.pivot = new Vector2(0, 0.5f);
-            labRect.sizeDelta = new Vector2(labelW, 0);
-            labRect.anchoredPosition = new Vector2(8f, 0);
-            var lab = Tmp(labGo, label, (int)LabelFontSize, TextAnchor.MiddleLeft, Theme.Text);
+            RowLabel(row.transform, label, labelW);
 
             var rightGo = Rect("Segs", row.transform);
             var rr = (RectTransform)rightGo.transform;
@@ -2062,14 +2047,7 @@ namespace Bismuth.UI
             const float swatchSize = 18f;
             const float gap = 6f;
 
-            var labGo = Rect("Label", row.transform);
-            var labRect = (RectTransform)labGo.transform;
-            labRect.anchorMin = new Vector2(0, 0);
-            labRect.anchorMax = new Vector2(0, 1);
-            labRect.pivot = new Vector2(0, 0.5f);
-            labRect.sizeDelta = new Vector2(labelW, 0);
-            labRect.anchoredPosition = new Vector2(8f, 0);
-            var lab = Tmp(labGo, label, (int)LabelFontSize, TextAnchor.MiddleLeft, Theme.Text);
+            RowLabel(row.transform, label, labelW);
 
             var rightGo = Rect("Swatches", row.transform);
             var rightRect = (RectTransform)rightGo.transform;
@@ -2286,6 +2264,9 @@ namespace Bismuth.UI
 
         public void OnPointerClick(PointerEventData e)
         {
+            // A pending key bind owns the click — otherwise binding LMB would also press
+            // whatever the cursor happened to be over. KeyListener handles it instead.
+            if (Pages.KeyListener.ClicksSwallowed) return;
             if (e.button == PointerEventData.InputButton.Right) OnRightClick?.Invoke();
             else if (e.button == PointerEventData.InputButton.Left) OnClick?.Invoke();
         }

@@ -39,6 +39,8 @@ namespace Bismuth.UI.Pages
                 case KeyCode.BackQuote:    return "`";
                 case KeyCode.Minus:        return "-";
                 case KeyCode.Equals:       return "=";
+                case KeyCode.Mouse0:       return "LMB";
+                case KeyCode.Mouse1:       return "RMB";
             }
             if (kc >= KeyCode.Alpha0 && kc <= KeyCode.Alpha9)
                 return ((int)(kc - KeyCode.Alpha0)).ToString();

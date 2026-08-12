@@ -71,7 +71,15 @@ namespace Bismuth
             _inst = go.AddComponent<UpdateChecker>();
             _inst._repoUrl = repoUrl;
             _inst._modPath = modEntry.Path;
-            if (!Version.TryParse(modEntry.Info.Version, out _inst._current))
+            /* Prerelease builds carry a suffix ("1.3.4-b1") that System.Version can't parse.
+               Compare on the numeric part: an unparsed _current disables the up-to-date
+               check below, which would pop the update prompt at every beta tester on
+               every launch. The suffix only orders against its own base, which is fine —
+               a beta is only ever superseded by a later release. */
+            string ver = modEntry.Info.Version ?? "";
+            int dash = ver.IndexOf('-');
+            if (dash > 0) ver = ver.Substring(0, dash);
+            if (!Version.TryParse(ver, out _inst._current))
                 BismuthLog.Log("Update check: unparseable current version '" + modEntry.Info.Version + "'");
 
             _inst.DetectInstalls();

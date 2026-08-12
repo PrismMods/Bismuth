@@ -73,7 +73,7 @@ namespace Bismuth
             for (int r = 0; r < rowCells.Count; r++)
             {
                 var cfg = rowCfgs[r];
-                if (!cfg.ShowRain) continue;
+                if (!preset.ShowRain || !cfg.ShowRain) continue;
                 foreach (var cell in rowCells[r])
                 {
                     string tok = cell.Token;
@@ -167,7 +167,9 @@ namespace Bismuth
                         _ghostKeys.Add(gkc);
                         _rainX[gkc] = topKeyX[gi];
                         _rainRowIndex[gkc] = topRowGlobal;
-                        _rainEnabled.Add(gkc);
+                        // Ghosts stay registered as ghosts (they must never count as input)
+                        // even with the preset's rain off — only their rain is suppressed.
+                        if (preset.ShowRain) _rainEnabled.Add(gkc);
                         // Default ghost rain color = yellow when GhostRainColor is unset.
                         _rainColors[gkc] = preset.GhostRainColor
                             ?? new KvColor { R = 1f, G = 0.9f, B = 0f, A = 1f };
@@ -283,9 +285,9 @@ namespace Bismuth
 
             var img = go.AddComponent<RoundedRectGraphic>();
             img.Radius      = preset.Radius;
-            img.BorderWidth = preset.BorderWidth;
-            img.BorderColor = preset.BorderIdle.ToColor();
-            img.color       = preset.BgIdle.ToColor();
+            img.BorderWidth = preset.CellBorderWidth;
+            img.BorderColor = preset.CellBorder(false);
+            img.color       = preset.CellBg(false);
 
             if (!_counts.TryGetValue(preset.Name ?? "", out var presetCounts))
                 _counts[preset.Name ?? ""] = presetCounts = new Dictionary<KeyCode, int>();
@@ -326,9 +328,9 @@ namespace Bismuth
 
             var img = go.AddComponent<RoundedRectGraphic>();
             img.Radius      = preset.Radius;
-            img.BorderWidth = preset.BorderWidth;
-            img.BorderColor = preset.BorderIdle.ToColor();
-            img.color       = preset.BgIdle.ToColor();
+            img.BorderWidth = preset.CellBorderWidth;
+            img.BorderColor = preset.CellBorder(false);
+            img.color       = preset.CellBg(false);
 
             var nameText = MakeLabel(go.transform, label,
                 new Vector2(0f, 0.5f), new Vector2(1f, 1f), preset.LabelSize, false, preset.TxtIdle.ToColor());

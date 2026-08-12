@@ -73,7 +73,7 @@ namespace Bismuth
                             if (!_counts.TryGetValue(pn, out var pc)) _counts[pn] = pc = new Dictionary<KeyCode, int>();
                             pc.TryGetValue(key, out int prev);
                             pc[key] = prev + 1;
-                            if (c.Bg    != null) { c.Bg.color = c.Preset.BgHeld.ToColor(); c.Bg.BorderColor = c.Preset.BorderHeld.ToColor(); }
+                            if (c.Bg    != null) { c.Bg.color = c.Preset.CellBg(true); c.Bg.BorderColor = c.Preset.CellBorder(true); }
                             if (c.Name  != null) c.Name.color  = c.Preset.TxtHeld.ToColor();
                             if (c.Count != null) { c.Count.text = pc[key].ToString(); c.Count.color = c.Preset.CountHeld.ToColor(); }
                         }
@@ -111,7 +111,7 @@ namespace Bismuth
                         foreach (var c in cells)
                         {
                             if (c?.Preset == null) continue;
-                            if (c.Bg    != null) { c.Bg.color = c.Preset.BgIdle.ToColor(); c.Bg.BorderColor = c.Preset.BorderIdle.ToColor(); }
+                            if (c.Bg    != null) { c.Bg.color = c.Preset.CellBg(false); c.Bg.BorderColor = c.Preset.CellBorder(false); }
                             if (c.Name  != null) c.Name.color  = c.Preset.TxtIdle.ToColor();
                             if (c.Count != null) c.Count.color = c.Preset.CountIdle.ToColor();
                         }
@@ -137,7 +137,7 @@ namespace Bismuth
                         foreach (var c in cells)
                         {
                             if (c?.Preset == null) continue;
-                            if (c.Bg    != null) { c.Bg.color = c.Preset.BgIdle.ToColor(); c.Bg.BorderColor = c.Preset.BorderIdle.ToColor(); }
+                            if (c.Bg    != null) { c.Bg.color = c.Preset.CellBg(false); c.Bg.BorderColor = c.Preset.CellBorder(false); }
                             if (c.Name  != null) c.Name.color  = c.Preset.TxtIdle.ToColor();
                             if (c.Count != null) c.Count.color = c.Preset.CountIdle.ToColor();
                         }
@@ -177,79 +177,55 @@ namespace Bismuth
                         {
                             Destroy(col.BodyRt.gameObject);
                             if (col.TipRt != null) Destroy(col.TipRt.gameObject);
-                            if (col.ShadowBodyRt != null) Destroy(col.ShadowBodyRt.gameObject);
-                            if (col.ShadowTipRt  != null) Destroy(col.ShadowTipRt.gameObject);
+                            DestroyHalo(col.Shadow);
+                            DestroyHalo(col.Glow);
                             _rainColumns.RemoveAt(i);
                             continue;
                         }
                     }
 
                     float panelTop = col.PanelHeight * 0.5f + col.Gap * 0.5f;
-                    float bodyTop = Mathf.Min(col.BotY + col.Height, fadeStart);
+                    float topY    = col.BotY + col.Height;
+                    // Which segment draws which end of the column. The top is only square
+                    // when the track cuts it off at fadeEnd; a seam between body and tip is
+                    // always square on both sides so the silhouette doesn't notch.
+                    bool hasTip     = topY > fadeStart;
+                    bool topClipped = topY >= fadeEnd;
+
+                    float bodyTop = Mathf.Min(topY, fadeStart);
                     float bodyH   = Mathf.Max(0f, bodyTop - col.BotY);
                     col.BodyRt.anchoredPosition = new Vector2(col.BodyRt.anchoredPosition.x, panelTop + col.BotY);
                     col.BodyRt.sizeDelta        = new Vector2(col.Width, bodyH);
                     col.BodyImg.color           = col.BaseColor;
+                    if (col.Radius > 0)
+                    {
+                        var wantBody = GetRainSprite(col.Radius, roundBottom: true, roundTop: !hasTip);
+                        if (col.BodyImg.sprite != wantBody) col.BodyImg.sprite = wantBody;
+                    }
 
                     float tipBot  = Mathf.Max(col.BotY, fadeStart);
-                    float tipTopY = Mathf.Min(col.BotY + col.Height, fadeEnd);
+                    float tipTopY = Mathf.Min(topY, fadeEnd);
                     float tipH    = Mathf.Max(0f, tipTopY - tipBot);
+                    bool  tipIsBottom = col.BotY >= fadeStart;   // body fully consumed
                     if (col.TipRt != null)
                     {
                         col.TipRt.anchoredPosition = new Vector2(col.TipRt.anchoredPosition.x, panelTop + tipBot);
                         col.TipRt.sizeDelta        = new Vector2(col.Width, tipH);
                         if (tipH > 0f)
                         {
-                            float uvY = (tipBot - fadeStart) / fadeZoneH;
-                            float uvH = tipH / fadeZoneH;
-                            col.TipImg.uvRect = new Rect(0f, uvY, 1f, uvH);
-                            col.TipImg.color  = col.BaseColor;
+                            if (col.Radius > 0)
+                            {
+                                var wantTip = GetRainSprite(col.Radius, tipIsBottom, !topClipped);
+                                if (col.TipImg.sprite != wantTip) col.TipImg.sprite = wantTip;
+                            }
+                            col.TipFade.Set(FadeAt(tipBot, fadeStart, fadeZoneH), FadeAt(tipTopY, fadeStart, fadeZoneH));
+                            col.TipImg.color = col.BaseColor;
                         }
                         else col.TipImg.color = new Color(col.BaseColor.r, col.BaseColor.g, col.BaseColor.b, 0f);
                     }
 
-                    if (col.ShadowBodyRt != null)
-                    {
-                        // The shadow body extension below BotY can sit in mid-air after the rain
-                        // body has crossed into the fade zone — fade its alpha with the same curve
-                        // the rain tip uses so it disappears with the rain.
-                        float bodyFadeMul = col.BotY <= fadeStart
-                            ? 1f
-                            : Mathf.Clamp01(1f - (col.BotY - fadeStart) / fadeZoneH);
-                        Color shadowBodyColor = col.ShadowColor;
-                        shadowBodyColor.a *= bodyFadeMul;
-
-                        // No rain tip yet (top hasn't reached fadeStart): use the soft-top
-                        // sprite, body extended up by ShadowSize so the fade renders above the
-                        // rain. Else use the sharp-top sprite so bodyTop meets the tip at
-                        // fadeStart without overlap brightening.
-                        bool hasTip = (col.BotY + col.Height) > fadeStart;
-                        int ss = Mathf.RoundToInt(col.ShadowSize);
-                        Sprite wantSprite = hasTip
-                            ? GetShadowBodySprite(ss)
-                            : GetShadowBodySpriteSoftTop(ss);
-                        if (col.ShadowBodyImg.sprite != wantSprite)
-                            col.ShadowBodyImg.sprite = wantSprite;
-
-                        float sw = col.Width + col.ShadowSize * 2f;
-                        float topExt = hasTip ? 0f : col.ShadowSize;
-                        col.ShadowBodyRt.anchoredPosition = new Vector2(col.ShadowBodyRt.anchoredPosition.x, panelTop + col.BotY - col.ShadowSize);
-                        col.ShadowBodyRt.sizeDelta        = new Vector2(sw, bodyH + col.ShadowSize + topExt);
-                        col.ShadowBodyImg.color           = shadowBodyColor;
-                        if (col.ShadowTipRt != null)
-                        {
-                            col.ShadowTipRt.anchoredPosition = new Vector2(col.ShadowTipRt.anchoredPosition.x, panelTop + tipBot);
-                            col.ShadowTipRt.sizeDelta        = new Vector2(sw, tipH);
-                            if (tipH > 0f)
-                            {
-                                float uvY = (tipBot - fadeStart) / fadeZoneH;
-                                float uvH = tipH / fadeZoneH;
-                                col.ShadowTipImg.uvRect = new Rect(0f, uvY, 1f, uvH);
-                                col.ShadowTipImg.color  = col.ShadowColor;
-                            }
-                            else col.ShadowTipImg.color = new Color(col.ShadowColor.r, col.ShadowColor.g, col.ShadowColor.b, 0f);
-                        }
-                    }
+                    UpdateHalo(col.Shadow, col, panelTop, bodyH, tipBot, tipTopY, fadeStart, fadeZoneH, hasTip, tipIsBottom, topClipped);
+                    UpdateHalo(col.Glow,   col, panelTop, bodyH, tipBot, tipTopY, fadeStart, fadeZoneH, hasTip, tipIsBottom, topClipped);
                 }
             }
         }
@@ -288,39 +264,23 @@ namespace Bismuth
             Transform layer = layerRt;
             float startY = rowPanelH * 0.5f + rowGap * 0.5f;
 
-            int shadowSizeInt = preset != null ? Mathf.Max(0, Mathf.RoundToInt(preset.RainShadowSize)) : 0;
-            float shadowSize = shadowSizeInt;
+            // Corner arcs would cross past half the column width, so clamp there. Shared by
+            // the column and both halos so their silhouettes match.
+            int radius = preset != null ? Mathf.Clamp(preset.RainRadius, 0, Mathf.FloorToInt(w * 0.5f)) : 0;
+
             Color shadowColor = preset?.RainShadowColor != null ? preset.RainShadowColor.ToColor() : new Color(0f, 0f, 0f, 0.5f);
+            // Glow tint multiplies the column color, so the default (white) glows in each
+            // key's own color and a picked tint still reads through it.
+            Color glowTint = preset?.RainGlowColor != null ? preset.RainGlowColor.ToColor() : new Color(1f, 1f, 1f, 0.5f);
+            Color glowColor = color * glowTint;
 
-            RectTransform shadowBodyRt = null;
-            Image shadowBodyImg = null;
-            RectTransform shadowTipRt = null;
-            RawImage shadowTipImg = null;
-            if (shadowSize > 0f && _shadowLayers.TryGetValue(rowIdx, out var shadowLayer) && shadowLayer != null)
-            {
-                var sBodyGo = new GameObject("RainBodyShadow");
-                sBodyGo.transform.SetParent(shadowLayer, false);
-                shadowBodyRt = sBodyGo.AddComponent<RectTransform>();
-                shadowBodyRt.anchorMin = shadowBodyRt.anchorMax = new Vector2(0.5f, 0.5f);
-                shadowBodyRt.pivot     = new Vector2(0.5f, 0f);
-                shadowBodyRt.anchoredPosition = new Vector2(x, startY);
-                shadowBodyRt.sizeDelta        = new Vector2(w + shadowSize * 2f, 0f);
-                shadowBodyImg = sBodyGo.AddComponent<Image>();
-                shadowBodyImg.sprite = GetShadowBodySprite(shadowSizeInt);
-                shadowBodyImg.type   = Image.Type.Sliced;
-                shadowBodyImg.color  = shadowColor;
-
-                var sTipGo = new GameObject("RainTipShadow");
-                sTipGo.transform.SetParent(shadowLayer, false);
-                shadowTipRt = sTipGo.AddComponent<RectTransform>();
-                shadowTipRt.anchorMin = shadowTipRt.anchorMax = new Vector2(0.5f, 0.5f);
-                shadowTipRt.pivot     = new Vector2(0.5f, 0f);
-                shadowTipRt.anchoredPosition = new Vector2(x, startY);
-                shadowTipRt.sizeDelta        = new Vector2(w + shadowSize * 2f, 0f);
-                shadowTipImg = sTipGo.AddComponent<RawImage>();
-                shadowTipImg.texture = GetShadowTipTex(shadowSizeInt, Mathf.RoundToInt(w));
-                shadowTipImg.color   = shadowColor;
-            }
+            _shadowLayers.TryGetValue(rowIdx, out var haloLayer);
+            // Shadow first, glow second: same layer, so the glow draws over the shadow and
+            // both stay under the rain (which has its own higher-sorted layer).
+            var shadow = SpawnHalo(haloLayer, "RainShadow", x, startY, w, radius,
+                preset != null ? preset.RainShadowSize : 0f, shadowColor, glow: false);
+            var glow = SpawnHalo(haloLayer, "RainGlow", x, startY, w, radius,
+                preset != null ? preset.RainGlowSize : 0f, glowColor, glow: true);
 
             var bodyGo = new GameObject("RainBody");
             bodyGo.transform.SetParent(layer, false);
@@ -331,6 +291,11 @@ namespace Bismuth
             bodyRt.sizeDelta        = new Vector2(w, 0f);
             var bodyImg = bodyGo.AddComponent<Image>();
             bodyImg.color = color;
+            if (radius > 0)
+            {
+                bodyImg.sprite = GetRainSprite(radius, roundBottom: true, roundTop: true);
+                bodyImg.type   = Image.Type.Sliced;
+            }
 
             var tipGo = new GameObject("RainTip");
             tipGo.transform.SetParent(layer, false);
@@ -339,24 +304,124 @@ namespace Bismuth
             tipRt.pivot     = new Vector2(0.5f, 0f);
             tipRt.anchoredPosition = new Vector2(x, startY);
             tipRt.sizeDelta        = new Vector2(w, 0f);
-            var tipImg = tipGo.AddComponent<RawImage>();
-            tipImg.texture = GetGradientTex();
-            tipImg.color   = color;
+            var tipImg = tipGo.AddComponent<Image>();
+            tipImg.color = color;
+            if (radius > 0)
+            {
+                tipImg.sprite = GetRainSprite(radius, roundBottom: false, roundTop: true);
+                tipImg.type   = Image.Type.Sliced;
+            }
+            var tipFade = tipGo.AddComponent<VerticalFade>();
 
             _rainColumns.Add(new RainColumn
             {
                 Key = key,
                 BodyRt = bodyRt, BodyImg = bodyImg,
-                TipRt  = tipRt,  TipImg  = tipImg,
-                ShadowBodyRt = shadowBodyRt, ShadowBodyImg = shadowBodyImg,
-                ShadowTipRt  = shadowTipRt,  ShadowTipImg  = shadowTipImg,
-                BaseColor = color, ShadowColor = shadowColor,
-                Width = w, ShadowSize = shadowSize,
+                TipRt  = tipRt,  TipImg  = tipImg, TipFade = tipFade,
+                Shadow = shadow, Glow = glow,
+                BaseColor = color,
+                Width = w, Radius = radius,
                 Height = 0f, BotY = 0f, Growing = true,
                 PanelHeight = rowPanelH,
                 Gap = rowGap,
                 Preset = preset
             });
+        }
+
+        // Distance-based alpha of the rain fade zone at panel-space height y.
+        private static float FadeAt(float y, float fadeStart, float fadeZoneH)
+            => Mathf.Clamp01(1f - (y - fadeStart) / fadeZoneH);
+
+        private void UpdateHalo(Halo h, RainColumn col, float panelTop, float bodyH,
+            float tipBot, float tipTopY, float fadeStart, float fadeZoneH,
+            bool hasTip, bool tipIsBottom, bool topClipped)
+        {
+            if (h == null || h.BodyRt == null) return;
+            int size = Mathf.RoundToInt(h.Size);
+
+            // The halo body extension below BotY can sit in mid-air after the rain body has
+            // crossed into the fade zone — fade its alpha with the same curve the rain tip
+            // uses so it disappears with the rain.
+            Color bodyColor = h.Color;
+            bodyColor.a *= col.BotY <= fadeStart ? 1f : FadeAt(col.BotY, fadeStart, fadeZoneH);
+
+            // Soft ends follow the rain's: an end that meets another segment stays hard, so
+            // bodyTop meets the tip at fadeStart without overlap brightening.
+            var wantBody = GetHaloBodySprite(size, h.Radius, softBottom: true, softTop: !hasTip, glow: h.Glow);
+            if (h.BodyImg.sprite != wantBody) h.BodyImg.sprite = wantBody;
+
+            float sw = col.Width + h.Size * 2f;
+            float bodyTopExt = hasTip ? 0f : h.Size;
+            h.BodyRt.anchoredPosition = new Vector2(h.BodyRt.anchoredPosition.x, panelTop + col.BotY - h.Size);
+            h.BodyRt.sizeDelta        = new Vector2(sw, bodyH + h.Size + bodyTopExt);
+            h.BodyImg.color           = bodyColor;
+
+            if (h.TipRt == null) return;
+            float tipH = Mathf.Max(0f, tipTopY - tipBot);
+            if (tipH <= 0f)
+            {
+                h.TipImg.color = new Color(h.Color.r, h.Color.g, h.Color.b, 0f);
+                return;
+            }
+
+            // The soft ends extend past the rain so their blur renders outside it.
+            float botExt = tipIsBottom  ? h.Size : 0f;
+            float topExt = topClipped   ? 0f     : h.Size;
+            var wantTip = GetHaloBodySprite(size, h.Radius, tipIsBottom, !topClipped, h.Glow);
+            if (h.TipImg.sprite != wantTip) h.TipImg.sprite = wantTip;
+
+            h.TipRt.anchoredPosition = new Vector2(h.TipRt.anchoredPosition.x, panelTop + tipBot - botExt);
+            h.TipRt.sizeDelta        = new Vector2(sw, tipH + botExt + topExt);
+            h.TipFade.Set(FadeAt(tipBot - botExt, fadeStart, fadeZoneH),
+                          FadeAt(tipTopY + topExt, fadeStart, fadeZoneH));
+            h.TipImg.color = h.Color;
+        }
+
+        private void DestroyHalo(Halo h)
+        {
+            if (h == null) return;
+            if (h.BodyRt != null) Destroy(h.BodyRt.gameObject);
+            if (h.TipRt  != null) Destroy(h.TipRt.gameObject);
+        }
+
+        // One halo layer (shadow or glow) for a column. Null when its size is 0 = disabled.
+        private Halo SpawnHalo(Transform layer, string name, float x, float startY, float w,
+            int radius, float size, Color color, bool glow)
+        {
+            int sizeInt = Mathf.Max(0, Mathf.RoundToInt(size));
+            if (sizeInt <= 0 || layer == null) return null;
+
+            var bodyGo = new GameObject(name + "Body");
+            bodyGo.transform.SetParent(layer, false);
+            var bodyRt = bodyGo.AddComponent<RectTransform>();
+            bodyRt.anchorMin = bodyRt.anchorMax = new Vector2(0.5f, 0.5f);
+            bodyRt.pivot     = new Vector2(0.5f, 0f);
+            bodyRt.anchoredPosition = new Vector2(x, startY);
+            bodyRt.sizeDelta        = new Vector2(w + sizeInt * 2f, 0f);
+            var bodyImg = bodyGo.AddComponent<Image>();
+            bodyImg.sprite = GetHaloBodySprite(sizeInt, radius, softBottom: true, softTop: true, glow: glow);
+            bodyImg.type   = Image.Type.Sliced;
+            bodyImg.color  = color;
+
+            var tipGo = new GameObject(name + "Tip");
+            tipGo.transform.SetParent(layer, false);
+            var tipRt = tipGo.AddComponent<RectTransform>();
+            tipRt.anchorMin = tipRt.anchorMax = new Vector2(0.5f, 0.5f);
+            tipRt.pivot     = new Vector2(0.5f, 0f);
+            tipRt.anchoredPosition = new Vector2(x, startY);
+            tipRt.sizeDelta        = new Vector2(w + sizeInt * 2f, 0f);
+            var tipImg = tipGo.AddComponent<Image>();
+            tipImg.sprite = GetHaloBodySprite(sizeInt, radius, softBottom: false, softTop: true, glow: glow);
+            tipImg.type   = Image.Type.Sliced;
+            tipImg.color  = color;
+            var tipFade = tipGo.AddComponent<VerticalFade>();
+
+            return new Halo
+            {
+                BodyRt = bodyRt, BodyImg = bodyImg,
+                TipRt  = tipRt,  TipImg  = tipImg, TipFade = tipFade,
+                Color = color, Size = sizeInt, Radius = radius, Glow = glow,
+            };
         }
 
         private void StopRainColumn(KeyCode key)
