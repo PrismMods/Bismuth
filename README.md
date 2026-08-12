@@ -4,7 +4,7 @@
   
   # Bismuth
 
-  An overlay / QoL mod for **A Dance of Fire and Ice** (3.1.0+) — the lite version of **Quartz**.
+  An overlay / QoL mod for **A Dance of Fire and Ice** (3.3.0+) — the lite version of **Quartz**.
   
   [![Latest Release](https://img.shields.io/github/v/release/PrismMods/Bismuth?include_prereleases&sort=date&label=release&logo=github&style=flat-square)](https://github.com/PrismMods/Bismuth/releases/latest)
   [![Downloads](https://img.shields.io/github/downloads/PrismMods/Bismuth/total?style=flat-square&logo=github&label=downloads)](https://github.com/PrismMods/Bismuth/releases)
@@ -21,9 +21,8 @@
 
 Tested Environments:
 
-- macOS 26.5, ADOFAI v3.2.0
-- Arch Linux, kernel 7.0, ADOFAI v3.2.0
-- Windows 11, ADOFAI v3.2.0
+- macOS 26.5, ADOFAI v3.3.1
+- Arch Linux, kernel 7.0, ADOFAI v3.3.1
 
 ## Install
 
