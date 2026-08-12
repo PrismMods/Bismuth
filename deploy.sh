@@ -9,6 +9,7 @@ mkdir -p "$MODS_DIR/Resources"
 cp Bismuth/bin/Debug/Bismuth.dll "$MODS_DIR/"
 cp Info.json "$MODS_DIR/"
 cp Bismuth/Resources/bismuth-fonts "$MODS_DIR/Resources/"
+cp Bismuth/Resources/BismuthSymbols.ttf Bismuth/Resources/BismuthSymbols-LICENSE.txt "$MODS_DIR/Resources/"
 
 cmp -s Bismuth/bin/Debug/Bismuth.dll "$MODS_DIR/Bismuth.dll" || { echo "ERROR: deployed dll does not match build output" >&2; exit 1; }
 cmp -s Info.json "$MODS_DIR/Info.json" || { echo "ERROR: deployed Info.json does not match" >&2; exit 1; }

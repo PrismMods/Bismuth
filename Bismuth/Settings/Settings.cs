@@ -312,6 +312,10 @@ namespace Bismuth
         // Don't nag again.
         public bool IgnoreDuplicateInstall = false;
 
+        // "Stable" / "Beta" / "Alpha". Empty = follow the installed build's own channel, so a
+        // stable install never opts itself into betas and a tester keeps their track.
+        public string UpdateChannel = "";
+
         public bool KeyLimiterEnabled = true;
         public bool KeyLimiterUseKvKeys = true;
         public string KeyLimiterCustomKeys = "";

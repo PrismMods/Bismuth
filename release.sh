@@ -37,6 +37,7 @@ mkdir -p "$STAGE/Bismuth/Resources"
 cp Bismuth/bin/Debug/Bismuth.dll "$STAGE/Bismuth/"
 cp Info.json "$STAGE/Bismuth/"
 cp Bismuth/Resources/bismuth-fonts "$STAGE/Bismuth/Resources/"
+cp Bismuth/Resources/BismuthSymbols.ttf Bismuth/Resources/BismuthSymbols-LICENSE.txt "$STAGE/Bismuth/Resources/"
 
 # Zip it.
 rm -f "$ZIP_NAME"

@@ -68,7 +68,7 @@ namespace Bismuth
                 case KeyCode.Minus:        return "-";
                 case KeyCode.Equals:       return "=";
                 case KeyCode.Tab:          return "⇥";
-                case KeyCode.Space:        return "␣";
+                case KeyCode.Space:        return "⎵";
                 case KeyCode.Return:       return "⏎";
                 case KeyCode.Backspace:    return "Back";
                 case KeyCode.Escape:       return "Esc";

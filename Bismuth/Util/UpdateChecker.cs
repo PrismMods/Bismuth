@@ -5,6 +5,7 @@ using System.IO.Compression;
 using System.Net;
 using System.Threading;
 using Bismuth.UI;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityModManagerNet;
 
@@ -22,17 +23,65 @@ namespace Bismuth
        MelonLoader + UMMCompat: no timeout, no error, no completion. */
     internal class UpdateChecker : MonoBehaviour
     {
-        /* UMMCompat doesn't populate modEntry.Info.Repository from Info.json, so
-           the repo URL falls back to this hardcoded value. */
-        private const string FallbackRepoUrl =
-            "https://raw.githubusercontent.com/PrismMods/Bismuth/main/Repository.json";
+        /* The releases list, not Repository.json: that file only ever names one version, and
+           channels need to see every published tag to pick the newest one at or below the
+           chosen risk level. */
+        private const string ApiUrl =
+            "https://api.github.com/repos/PrismMods/Bismuth/releases?per_page=30";
+        internal const string ReleasesPage = "https://github.com/PrismMods/Bismuth/releases";
 
         private static UpdateChecker _inst;
 
-        private string _repoUrl;
         private string _modPath;
-        private Version _current;
+        private SemVer _current;
+        private bool _currentKnown;
         private string _downloadUrl;
+
+        // ── Panel-facing state (read on the main thread by PageMisc) ───────
+        internal enum State { Idle, Checking, UpToDate, Available, Installing, Installed, Failed }
+
+        internal static State Status { get; private set; }
+        internal static string StatusMessage { get; private set; }
+        // Newest release at or below the selected channel; may be OLDER than what's installed
+        // (picking Stable while running a beta), which the panel offers as a switch.
+        internal static string LatestTag { get; private set; }
+        internal static bool LatestIsNewer { get; private set; }
+        internal static bool Ready { get { return _inst != null; } }
+        internal static string InstalledVersion
+        {
+            get { return _inst != null && _inst._currentKnown ? _inst._current.ToString() : "?"; }
+        }
+
+        internal static UpdateChannel Channel
+        {
+            get
+            {
+                string set = MainClass.Settings != null ? MainClass.Settings.UpdateChannel : null;
+                if (!string.IsNullOrEmpty(set))
+                    foreach (UpdateChannel c in Enum.GetValues(typeof(UpdateChannel)))
+                        if (string.Equals(set, c.ToString(), StringComparison.OrdinalIgnoreCase)) return c;
+                // Unset: follow the build that's installed, so a stable user isn't opted into
+                // betas and a beta tester keeps getting them.
+                return _inst != null && _inst._currentKnown ? _inst._current.Channel : UpdateChannel.Stable;
+            }
+        }
+
+        // Manual re-check from the panel, e.g. right after switching channel.
+        internal static void CheckNow()
+        {
+            if (_inst == null || Status == State.Checking || Status == State.Installing) return;
+            _inst.StartCheck();
+        }
+
+        // Panel action: install whatever the current channel resolved to, newer or older.
+        internal static void InstallLatest()
+        {
+            if (_inst == null || string.IsNullOrEmpty(_inst._downloadUrl)) return;
+            if (Status == State.Checking || Status == State.Installing) return;
+            Status = State.Installing;
+            StatusMessage = "";
+            _inst.StartDownload();
+        }
         /* Existing install dirs, null when absent. Native UMM loads from
            <game>/Mods/, MelonLoader+UMMCompat from <game>/UMMMods/. Both can
            exist at once. */
@@ -59,27 +108,16 @@ namespace Bismuth
             if (_inst != null) return;
             if (modEntry == null) { BismuthLog.Log("Update check skipped: no mod entry"); return; }
 
-            string repoUrl = modEntry.Info.Repository;
-            if (string.IsNullOrEmpty(repoUrl))
-            {
-                BismuthLog.Log("Update check: Info.Repository empty (UMMCompat) — using fallback URL");
-                repoUrl = FallbackRepoUrl;
-            }
-
             var go = new GameObject("BismuthUpdateChecker");
             DontDestroyOnLoad(go);
             _inst = go.AddComponent<UpdateChecker>();
-            _inst._repoUrl = repoUrl;
             _inst._modPath = modEntry.Path;
-            /* Prerelease builds carry a suffix ("1.3.4-b1") that System.Version can't parse.
-               Compare on the numeric part: an unparsed _current disables the up-to-date
-               check below, which would pop the update prompt at every beta tester on
-               every launch. The suffix only orders against its own base, which is fine —
-               a beta is only ever superseded by a later release. */
-            string ver = modEntry.Info.Version ?? "";
-            int dash = ver.IndexOf('-');
-            if (dash > 0) ver = ver.Substring(0, dash);
-            if (!Version.TryParse(ver, out _inst._current))
+            /* SemVer, not System.Version: the suffix on a prerelease ("1.3.4-b1") is what
+               decides its channel, and System.Version can't even parse it. An unparsed
+               current version leaves _currentKnown false, which suppresses the prompt rather
+               than popping it at every launch. */
+            _inst._currentKnown = SemVer.TryParse(modEntry.Info.Version, out _inst._current);
+            if (!_inst._currentKnown)
                 BismuthLog.Log("Update check: unparseable current version '" + modEntry.Info.Version + "'");
 
             _inst.DetectInstalls();
@@ -102,10 +140,12 @@ namespace Bismuth
 
         private void StartCheck()
         {
-            BismuthLog.Log($"Update check: v{_current} against {_repoUrl}");
+            BismuthLog.Log($"Update check: v{_current} on the {Channel} channel");
+            Status = State.Checking;
+            StatusMessage = "";
             _checkStartedAt = Time.realtimeSinceStartup;
             _checkPending = true;
-            string url = _repoUrl;
+            string url = ApiUrl;
             ThreadPool.QueueUserWorkItem(_ =>
             {
                 // BismuthLog is plain file IO, safe off main thread
@@ -205,6 +245,8 @@ namespace Bismuth
             if (checkErr != null)
             {
                 _checkPending = false;
+                Status = State.Failed;
+                StatusMessage = checkErr;
                 BismuthLog.Log("Update check failed: " + checkErr);
             }
             if (json != null) _checkPending = false;
@@ -212,11 +254,20 @@ namespace Bismuth
             if (json != null)
             {
                 try { ParseAndMaybePrompt(json); }
-                catch (Exception e) { BismuthLog.Log("Update check parse failed: " + e.Message); }
+                catch (Exception e)
+                {
+                    Status = State.Failed;
+                    StatusMessage = e.Message;
+                    BismuthLog.Log("Update check parse failed: " + e.Message);
+                }
             }
 
             if (dlErr != null)
+            {
+                Status = State.Failed;
+                StatusMessage = dlErr;
                 UpdatePopup.SetStatus("Download failed: " + dlErr + " — try Manual update.", allowRetry: true);
+            }
 
             if (zip != null)
             {
@@ -228,51 +279,95 @@ namespace Bismuth
                     BismuthLog.Log("Update install failed: " + e);
                 }
                 if (error == null)
+                {
+                    Status = State.Installed;
+                    StatusMessage = LatestTag ?? "";
                     UpdatePopup.SetDone("Updated. Restart the game to apply.");
+                }
                 else
+                {
+                    Status = State.Failed;
+                    StatusMessage = error;
                     UpdatePopup.SetStatus("Install failed: " + error + " — try Manual update.", allowRetry: true);
+                }
             }
         }
 
         // ── Version check ──────────────────────────────────────────────────
 
+        /* Picks the newest release at or below the selected channel. Cumulative by design:
+           Alpha accepts beta and stable builds too, so nobody is stranded on an old alpha
+           once a newer stable ships. A pick that is OLDER than what's installed is kept —
+           that's the channel switch (running a beta, selecting Stable), offered from the
+           panel but never auto-prompted. */
         private void ParseAndMaybePrompt(string json)
         {
-            /* Repository.json has a trivial fixed shape, and JsonUtility silently
-               produced nothing for it here, so parse the two fields directly. */
-            var vm = System.Text.RegularExpressions.Regex.Match(json, "\"Version\"\\s*:\\s*\"([^\"]+)\"");
-            var dm = System.Text.RegularExpressions.Regex.Match(json, "\"DownloadUrl\"\\s*:\\s*\"([^\"]+)\"");
-            if (!vm.Success)
+            UpdateChannel channel = Channel;
+            /* A rate-limited or errored API answers with an object ({"message": "API rate
+               limit exceeded…"}), not an array. Parsing that as JArray throws a JSON error
+               that tells the user nothing — read the message out instead. */
+            JToken root = JToken.Parse(json);
+            if (!(root is JArray releases))
             {
-                BismuthLog.Log("Update check: no Version field in repository json: " +
-                    (json.Length > 200 ? json.Substring(0, 200) + "…" : json));
+                string msg = (string)root["message"] ?? "unexpected response";
+                Status = State.Failed;
+                StatusMessage = msg;
+                BismuthLog.Log("Update check: GitHub said '" + msg + "'");
                 return;
             }
-            if (!Version.TryParse(vm.Groups[1].Value, out Version latest))
-            {
-                BismuthLog.Log("Update check: unparseable release version '" + vm.Groups[1].Value + "'");
-                return;
-            }
-            if (_current != null && latest <= _current)
-            {
-                BismuthLog.Log($"Update check: up to date (v{_current})");
-                return;
-            }
-            if (!dm.Success)
-            {
-                BismuthLog.Log("Update check: newer version but no DownloadUrl in repository json");
-                return;
-            }
-            string releaseUrl = dm.Groups[1].Value;
 
-            _downloadUrl = releaseUrl;
-            // ".../releases/download/v1.2.3/Bismuth.zip" → ".../releases"
-            int cut = _downloadUrl?.IndexOf("/download/", StringComparison.Ordinal) ?? -1;
-            string releasesPage = cut > 0 ? _downloadUrl.Substring(0, cut)
-                                          : "https://github.com/PrismMods/Bismuth/releases";
+            SemVer bestVer = new SemVer();
+            string bestTag = null, bestUrl = null;
+            foreach (JToken rel in releases)
+            {
+                if ((bool?)rel["draft"] == true) continue;
+                string tag = (string)rel["tag_name"];
+                if (string.IsNullOrEmpty(tag)) continue;
+                if (!SemVer.TryParse(tag, out SemVer v)) continue;
+                if (v.Channel > channel) continue;
+                if (bestTag != null && v.CompareTo(bestVer) <= 0) continue;
 
-            BismuthLog.Log($"Update available: v{_current} → v{latest}");
-            UpdatePopup.Show(_current?.ToString() ?? "?", latest.ToString(), releasesPage,
+                string url = null;
+                if (rel["assets"] is JArray assets)
+                    foreach (JToken a in assets)
+                    {
+                        string name = (string)a["name"];
+                        if (string.IsNullOrEmpty(name)) continue;
+                        if (!name.StartsWith("Bismuth", StringComparison.OrdinalIgnoreCase)) continue;
+                        if (!name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) continue;
+                        url = (string)a["browser_download_url"];
+                        break;
+                    }
+                if (url == null) continue;   // a release with no installable zip is not a release
+
+                bestVer = v; bestTag = tag; bestUrl = url;
+            }
+
+            if (bestTag == null)
+            {
+                LatestTag = null;
+                LatestIsNewer = false;
+                _downloadUrl = null;
+                Status = State.UpToDate;
+                BismuthLog.Log($"Update check: no {channel}-channel release with a zip asset");
+                return;
+            }
+
+            LatestTag = bestTag;
+            // An unparseable installed version can't be compared, so nothing counts as newer:
+            // the alternative is prompting every launch. The panel still offers the install.
+            LatestIsNewer = _currentKnown && bestVer.CompareTo(_current) > 0;
+            _downloadUrl = bestUrl;
+            Status = LatestIsNewer ? State.Available : State.UpToDate;
+
+            if (!LatestIsNewer)
+            {
+                BismuthLog.Log($"Update check: up to date (v{_current}, {channel} channel newest is {bestTag})");
+                return;
+            }
+
+            BismuthLog.Log($"Update available: v{_current} → {bestTag} ({channel} channel)");
+            UpdatePopup.Show(_currentKnown ? _current.ToString() : "?", bestTag, ReleasesPage,
                 () => StartDownload());
         }
 

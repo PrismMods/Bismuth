@@ -40,6 +40,7 @@ namespace Bismuth
                         if (_tmp != null)
                         {
                             _tmp.name = Name + " (TMP)";
+                            EnsureSymbolFallback(_tmp);
                             if (BoldSibling != null && BoldSibling != this)
                                 _tmp.fontWeightTable[7].regularTypeface = BoldSibling.TmpFont;
                         }
@@ -59,6 +60,42 @@ namespace Bismuth
                 UnityEngine.Object.Destroy(_tmp);
                 _tmp = null;
             }
+        }
+
+        /* Keycap symbols (⇥ ␣ ⏎ ⇧ …) are missing from nearly every display font, so TMP
+           borrows them from whatever fallback has them — the game's CJK asset normalizes
+           its metrics differently and draws them tiny and off-baseline. This bundled subset
+           carries them at matching metrics. It is a fallback, never a pickable font, so it
+           stays out of the scanned list. */
+        internal const string SymbolFontName = "BismuthSymbols";
+        private static string _symbolFontPath;
+        private static TMP_FontAsset _symbolFont;
+
+        internal static TMP_FontAsset SymbolFont
+        {
+            get
+            {
+                if (_symbolFont == null && !string.IsNullOrEmpty(_symbolFontPath))
+                {
+                    _symbolFont = TMP_FontAsset.CreateFontAsset(
+                        _symbolFontPath, 0, 90, 9, GlyphRenderMode.SDFAA, 1024, 1024);
+                    if (_symbolFont != null) _symbolFont.name = SymbolFontName + " (TMP)";
+                }
+                return _symbolFont;
+            }
+        }
+
+        // First in the table: GameFontApplier appends the game's own asset here, and that
+        // one has the symbols too — at the metrics that started this.
+        internal static void EnsureSymbolFallback(TMP_FontAsset target)
+        {
+            var sym = SymbolFont;
+            if (target == null || sym == null || target == sym) return;
+            var fb = target.fallbackFontAssetTable;
+            if (fb == null) target.fallbackFontAssetTable = fb = new List<TMP_FontAsset>();
+            if (fb.Count > 0 && fb[0] == sym) return;
+            fb.Remove(sym);
+            fb.Insert(0, sym);
         }
 
         /* Canonical ordering for weight cycle. Names not in this list sort last, in
@@ -168,6 +205,11 @@ namespace Bismuth
                 string ext = Path.GetExtension(filePath).ToLowerInvariant();
                 if (ext != ".ttf" && ext != ".otf") continue;
                 string name = Path.GetFileNameWithoutExtension(filePath);
+                if (string.Equals(name, SymbolFontName, StringComparison.OrdinalIgnoreCase))
+                {
+                    _symbolFontPath = filePath;   // fallback only, never offered as a choice
+                    continue;
+                }
                 if (Find(result, name) != null) continue;
                 result.Add(new FontEntry(name, filePath));
                 MainClass.Logger.Log($"[Bismuth] Found custom font '{name}' ({Path.GetFileName(filePath)})");
@@ -214,8 +256,16 @@ namespace Bismuth
 
         internal static void DestroyTmpAssets(List<FontEntry> entries)
         {
-            if (entries == null) return;
-            foreach (var e in entries) e.DestroyTmp();
+            if (entries != null)
+                foreach (var e in entries) e.DestroyTmp();
+            if (_symbolFont == null) return;
+            var atlases = _symbolFont.atlasTextures;
+            if (atlases != null)
+                foreach (var tex in atlases)
+                    if (tex != null) UnityEngine.Object.Destroy(tex);
+            if (_symbolFont.material != null) UnityEngine.Object.Destroy(_symbolFont.material);
+            UnityEngine.Object.Destroy(_symbolFont);
+            _symbolFont = null;
         }
 
         private static void TryLoadBundle(string path, List<FontEntry> result)

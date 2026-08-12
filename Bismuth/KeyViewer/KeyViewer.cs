@@ -298,6 +298,8 @@ namespace Bismuth
         {
             _labelFont = labelFont;
             _countFont = countFont != null ? countFont : labelFont;
+            // Covers the game's own asset too, when no bundled font is selected.
+            FontLoader.EnsureSymbolFallback(_labelFont);
             var countStyle = TMPro.FontStyles.Normal;
             foreach (var kvp in _keyCells)
                 foreach (var c in kvp.Value)

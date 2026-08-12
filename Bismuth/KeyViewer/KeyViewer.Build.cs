@@ -14,6 +14,7 @@ namespace Bismuth
             // font covers the window where no bundled font has been applied yet.
             if (_labelFont == null) _labelFont = TMP_Settings.defaultFontAsset;
             if (_countFont == null) _countFont = _labelFont;
+            FontLoader.EnsureSymbolFallback(_labelFont);
 
             _nextRowIdx = 0;
             if (_settings.ShowHandViewer && _settings.Hand != null)
