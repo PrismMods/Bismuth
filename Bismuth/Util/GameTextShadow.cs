@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text;
 using System.Text.RegularExpressions;
 using TMPro;
@@ -84,6 +85,7 @@ namespace Bismuth
         // Last-mirrored values — only write to TMP on change so it doesn't rebuild its
         // mesh every frame.
         private string _lastText;
+        private string _lastRaw;   // last _src.text we processed, by reference
         private Color _lastColor;
         private float _lastSize = float.NaN;
         private TextAlignmentOptions _lastAlign = (TextAlignmentOptions)(-1);
@@ -142,9 +144,54 @@ namespace Bismuth
             _collapseNewlines = collapseNewlines;
             _noWrap = noWrap;
             _configDirty = true;
+            _lastRaw = null;   // the tag chain's inputs changed, so re-derive from the source
         }
 
-        private void LateUpdate()
+        /* One driver instead of N MonoBehaviours. Unity invokes every component's LateUpdate
+           individually through the scripting bridge, and a styled scene holds thousands of
+           shadows — that per-call overhead is paid whether or not the body does anything.
+           A single LateUpdate walking a list pays it once. Registration follows enable state,
+           so a shadow on a disabled object stops ticking exactly as before. */
+        private static readonly List<GameTextShadow> _live = new List<GameTextShadow>();
+        private static GameObject _driverGo;
+
+        private static readonly System.Diagnostics.Stopwatch _tickWatch = new System.Diagnostics.Stopwatch();
+        private static int _tickFrames;
+
+        private void OnEnable()
+        {
+            _live.Add(this);
+            if (_driverGo != null) return;
+            _driverGo = new GameObject("BismuthShadowDriver");
+            Object.DontDestroyOnLoad(_driverGo);
+            _driverGo.hideFlags = HideFlags.HideAndDontSave;
+            _driverGo.AddComponent<Driver>();
+        }
+
+        private void OnDisable() => _live.Remove(this);
+
+        private class Driver : MonoBehaviour
+        {
+            private void LateUpdate()
+            {
+                _tickWatch.Start();
+                for (int i = _live.Count - 1; i >= 0; i--)
+                {
+                    var sh = _live[i];
+                    if (sh == null) { _live.RemoveAt(i); continue; }
+                    sh.Tick();
+                }
+                _tickWatch.Stop();
+
+                if (++_tickFrames < 300) return;
+                BismuthLog.Debug($"[dbg] GameText shadows: {_live.Count} live, " +
+                    $"{_tickWatch.Elapsed.TotalMilliseconds / _tickFrames:0.00}ms/frame");
+                _tickFrames = 0;
+                _tickWatch.Reset();
+            }
+        }
+
+        private void Tick()
         {
             if (_src == null || _tmp == null) return;
 
@@ -169,13 +216,22 @@ namespace Bismuth
                 _lastSize = float.NaN; // re-derive size against the new scale
             }
 
-            string text = SanitizeColorTags(_src.text);
-            if (_stripSize && !string.IsNullOrEmpty(text) && text.IndexOf("<size", System.StringComparison.OrdinalIgnoreCase) >= 0)
-                text = SizeTag.Replace(text, "");
-            if (_collapseNewlines && !string.IsNullOrEmpty(text) && text.IndexOf('\n') >= 0)
-                text = text.Replace('\n', ' ');
-            if (_boldLabelLines) text = BoldLabelLines(text);
-            if (text != _lastText) { _tmp.text = text; _lastText = text; }
+            /* Game text is overwhelmingly static (menu labels, credits), but the tag chain below
+               scans and can rewrite the string every frame, per shadow. UGUI's Text.text hands
+               back its backing field, so an unchanged label is the SAME reference — skip the
+               whole chain on that, and only re-derive when the game actually assigns. */
+            string raw = _src.text;
+            if (!ReferenceEquals(raw, _lastRaw))
+            {
+                _lastRaw = raw;
+                string text = SanitizeColorTags(raw);
+                if (_stripSize && !string.IsNullOrEmpty(text) && text.IndexOf("<size", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                    text = SizeTag.Replace(text, "");
+                if (_collapseNewlines && !string.IsNullOrEmpty(text) && text.IndexOf('\n') >= 0)
+                    text = text.Replace('\n', ' ');
+                if (_boldLabelLines) text = BoldLabelLines(text);
+                if (text != _lastText) { _tmp.text = text; _lastText = text; }
+            }
 
             Color color = _src.color;
             if (color != _lastColor) { _tmp.color = color; _lastColor = color; }

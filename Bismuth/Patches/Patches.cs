@@ -197,7 +197,7 @@ namespace Bismuth
             public static void Postfix(PauseMenu __instance)
             {
                 KeyViewer.PauseMenuOpen = true;
-                try { GameFontApplier.ApplyTo(__instance.gameObject); GameFontApplier.RequestFullSweepSoon(); }
+                try { GameFontApplier.ApplyTo(__instance.gameObject); GameFontApplier.RequestActiveSweepSoon(); }
                 catch { }
             }
         }
@@ -214,7 +214,7 @@ namespace Bismuth
         {
             public static void Postfix(PauseMenu __instance)
             {
-                try { GameFontApplier.ApplyTo(__instance.gameObject); GameFontApplier.RequestFullSweepSoon(); }
+                try { GameFontApplier.ApplyTo(__instance.gameObject); GameFontApplier.RequestActiveSweepSoon(); }
                 catch { }
             }
         }

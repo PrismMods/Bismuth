@@ -131,6 +131,8 @@ namespace Bismuth
             // Isolated so a Harmony-version issue in this optional layer can never abort the
             // whole mod load (a MissingMethodException from an absent Patch overload on older
             // Harmony surfaces at THIS call site, not inside the method's own try/catch).
+            try { LoadProfiler.TryPatch(harmony); }
+            catch (Exception e) { BismuthLog.Log("[Bismuth] LoadProfiler patch failed: " + e.Message); }
             try { KeyLimiter.TryPatchRawInput(harmony); }
             catch (Exception e) { BismuthLog.Log("TryPatchRawInput skipped: " + e.Message); }
         }
@@ -357,8 +359,23 @@ namespace Bismuth
             }
         }
 
+        /* Wall clock from "the level scene arrived" to "the level is actually running", so
+           Bismuth's own sweep cost can be read as a FRACTION of a load rather than in
+           isolation. Level loading is dominated by main-thread object creation inside the
+           game — none of which a mod can move to another core — so the only question worth
+           answering is whether our share is big enough to be worth cutting. */
+        internal static float LevelLoadStartedAt { get; private set; }
+        internal static bool LevelLoadPending { get; set; }
+
         private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
+            if (scene.name == "scnGame")
+            {
+                LevelLoadStartedAt = Time.realtimeSinceStartup;
+                LevelLoadPending = true;
+                GameFontApplier.ResetSceneAccounting();
+                LoadProfiler.Reset();
+            }
             if (!_deferredApplyPending) return;
             if (!IsEngineReady()) return;
             // RDConstants.data's lazy getter itself can NRE if Resources.Load isn't safe yet.
@@ -378,6 +395,9 @@ namespace Bismuth
                managed reference to those entries, so UnloadUnusedAssets can then actually
                reclaim them. Gated on its own setting (Leak Guard), not on OptUnloadAssets. */
             LeakGuard.SweepStaticCaches();
+            // A scene unload is where the font caches actually fill with dead components, so
+            // this is the one moment pruning them is worth its cost (see PruneThrottled).
+            GameFontApplier.PruneNow();
             if (!Settings.OptimizationsEnabled || !Settings.OptUnloadAssets) return;
             // Measure synchronously: op.completed fires after the next scene starts allocating,
             // which makes before-after read as negative noise.

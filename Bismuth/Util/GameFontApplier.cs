@@ -24,7 +24,22 @@ namespace Bismuth
            materials — RDString.SetLocalizedFont carries _UnderlayColor/_UnderlayDilate across
            font stamps through `fontMaterial` — so e.g. the news sign got the default's dark
            outline after a disable instead of its own clean instance. */
-        private struct TmpState { public TMP_FontAsset Font; public Material Mat; public float Size; public float LineSpacing; public FontStyles Style; public bool AutoSize; public float SizeMin, SizeMax; }
+        private struct TmpState
+        {
+            public TMP_FontAsset Font; public Material Mat; public float Size; public float LineSpacing;
+            public FontStyles Style; public bool AutoSize; public float SizeMin, SizeMax;
+            /* What we last stamped on, and under which styling generation. A re-sweep that
+               finds all three unchanged skips the classification above the old early-out
+               (ElementWeightEntry / ShouldBold / IsClsNoWrap) — that work, not the ancestor
+               walks, is what a warm sweep was spending its time on. */
+            public TMP_FontAsset Applied; public FontStyles AppliedStyle; public int Gen;
+        }
+
+        /* Bumped whenever an input to the styling decision changes: the fonts themselves, the
+           per-element weight table, or a size/spacing slider. Any settled text then re-derives
+           its style on the next sweep. Generation rather than a cache clear, so a change during
+           a partially-drained sweep can't leave half the scene stamped as current. */
+        private static int _styleGen;
 
         // Legacy game Text and 3D TextMesh are rendered via shadows (TMP). Only game TMP
         // is still swapped in place; its original state is cached here for Restore.
@@ -115,6 +130,7 @@ namespace Bismuth
         {
             _tmpFont = tmpFont;
             _boldTmpFont = boldTmpFont != null ? boldTmpFont : tmpFont;
+            _styleGen++;
             WireBoldWeight();
             PrewarmGameGlyphs();
             _lastSweepFrame = -1; // font identity changed, never dedupe this sweep
@@ -425,7 +441,10 @@ namespace Bismuth
         private static Dictionary<string, FontLoader.FontEntry> _elementWeights;
 
         internal static void SetElementWeights(Dictionary<string, FontLoader.FontEntry> table)
-            => _elementWeights = table;
+        {
+            _elementWeights = table;
+            _styleGen++;
+        }
 
         // Explicit weight chosen for HUD element this component belongs to, or null
         private static FontLoader.FontEntry ElementWeightEntry(Component c)
@@ -522,6 +541,18 @@ namespace Bismuth
             else Restore();
         }
 
+        /* The cheap sweep: only text that is currently active. For triggers that mean "something
+           just appeared" (a delayed re-check after scene entry, a level-select state change)
+           rather than "a whole scene arrived" — hidden text was already styled by the full sweep
+           that brought the scene in, and hasn't changed since. */
+        internal static void ReapplyActive()
+        {
+            if (!Enabled) { Restore(); return; }
+            if (Time.frameCount == _lastSweepFrame) return;
+            _lastSweepFrame = Time.frameCount;
+            ApplyActive();
+        }
+
         /* Scoped sweep: the game HUD canvas + the world-space autoplay/status label.
            Everything that (re)spawns or gets re-stamped mid-LEVEL (death %, results,
            congrats, rewind, press-to-start, countdown) sits under scrUIController.canvas;
@@ -569,6 +600,37 @@ namespace Bismuth
             _fullSweepFrameB = Time.frameCount + 30;
         }
 
+        /* For UI that OPENS over a live scene (pause menu, its settings submenu). The menu's own
+           subtree — inactive children included — is already styled by the ApplyTo at the call
+           site; the scene behind it hasn't changed just because the player paused. A full sweep
+           there rescanned the whole level: 11693 texts, 44ms scan + 134ms styling, to restyle a
+           menu that was already done. This catches anything that activated, and nothing else. */
+        private static int _activeSweepFrame = -1;
+
+        internal static void RequestActiveSweepSoon()
+        {
+            if (!Enabled) return;
+            _activeSweepFrame = Time.frameCount + 2;
+        }
+
+        /* Re-style only text we have already seen — no FindObjectsByType. Anything the game
+           re-stamped since fails the settled check inside ApplyTmp and gets re-derived; the
+           rest costs one dictionary lookup. */
+        private static readonly List<TMP_Text> _recheckBuf = new List<TMP_Text>();
+
+        private static void RecheckKnown()
+        {
+            if (!Enabled || _tmpFont == null) return;
+            _recheckBuf.Clear();
+            foreach (var kv in _origTmp)
+                if (kv.Key != null && !ReferenceEquals(kv.Key.font, kv.Value.Applied))
+                    _recheckBuf.Add(kv.Key);   // buffered: ApplyTmp writes back into _origTmp
+            for (int i = 0; i < _recheckBuf.Count; i++) ApplyTmp(_recheckBuf[i]);
+            if (_recheckBuf.Count > 0)
+                BismuthLog.Debug($"[dbg] GameFont recheck: re-styled {_recheckBuf.Count} re-stamped text(s)");
+            _recheckBuf.Clear();
+        }
+
         internal static void Tick()
         {
             // Finish styling a spread-out scene sweep before the deferred work below.
@@ -579,8 +641,13 @@ namespace Bismuth
                scene is small. */
             if (_sweepFrameA > 0 && Time.frameCount >= _sweepFrameA) { _sweepFrameA = -1; StateSweep(); }
             if (_sweepFrameB > 0 && Time.frameCount >= _sweepFrameB) { _sweepFrameB = -1; StateSweep(); }
+            if (_activeSweepFrame > 0 && Time.frameCount >= _activeSweepFrame) { _activeSweepFrame = -1; ReapplyActive(); }
             if (_fullSweepFrameA > 0 && Time.frameCount >= _fullSweepFrameA) { _fullSweepFrameA = -1; Reapply(); }
-            if (_fullSweepFrameB > 0 && Time.frameCount >= _fullSweepFrameB) { _fullSweepFrameB = -1; Reapply(); }
+            /* The late pass exists to catch the game re-stamping a localized font in Start(),
+               which only ever happens to text sweep A already found. Re-checking what we know
+               costs a dictionary walk; a second full sweep costs another 20-40ms scan for the
+               same answer. Genuinely new objects come from the next real trigger. */
+            if (_fullSweepFrameB > 0 && Time.frameCount >= _fullSweepFrameB) { _fullSweepFrameB = -1; RecheckKnown(); }
             /* Size-multiplier changes need a full restore+apply (Apply skips text
                already on the Bismuth font). Debounce so slider drags don't sweep the
                scene every tick. */
@@ -600,7 +667,9 @@ namespace Bismuth
                     .GetActiveScene().name == "scnLevelSelect";
             }
             catch { }
-            if (levelSelect) Reapply();
+            // Level select's late text activates outside any canvas, so this can't be HUD-scoped
+            // — but it IS activation, which is exactly what the active-only scan is for.
+            if (levelSelect) ReapplyActive();
             else ReapplyHud();
         }
 
@@ -610,6 +679,7 @@ namespace Bismuth
         internal static void RequestResize()
         {
             if (!Enabled) return;
+            _styleGen++;   // sizes feed the stamp, so settled text has to re-derive
             _resizeFrame = Time.frameCount + 15;
         }
 
@@ -703,27 +773,58 @@ namespace Bismuth
         private static readonly Queue<Component> _pending = new Queue<Component>();
         private const int SweepBudget = 256;
 
-        private static void Apply()
+        /* Sweep cost readout ([dbg], Misc → Debug mode). Prints where a sweep's time actually
+           went — scan vs styling — because "the font sweep hitches on big levels" has more
+           than one plausible cause and the profiler can't be attached to a shipped build. */
+        private static readonly System.Diagnostics.Stopwatch _sweepScanWatch = new System.Diagnostics.Stopwatch();
+        private static readonly System.Diagnostics.Stopwatch _sweepDrainWatch = new System.Diagnostics.Stopwatch();
+        private static int _sweepFound, _sweepStyled, _sweepSkipHits, _sweepSettled;
+        private static bool _lastScanWasFull;
+
+        /* Bismuth's share of a level load. Accumulated across every sweep since the scene
+           arrived, so it can be weighed against the load's total wall time — optimising our
+           178ms is worth doing at 500ms of load and pointless at 4 seconds. */
+        internal static double SweepMsThisScene { get; private set; }
+        internal static void ResetSceneAccounting() => SweepMsThisScene = 0d;
+
+        /* Scene entry needs the inactive text too — menus and popups are built hidden and must
+           already be styled when they open. Every OTHER sweep is looking for text that just
+           appeared, which by definition is active, and Include costs 4-20x more because it
+           walks the scene graph instead of a type index (measured: 8886 found / 86 active,
+           22.1ms vs 5.3ms). So: full scan when a scene or font arrives, active-only after. */
+        private static void ApplyActive() => Apply(activeOnly: true);
+
+        private static void Apply(bool activeOnly = false)
         {
             if (_tmpFont == null) return;
-            Prune();
+            var inactive = activeOnly ? FindObjectsInactive.Exclude : FindObjectsInactive.Include;
+            _lastScanWasFull = !activeOnly;
+            _sweepScanWatch.Reset(); _sweepDrainWatch.Reset();
+            _sweepFound = _sweepStyled = _sweepSkipHits = _sweepSettled = 0;
+            _sweepScanWatch.Start();
+            PruneThrottled();
             RefreshModRootPrefixes(); // pick up mods installed after our load
             RefreshVersionTexts();
             _sweepBoldCount = 0;
             if (DiagEnabled) _diagBudget = 64; // per-sweep cap so it can't flood log
             _pending.Clear();
-            foreach (var t in Object.FindObjectsByType<Text>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            foreach (var t in Object.FindObjectsByType<Text>(inactive, FindObjectsSortMode.None))
                 _pending.Enqueue(t);
-            foreach (var t in Object.FindObjectsByType<TMP_Text>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            foreach (var t in Object.FindObjectsByType<TMP_Text>(inactive, FindObjectsSortMode.None))
                 _pending.Enqueue(t);
-            foreach (var t in Object.FindObjectsByType<TextMesh>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            foreach (var t in Object.FindObjectsByType<TextMesh>(inactive, FindObjectsSortMode.None))
                 _pending.Enqueue(t);
+            _sweepFound = _pending.Count;
+
+            _sweepScanWatch.Stop();
+
             DrainPending(SweepBudget);
         }
 
         // Style up to `budget` of the gathered texts; Tick drains the remainder next frames.
         private static void DrainPending(int budget)
         {
+            _sweepDrainWatch.Start();
             int n = 0;
             while (_pending.Count > 0 && n < budget)
             {
@@ -746,11 +847,26 @@ namespace Bismuth
                     if (DiagEnabled) Diag(mesh, mesh.text, "TextMesh", mesh.font != null ? mesh.font.name : "null", mesh.fontStyle);
                 }
             }
+            _sweepStyled += n;
+            _sweepDrainWatch.Stop();
             if (_pending.Count == 0 && _sweepBoldCount != _lastBoldLogged)
             {
                 _lastBoldLogged = _sweepBoldCount;
                 BismuthLog.Debug("GameFont: sweep bold-swapped " + _sweepBoldCount +
                                  " texts (bold font: " + (_boldTmpFont != null ? _boldTmpFont.name : "none") + ")");
+            }
+            if (_pending.Count == 0 && _sweepFound > 0)
+            {
+                // Once per finished sweep — the watches are cumulative, so this is the only
+                // point where adding them doesn't multiply-count the drains.
+                SweepMsThisScene += _sweepScanWatch.Elapsed.TotalMilliseconds
+                                  + _sweepDrainWatch.Elapsed.TotalMilliseconds;
+                BismuthLog.Debug($"[dbg] GameFont sweep: {_sweepFound} texts, " +
+                    $"scan {_sweepScanWatch.Elapsed.TotalMilliseconds:0.0}ms, " +
+                    $"style {_sweepDrainWatch.Elapsed.TotalMilliseconds:0.0}ms, " +
+                    $"settled {_sweepSettled}, skip-cache {_skipCache.Count} entries ({_sweepSkipHits} hits), " +
+                    $"{(_lastScanWasFull ? "full" : "active-only")} scan");
+                _sweepFound = 0;
             }
         }
 
@@ -808,7 +924,27 @@ namespace Bismuth
             catch { return false; }
         }
 
+        /* Skip() is the sweep's dominant cost: it walks the ancestor chain twice (foreign-mod
+           assemblies, then scrDecoration), for every text, on every sweep. A big custom level
+           is mostly decoration text, so that work is spent re-reaching the same "not ours"
+           verdict thousands of times.
+
+           The verdict depends on where a component SITS in the hierarchy, not on any font or
+           setting, so it survives re-sweeps, font changes and Restore(). Pruned with the rest
+           when components die. Caveat: a component reparented after its first sweep keeps the
+           old verdict — the pooled text that does move (judgement popups) comes through
+           ApplyTo(GameObject) with the same prefab shape either way. */
+        private static readonly Dictionary<Component, bool> _skipCache = new Dictionary<Component, bool>();
+
         private static bool Skip(Component c)
+        {
+            if (_skipCache.TryGetValue(c, out bool cached)) { _sweepSkipHits++; return cached; }
+            bool verdict = SkipUncached(c);
+            _skipCache[c] = verdict;
+            return verdict;
+        }
+
+        private static bool SkipUncached(Component c)
         {
             // Our own shadow render child (the TMP we draw under each styled game Text).
             if (c.gameObject.name == GameTextShadow.ChildName) return true;
@@ -1059,6 +1195,17 @@ namespace Bismuth
         private static void ApplyTmp(TMP_Text t)
         {
             if (t == null || _tmpFont == null || Skip(t)) return;
+            /* Settled: same styling generation, and the text still carries exactly what we
+               stamped. Everything below re-derives a decision that cannot have changed, so a
+               warm re-sweep gets out here for two reference compares. */
+            if (_origTmp.TryGetValue(t, out TmpState settled)
+                && settled.Gen == _styleGen
+                && ReferenceEquals(t.font, settled.Applied)
+                && t.fontStyle == settled.AppliedStyle)
+            {
+                _sweepSettled++;
+                return;
+            }
             var elem = ElementWeightEntry(t);
             TmpState st;
             if (!_origTmp.TryGetValue(t, out st))
@@ -1088,7 +1235,7 @@ namespace Bismuth
             // so a flip re-applies.
             var target = explicitWeight ? elem.TmpFont : (bold && _boldTmpFont != null ? _boldTmpFont : _tmpFont);
             FontStyles desiredStyle = bold || explicitWeight ? (st.Style & ~FontStyles.Bold) : st.Style;
-            if (t.font == target && t.fontStyle == desiredStyle) return;
+            if (t.font == target && t.fontStyle == desiredStyle) { Settle(t, ref st, target, desiredStyle); return; }
             if (bold) _sweepBoldCount++;
             bool editorUi = IsEditorUi(t);
             float scale = TmpScale(st.Font) * (editorUi ? 1f : UserScale);
@@ -1128,6 +1275,17 @@ namespace Bismuth
             }
             catch { }
             t.lineSpacing = editorUi ? st.LineSpacing : st.LineSpacing + (UserLineSpacing - 1f) * emLine;
+            Settle(t, ref st, target, desiredStyle);
+        }
+
+        // Record what this text now carries, so the next sweep can recognise it as done.
+        // TmpState is a struct in a dictionary — the write-back is the point.
+        private static void Settle(TMP_Text t, ref TmpState st, TMP_FontAsset applied, FontStyles style)
+        {
+            st.Applied = applied;
+            st.AppliedStyle = style;
+            st.Gen = _styleGen;
+            _origTmp[t] = st;
         }
 
         private static void ApplyTextMesh(TextMesh t)
@@ -1191,11 +1349,33 @@ namespace Bismuth
             _statsOrigScale.Clear();
         }
 
+        /* Pruning walks every cached entry and asks Unity whether the object is dead — an
+           overloaded == that crosses into native per entry. With the caches now holding one
+           entry per text in the scene (14k on a big level), doing that on every sweep cost
+           more than the scan it precedes. Dead entries are harmless in the meantime: lookups
+           miss, and DrainPending already null-checks. So prune on scene change, where the
+           corpses actually appear, and occasionally otherwise as a backstop. */
+        private static int _sweepsSincePrune;
+
+        private static void PruneThrottled()
+        {
+            if (_sweepsSincePrune++ < 20) return;
+            _sweepsSincePrune = 0;
+            Prune();
+        }
+
+        internal static void PruneNow()
+        {
+            _sweepsSincePrune = 0;
+            Prune();
+        }
+
         // Drop entries whose components died with their scene
         private static void Prune()
         {
             PruneDict(_origTmp);
             PruneDict(_statsOrigScale);
+            PruneDict(_skipCache);
         }
 
         private static void PruneDict<TKey, TVal>(Dictionary<TKey, TVal> dict) where TKey : Object

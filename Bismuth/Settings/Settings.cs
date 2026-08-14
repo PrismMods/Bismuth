@@ -316,6 +316,13 @@ namespace Bismuth
         // stable install never opts itself into betas and a tester keeps their track.
         public string UpdateChannel = "";
 
+        /* The game's key limiter list is a PERSISTED GAME setting Bismuth borrows, so ownership
+           has to persist too — a session that starts with our keys already in there would
+           otherwise mistake them for the player's own and "restore" them forever. Owned = our
+           keys are in the game's list; UserKeys = what the player had before we took it. */
+        public bool GameLimiterOwned = false;
+        public string GameLimiterUserKeys = "";
+
         public bool KeyLimiterEnabled = true;
         public bool KeyLimiterUseKvKeys = true;
         public string KeyLimiterCustomKeys = "";

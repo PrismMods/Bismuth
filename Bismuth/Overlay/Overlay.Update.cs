@@ -4,14 +4,52 @@ namespace Bismuth
 {
     public partial class Overlay
     {
+        /* Per-frame cost of everything Bismuth drives off this Update, sampled over a second.
+           Nothing here has ever been measured during actual play — the sweep work was all
+           scene-entry cost — so this says whether there is anything left worth cutting, and
+           separates the font/layout ticks from the overlay's own stat work. */
+        private static readonly System.Diagnostics.Stopwatch _frameWatch = new System.Diagnostics.Stopwatch();
+        private static readonly System.Diagnostics.Stopwatch _tickWatch = new System.Diagnostics.Stopwatch();
+        private static int _framesSampled;
+        private static float _nextFrameReport;
+
+        // The body has several early returns; timing it from a wrapper means none of them can
+        // leave the stopwatch running into the next frame and report wall time as CPU time.
+        /* Debug-mode instrumentation, kept as a permanent tool rather than deleted after each
+           investigation — every perf question so far ("is the sweep hot?", "are shadows the
+           cost?", "is load ours?") was answered by numbers, and twice the reasonable-sounding
+           guess was wrong. Off, it costs one bool check per frame. */
         private void Update()
         {
+            if (MainClass.Settings == null || !MainClass.Settings.DebugMode) { UpdateBody(); return; }
+            _frameWatch.Start();
+            try { UpdateBody(); }
+            finally { _frameWatch.Stop(); }
+        }
+
+        private void UpdateBody()
+        {
+            _tickWatch.Start();
             GameFontApplier.Tick();
             GameUiLayout.Tick();
             // Queues/schedules pre-mixed hit-sound segments; no-ops unless the setting is on.
             HitSoundRenderer.Pump();
+            _tickWatch.Stop();
+            LoadProfiler.Tick();   // closes out a finished level load (debug mode only)
             if (inLevel && scrController.instance == null)
                 inLevel = false;
+
+            _framesSampled++;
+            if (inLevel && LoadProfiler.Active && Time.unscaledTime >= _nextFrameReport)
+            {
+                _nextFrameReport = Time.unscaledTime + 5f;
+                if (_framesSampled > 0)
+                    BismuthLog.Debug($"[dbg] Bismuth frame cost: " +
+                        $"{_frameWatch.Elapsed.TotalMilliseconds / _framesSampled:0.000}ms/frame total, " +
+                        $"{_tickWatch.Elapsed.TotalMilliseconds / _framesSampled:0.000}ms in font/layout ticks " +
+                        $"({_framesSampled} frames)");
+                _frameWatch.Reset(); _tickWatch.Reset(); _framesSampled = 0;
+            }
 
             var settings = MainClass.Settings;
             bool showOverlayStats = settings.ShowOverlay &&

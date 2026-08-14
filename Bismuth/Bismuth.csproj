@@ -102,6 +102,7 @@
         <Compile Include="Util\FontLoader.cs" />
         <Compile Include="Util\TmpShadow.cs" />
         <Compile Include="Util\UpdateChecker.cs" />
+        <Compile Include="Util\LoadProfiler.cs" />
         <Compile Include="Util\SemVer.cs" />
         <Compile Include="Util\OsShell.cs" />
         <Compile Include="Util\GameFontApplier.cs" />
