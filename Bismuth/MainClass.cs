@@ -228,6 +228,9 @@ namespace Bismuth
         {
             if (!_featuresOn) return;
             _featuresOn = false;
+            // The game's key limiter is a persisted GAME setting we borrow — hand the
+            // player's own list back before the features go away, or it outlives the mod.
+            KeyLimiter.ReleaseGameLimiter();
             if (LocationEditor.IsActive) LocationEditor.Close();
             GameUiEditor.Close();
             harmony.UnpatchSelf(); // HarmonyX 2.x: UnpatchAll(id) is obsolete; this unpatches our instance

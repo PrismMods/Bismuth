@@ -358,6 +358,9 @@ namespace Bismuth
             { "Style 1: white fill along the top edge; flashes the Progress perfect color at 100%.",
               "스타일 1: 화면 상단을 흰색으로 채우고, 100%에서 진행도 퍼펙트 색상으로 번쩍입니다." },
 
+            { "Game text uses the game's own font, and the song title follows it.",
+              "게임 텍스트가 게임 기본 글꼴을 사용하고 있어 곡 제목도 이를 따릅니다." },
+
             // ── Updates (Misc → Updates) ────────────────────────────────────
             { "Updates",                            "업데이트" },
             { "Installed",                          "설치된 버전" },

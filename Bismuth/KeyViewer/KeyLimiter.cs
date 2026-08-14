@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
@@ -284,7 +285,9 @@ namespace Bismuth
             _ghosts.Clear();
 
             if (_chatterActive) EnsureReflection();
-            if (!_active) return;
+            // Before the early-out: the limiter going off is exactly when the player's own
+            // key list has to come back.
+            if (!_active) { SyncGameLimiter(false, null); return; }
 
             EnsureReflection();
 
@@ -324,6 +327,10 @@ namespace Bismuth
                 }
             }
 
+            // Hand the key list to the game, which does the actual blocking. Off (or an empty
+            // set, per the fail-safe above) gives the player their own list back.
+            SyncGameLimiter(_active, _allowed);
+
             // Apply fires on every settings notify (incl. per-tick slider drags) — only
             // log when the effective state actually changed.
             string state = $"KeyLimiter.Apply: enabled={_active} useKv={settings.KeyLimiterUseKvKeys} hand={(settings.Hand?.Name ?? "<null>")} foot={(settings.Foot?.Name ?? "<null>")} allowed=[{string.Join(",", _allowed)}] labels={_allowedLabels.Count} ghosts=[{string.Join(",", _ghosts)}]";
@@ -335,6 +342,95 @@ namespace Bismuth
         }
 
         private static string _lastApplyLog;
+
+        /* ── The game's own key limiter ───────────────────────────────────────
+           ADOFAI ships "only treat these keys as input" as Persistence.keyLimiterKeys, and
+           filters against it inside RDInputType_AsyncKeyboard.Main / RDInputType_Keyboard.
+           MainIgnoreActive — upstream of RDInput.GetMain, where Bismuth used to clamp. Two
+           filters over two different lists is what blocked keys the player had allowed, so
+           Bismuth now only WRITES the list and lets the game do the blocking.
+
+           This setting is persisted (KeysSetting's setters write Persistence.generalPrefs
+           immediately) and shared with the player's own menu, so we snapshot what was there
+           before touching it and put it back when the limiter goes off or the mod unloads.
+           Leaving Bismuth's keys behind would silently rewrite a game setting the player
+           never edited. */
+        private static bool _gameRefl;
+        private static object _keysSetting;                 // Persistence.keyLimiterKeys
+        private static MethodInfo _ksClear, _ksAddKey, _ksGetUnityKeys;
+        private static HashSet<KeyCode> _gameKeysSnapshot;  // null = we haven't written yet
+
+        internal static bool GameLimiterAvailable { get { EnsureGameRefl(); return _keysSetting != null; } }
+
+        private static void EnsureGameRefl()
+        {
+            if (_gameRefl) return;
+            _gameRefl = true;
+            try
+            {
+                var persistence = AccessTools.TypeByName("Persistence");
+                var field = persistence != null ? AccessTools.Field(persistence, "keyLimiterKeys") : null;
+                _keysSetting = field?.GetValue(null);
+                if (_keysSetting == null) return;
+                var t = _keysSetting.GetType();
+                _ksClear = AccessTools.Method(t, "Clear");
+                _ksAddKey = AccessTools.Method(t, "Add", new[] { typeof(KeyCode) });
+                _ksGetUnityKeys = AccessTools.PropertyGetter(t, "unityKeys");
+            }
+            catch (Exception e)
+            {
+                _keysSetting = null;
+                BismuthLog.Log("KeyLimiter: game key limiter unavailable (" + e.Message + ")");
+            }
+        }
+
+        private static HashSet<KeyCode> ReadGameKeys()
+        {
+            var set = _ksGetUnityKeys?.Invoke(_keysSetting, null) as IEnumerable<KeyCode>;
+            return set == null ? new HashSet<KeyCode>() : new HashSet<KeyCode>(set);
+        }
+
+        private static void WriteGameKeys(IEnumerable<KeyCode> keys)
+        {
+            _ksClear.Invoke(_keysSetting, null);
+            // Add(KeyCode) resolves the SkyHook async code itself and writes both key sets,
+            // so the async keyboard path stays in step with the Unity one.
+            var args = new object[1];
+            foreach (var k in keys) { args[0] = k; _ksAddKey.Invoke(_keysSetting, args); }
+        }
+
+        /* Push our resolved key set into the game's limiter, or hand the player's own list
+           back. Safe to call repeatedly — it no-ops unless the effective list changes. */
+        private static void SyncGameLimiter(bool on, ICollection<KeyCode> keys)
+        {
+            EnsureGameRefl();
+            if (_keysSetting == null || _ksClear == null || _ksAddKey == null) return;
+            try
+            {
+                if (on)
+                {
+                    if (_gameKeysSnapshot == null) _gameKeysSnapshot = ReadGameKeys();
+                    var current = ReadGameKeys();
+                    if (current.SetEquals(keys)) return;
+                    WriteGameKeys(keys);
+                    BismuthLog.Log($"KeyLimiter: wrote {keys.Count} key(s) into the game's limiter " +
+                        $"[{string.Join(",", keys)}]");
+                }
+                else if (_gameKeysSnapshot != null)
+                {
+                    WriteGameKeys(_gameKeysSnapshot);
+                    BismuthLog.Log($"KeyLimiter: restored the game's own key list ({_gameKeysSnapshot.Count} key(s))");
+                    _gameKeysSnapshot = null;
+                }
+            }
+            catch (Exception e)
+            {
+                BismuthLog.Log("KeyLimiter: game limiter sync failed: " + e);
+            }
+        }
+
+        // Mod unload / master switch off: never leave our keys in the player's settings.
+        internal static void ReleaseGameLimiter() => SyncGameLimiter(false, null);
 
         private static IEnumerable<KeyCode> GetKvKeys(Settings settings)
         {
@@ -413,7 +509,7 @@ namespace Bismuth
                     resolvedKey = directKc;
                     int ki = (int)directKc;
                     isMouse = (ki >= (int)KeyCode.Mouse0 && ki <= (int)KeyCode.Mouse6);
-                    allowed = isMouse || _allowed.Contains(directKc);
+                    allowed = isMouse || _allowed.Contains(directKc);   // diagnostics only
                     if (_pressDiagLeft > 0)
                     {
                         _pressDiagLeft--;
@@ -471,8 +567,11 @@ namespace Bismuth
                     continue;
                 }
 
-                // Limiter filter
-                if (_active && !allowed) continue;
+                /* No allowlist test here any more — the game owns that now (Apply pushes our
+                   keys into Persistence.keyLimiterKeys, and RDInputType_*Keyboard.Main filters
+                   against it upstream of GetMain). Filtering a second time against our own copy
+                   is what ate keys the game had already accepted, like = and Backspace.
+                   Ghost keys and chatter below have no game-side equivalent, so they stay. */
 
                 // Chatter filter — skip mouse, skip entries we couldn't resolve to a KeyCode.
                 if (_chatterActive && !isMouse && resolvedKey != KeyCode.None)

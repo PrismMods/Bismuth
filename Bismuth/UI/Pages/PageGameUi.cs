@@ -187,8 +187,14 @@ namespace Bismuth.UI.Pages
                overlay's shadow pipeline instead. That was only reachable by editing XML, so
                "Game Font doesn't change the song title" looked like a bug. Surface the switch
                here, where someone chasing that goes looking. */
-            UIBuilder.Collapsible(body, "Use overlay font", s.LevelNameUseOverlayFont,
-                v => { s.LevelNameUseOverlayFont = v; UICore.OnSettingsChanged?.Invoke(); }, null);
+            // Dead while game text is on the game's own font — the title follows that now,
+            // so say so instead of leaving a toggle that does nothing.
+            if (s.GameTextUseOverlayFont)
+                UIBuilder.Collapsible(body, "Use overlay font", s.LevelNameUseOverlayFont,
+                    v => { s.LevelNameUseOverlayFont = v; UICore.OnSettingsChanged?.Invoke(); }, null);
+            else
+                UIBuilder.Label(body, Loc.T("Game text uses the game's own font, and the song title follows it."),
+                    (int)UIBuilder.LabelFontSize, TextAnchor.MiddleLeft, Theme.TextMuted);
             UIBuilder.Slider(body, "Position X", s.LevelNameX, -LevelNameRange, LevelNameRange,
                 v => { s.LevelNameX = v; Overlay.Instance?.ApplyLevelNameTransform(); }, "0", 1f);
             UIBuilder.Slider(body, "Position Y", s.LevelNameY, -LevelNameRange, LevelNameRange,

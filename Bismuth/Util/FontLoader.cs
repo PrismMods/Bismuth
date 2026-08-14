@@ -71,6 +71,8 @@ namespace Bismuth
         private static string _symbolFontPath;
         private static TMP_FontAsset _symbolFont;
 
+        private static bool _symbolFontLogged;
+
         internal static TMP_FontAsset SymbolFont
         {
             get
@@ -80,6 +82,21 @@ namespace Bismuth
                     _symbolFont = TMP_FontAsset.CreateFontAsset(
                         _symbolFontPath, 0, 90, 9, GlyphRenderMode.SDFAA, 1024, 1024);
                     if (_symbolFont != null) _symbolFont.name = SymbolFontName + " (TMP)";
+                }
+                /* Logged once, because every way this can fail looks identical in game — a
+                   keycap symbol drawn small and low — and the cause is on disk, not in the
+                   code: an install that copied only the dll has no Resources/BismuthSymbols.ttf,
+                   so the symbols go back to being borrowed from the game's font. */
+                if (!_symbolFontLogged)
+                {
+                    _symbolFontLogged = true;
+                    if (_symbolFont != null)
+                        MainClass.Logger.Log("[Bismuth] Keycap symbol font loaded from " + _symbolFontPath);
+                    else if (string.IsNullOrEmpty(_symbolFontPath))
+                        MainClass.Logger.Warning("[Bismuth] " + SymbolFontName +
+                            ".ttf missing from Resources — keycap symbols (⇥ ⎵ ⏎) fall back to the game font");
+                    else
+                        MainClass.Logger.Warning("[Bismuth] Could not build a font asset from " + _symbolFontPath);
                 }
                 return _symbolFont;
             }

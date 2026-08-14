@@ -428,7 +428,13 @@ namespace Bismuth
                game's own Shadow/Outline, so no effect juggling is needed — we hand the TMP an
                explicit Bismuth drop shadow. owned:true keeps GameFontApplier's sweep/Restore
                from detaching it. */
-            bool styled = settings.LevelNameUseOverlayFont && _levelNameFont != null;
+            /* Gated on the game-text switch as well: the level name IS game HUD text, and its
+               font is drawn from the game font family (MainClass). Without this, turning game
+               text back to the game's own font left the map title alone on a Bismuth font —
+               GameFontApplier.Restore() deliberately skips overlay-owned shadows, so nothing
+               else was going to detach it. */
+            bool styled = settings.GameTextUseOverlayFont
+                && settings.LevelNameUseOverlayFont && _levelNameFont != null;
             if (styled)
             {
                 var sh = GameTextShadow.Attach(ctrl.txtLevelName, owned: true);
