@@ -39,6 +39,8 @@ namespace Bismuth
         private static FieldInfo  _asyncKcKey;        // AsyncKeyCode.key (ushort raw OS scancode)
         private static MethodInfo _unityToAsync;      // SkyHook.SkyHookKeyMapper.UnityKeyToSkyHookKey(KeyCode) → KeyLabel
         private static MethodInfo _asyncToUnity;      // SkyHook.SkyHookKeyMapper.SkyHookKeyToUnityKey(KeyLabel) → KeyCode
+        private static MethodInfo _labelToNative;     // SkyHook.SkyHookKeyMapper.KeyLabelToNativeKeyCode(KeyLabel) → ushort
+        private static System.Type _keyLabelType;     // SkyHook.KeyLabel
         private static object     _stateDown;         // ButtonState.WentDown (enum value 0)
         private static object     _stateWentUp;       // ButtonState.WentUp (1)
         private static object     _stateIsDown;       // ButtonState.IsDown (2)
@@ -61,6 +63,7 @@ namespace Bismuth
         //    via diagnostic logging (0xE1 LShift, 0xE5 RShift, …).
         //  - Windows build (incl. Proton): Win32 VK codes — confirmed via a Proton
         //    tester's diagnostics (0x42 'B', 0xA2 VK_LCONTROL, …).
+        //  - anything else (native Linux): NULL. See EnsureReflection.
         private static Dictionary<ushort, KeyCode> _rawToKeyCode;
 
         private static readonly Dictionary<ushort, KeyCode> _hidToKeyCode = new Dictionary<ushort, KeyCode>
@@ -182,10 +185,19 @@ namespace Bismuth
             _stateWentUp      = _bsType     != null ? System.Enum.ToObject(_bsType, StateWentUp)   : (object)StateWentUp;
             _stateIsDown      = _bsType     != null ? System.Enum.ToObject(_bsType, StateIsDown)   : (object)StateIsDown;
 
+            _keyLabelType     = AccessTools.TypeByName("SkyHook.KeyLabel");
+            _labelToNative    = mapper      != null ? AccessTools.Method(mapper, "KeyLabelToNativeKeyCode") : null;
+
+            /* Only platforms whose raw codes a tester's diagnostics actually showed us get a
+               table. Native Linux used to fall through to the macOS HID one, which is a
+               different code space: it misnames presses AND — since b3 hands the same guess
+               to the game's limiter — writes a code no real press can match, blocking a key
+               the player allowed. No table is better than a wrong one: presses fail open and
+               keys we can't name keep us off the delegation path. */
             var plat = Application.platform;
-            _rawToKeyCode = plat == RuntimePlatform.WindowsPlayer || plat == RuntimePlatform.WindowsEditor
-                ? BuildVkMap()
-                : _hidToKeyCode;
+            _rawToKeyCode = plat == RuntimePlatform.WindowsPlayer || plat == RuntimePlatform.WindowsEditor ? BuildVkMap()
+                          : plat == RuntimePlatform.OSXPlayer     || plat == RuntimePlatform.OSXEditor     ? _hidToKeyCode
+                          : null;
 
             _reflReady = true;
         }
@@ -226,7 +238,7 @@ namespace Bismuth
             if (label == null) return KeyCode.None;
             var byLabel = KeyFromLabel(label, (ushort)System.Convert.ToInt32(label));
             if (byLabel != KeyCode.None) return byLabel;
-            if (_asyncKcKey != null)
+            if (_asyncKcKey != null && _rawToKeyCode != null)
             {
                 ushort raw = (ushort)System.Convert.ToInt32(_asyncKcKey.GetValue(val));
                 if (_rawToKeyCode.TryGetValue(raw, out KeyCode mapped)) return mapped;
@@ -339,14 +351,19 @@ namespace Bismuth
                So it's one limiter or the other, never both: delegate when every key survives
                the mapping, otherwise give the player their list back and filter here, the way
                Bismuth did before b3. */
-            _localFilter = false;
-            foreach (var k in _allowed)
+            // EnsureGameRefl only runs once, so "is there a game limiter" has to be re-read
+            // here — a latch set inside it would be cleared by the next Apply and never re-set.
+            _localFilter = !GameLimiterAvailable;
+            if (!_localFilter)
             {
-                if (CanDelegate(k)) continue;
-                _localFilter = true;
-                BismuthLog.Log($"KeyLimiter: neither SkyHook nor the platform table can name '{k}', " +
-                    "so the game's limiter cannot represent it — filtering in Bismuth instead");
-                break;
+                foreach (var k in _allowed)
+                {
+                    if (CanDelegate(k)) continue;
+                    _localFilter = true;
+                    BismuthLog.Log($"KeyLimiter: SkyHook has no native key code for '{k}' on this platform, " +
+                        "so the game's limiter cannot represent it — filtering in Bismuth instead");
+                    break;
+                }
             }
             SyncGameLimiter(_active && !_localFilter, _allowed);
 
@@ -399,7 +416,6 @@ namespace Bismuth
                     // reading of a silent log is "the sync ran and did nothing".
                     BismuthLog.Log("KeyLimiter: this game build has no Persistence.keyLimiterKeys — " +
                         "filtering in Bismuth instead");
-                    _localFilter = true;
                     return;
                 }
                 var t = _keysSetting.GetType();
@@ -438,24 +454,22 @@ namespace Bismuth
             var args2 = new object[2];
             foreach (var k in keys)
             {
-                ushort label = LabelFromKey(k);
-                if (label != LabelUnknown && label != LabelIgnored)
+                /* Always the two-arg Add, with the native code WE resolved. Add(KeyCode) would
+                   re-derive it as KeyLabelToNativeKeyCode(UnityKeyToSkyHookKey(k)) — and the
+                   mapper has no row for ' or ` , so it stores the 0xFFFF sentinel, no async
+                   code lands in the set, and the game's async filter (which compares raw
+                   AsyncKeyCode.key values) then blocks a key we thought we had delegated.
+                   The shipped 16k preset binds ` , so that was every 16k player. */
+                ushort native = NativeForKey(k);
+                if (_ksAddKeyRaw == null)
                 {
-                    // Add(KeyCode) resolves the async code through SkyHook and writes both sets.
                     args[0] = k;
                     _ksAddKey.Invoke(_keysSetting, args);
                     continue;
                 }
-                /* SkyHook has no label for this key (Menu/Apps), so Add(KeyCode) would store
-                   Unknown's native code and the async filter — which compares raw AsyncKeyCode
-                   .key values, not labels — would never match a real press. Supply the platform
-                   raw code ourselves through the two-arg Add, which sets both sets correctly. */
-                if (_ksAddKeyRaw != null && RawForKey(k, out ushort raw))
-                {
-                    args2[0] = k;
-                    args2[1] = (ushort?)raw;
-                    _ksAddKeyRaw.Invoke(_keysSetting, args2);
-                }
+                args2[0] = k;
+                args2[1] = native == NativeNone ? (ushort?)null : native;   // null = unityKeys only (mouse)
+                _ksAddKeyRaw.Invoke(_keysSetting, args2);
             }
         }
 
@@ -475,15 +489,38 @@ namespace Bismuth
             return _keyToRaw.TryGetValue(k, out raw);
         }
 
+        // KeysSetting.Add's "no async code" sentinel — it stores the Unity key only for these.
+        private const ushort NativeNone = 0xFFFF;
+
+        /* The raw code the game's async filter compares presses against: SkyHook's own
+           platform converter, fed OUR label. Same call the game makes internally, minus its
+           two missing mapper rows. NativeNone = this key can't be expressed. */
+        private static ushort NativeForKey(KeyCode k)
+        {
+            EnsureReflection();
+            ushort label = LabelFromKey(k);
+            if (label != LabelUnknown && label != LabelIgnored && _labelToNative != null && _keyLabelType != null)
+            {
+                try
+                {
+                    var code = _labelToNative.Invoke(null, new[] { System.Enum.ToObject(_keyLabelType, label) });
+                    ushort native = code == null ? NativeNone : (ushort)System.Convert.ToInt32(code);
+                    if (native != 0 && native != NativeNone) return native;
+                }
+                catch { }
+            }
+            // Keys SkyHook itself can't name (Menu/Apps) — our own table, on the two platforms
+            // that have one.
+            return RawForKey(k, out ushort raw) ? raw : NativeNone;
+        }
+
         // Can the game's limiter represent this key at all? Mouse buttons aren't part of its
         // keyboard list, so they never block delegation.
         private static bool CanDelegate(KeyCode k)
         {
             int ki = (int)k;
             if (ki >= (int)KeyCode.Mouse0 && ki <= (int)KeyCode.Mouse6) return true;
-            ushort label = LabelFromKey(k);
-            if (label != LabelUnknown && label != LabelIgnored) return true;
-            return RawForKey(k, out _);
+            return NativeForKey(k) != NativeNone;
         }
 
         /* Push our resolved key set into the game's limiter, or hand the player's own list
@@ -651,7 +688,7 @@ namespace Bismuth
                     ushort rawKey = 0;
                     if (_asyncKcKey != null)
                         rawKey = (ushort)System.Convert.ToInt32(_asyncKcKey.GetValue(val));
-                    if (resolvedKey == KeyCode.None && rawKey != 0
+                    if (resolvedKey == KeyCode.None && rawKey != 0 && _rawToKeyCode != null
                         && _rawToKeyCode.TryGetValue(rawKey, out KeyCode mapped))
                     {
                         resolvedKey = mapped;
@@ -867,7 +904,11 @@ namespace Bismuth
             {
                 // While the menu is open, no hits register — same gate as the GetMain block.
                 if (BlockInputs) return false;
-                if (!_active) return true;
+                /* Only while Bismuth still owns the filtering. With the list delegated, the
+                   game has already refused every disallowed press upstream of this, so a
+                   second pass here — over legacy UnityEngine.Input, which lags or misses the
+                   async keyboard entirely on Linux/Proton — can only drop hits it accepted. */
+                if (!_active || !_localFilter) return true;
                 if (!Input.anyKeyDown) return true;
                 // GetKey (not GetKeyDown) tolerates the 1-frame async delay here
                 foreach (var key in _allowed)
