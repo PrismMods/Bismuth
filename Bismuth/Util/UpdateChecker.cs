@@ -11,16 +11,10 @@ using UnityModManagerNet;
 
 namespace Bismuth
 {
-    /* In-mod updater for loaders that skip UMM's own (UMMCompat). On startup it
-       checks Repository.json. When a newer version exists, UpdatePopup offers
-       "Update now" (download the release zip and overwrite the mod payload in
-       place) or a link to the releases page. User data (settings, keycounts,
-       attempts, log) is never touched. The zip only holds the payload (dll,
-       Info.json, Resources) and nothing is deleted.
-
-       Networking is plain .NET on the thread pool, drained by Update() on the
-       main thread. UnityWebRequest coroutines silently never resume under
-       MelonLoader + UMMCompat: no timeout, no error, no completion. */
+    /* In-mod updater for loaders without UMM's own (UMMCompat): checks the releases list, and
+       UpdatePopup offers an in-place payload overwrite (dll, Info.json, Resources — user data
+       untouched, nothing deleted) or the releases page. Plain .NET networking on the thread
+       pool, drained by Update(): UnityWebRequest coroutines never resume under MelonLoader. */
     internal class UpdateChecker : MonoBehaviour
     {
         /* The releases list, not Repository.json: that file only ever names one version, and

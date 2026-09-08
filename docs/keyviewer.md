@@ -115,3 +115,16 @@ The shadow body's rect height is `bodyH + ShadowSize` (with sharp-top) or `bodyH
 | `_ghostKeys` | `HashSet<KeyCode>` — keys flagged as ghost. Rain still spawns; `_hitTimes` / `_counts` / `_totalCells` are skipped on press |
 
 
+
+## DM Note presets (`Util/DmNotePreset.cs`)
+
+Two-way mapping between a `KeyViewerPreset` and a [DM Note](https://github.com/DmNote-App/DmNote) `preset.json`. Files live in `<mod>/DmNote/` (same drop-in-folder flow as Profiles); the Key Viewer root's **DM Note presets** row lists them and imports one as a new hand or foot preset (made active), and every preset editor has **Export to DM Note**.
+
+| Direction | What happens |
+| --------- | ------------ |
+| Import (`FromJson`) | Picks the tab (`selectedKeyType`, else the first with both `keys` and `keyPositions`), drops hidden entries, resolves each DM Note key name to a `KeyCode` (`FromDmName`), then clusters items by vertical center (within half a key height) into rows, left to right. `KeyWidth` = median key width, `Gap` = median horizontal gap, row `Height` = median item height + gap, `WidthMul` from each item's width. Preset colors/border/sizes come from the first key's fields (DM Note defaults where absent); each row's rain color from its first key's `noteColor` + `noteOpacity`. `statPositions` `kps`/`total` become KPS/Total cells (`kpsAvg`/`kpsMax` skipped). A `ghostKey` on a top-row key fills that ghost slot |
+| Export (`ToJson`) | Replays `BuildPresetPanel`'s slot math (top row: visible width = `topN*KeyWidth*mul/sumMul`; lower rows: slot = `panelW*mul/sumMul` minus the gap) into `dx/dy/width/height` at a 30px margin, one entry per cell. Lower-row rain remapped into top-row columns is expressed as `noteOffsetX`. Colors serialize as `rgba(r, g, b, a)`, rain as `#RRGGBB` + `noteOpacity`. Stats go to `statPositions` with `statType`. Always writes tab `4key` (DM Note doesn't enforce the count) |
+
+Key names are DM Note's `globalKey` strings (`A`, `LEFT SHIFT`, `NUMPAD 5`, `SQUARE BRACKET OPEN`); a few are bare Windows VK codes (`21` Hangul/RAlt, `25` Hanja/RCtrl, `91`/`92` Cmd, `19` Pause). `FromDmName` also accepts `KeyA`/`Digit1` codes, Unity enum names and the common aliases other exporters use.
+
+Lossy by design: DM Note per-key styling collapses to the preset's single style, and its free placement becomes rows. `DmNotePreset.SelfCheck()` (debug mode, at init) round-trips the active hand preset and logs a mismatch in row/token shape.

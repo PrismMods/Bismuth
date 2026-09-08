@@ -479,11 +479,9 @@ namespace Bismuth
         public bool KpsUseTileBpmGradient = true;
         public ColorGradient KpsGradient;
 
-        // Accent-as-theme: when on, one gradient generated from the UI accent replaces
-        // every stat/combo gradient (and the key viewer's default rain color) at evaluate
-        // time. The saved per-stat gradients are untouched, so toggling off restores them.
-        // ON out of the box — the "Default" profile IS the class defaults (red theme);
-        // the "Azure" built-in restores the classic periwinkle, theme off.
+        // Accent-as-theme: one accent-derived gradient replaces every stat/combo gradient (and
+        // the default rain color) at evaluate time; saved gradients stay, so off restores them.
+        // On by default ("Default" profile = class defaults); "Azure" = classic look, theme off.
         public bool AccentAsTheme = true;
         // Panel language: 0 = follow the game's setting, 1 = English, 2 = Korean.
         public int PanelLanguage = 0;
@@ -667,11 +665,7 @@ namespace Bismuth
             foreach (var p in KvHandPresets) p.EnsureDefaults();
             foreach (var p in KvFootPresets) p.EnsureDefaults();
 
-            // Curated default game-HUD layout: win/death texts pulled toward center and
-            // scaled down from stock. Seeded once on fresh installs, never re-applied over
-            // an existing (or deliberately emptied) layout.
-            // Migrate the legacy single "hide perfect judgements" toggle into the new
-            // per-category flag, then clear it so it doesn't re-trigger on later loads.
+            // Legacy single "hide perfect judgements" toggle → per-category flag, once.
             if (HidePerfectJudgements)
             {
                 HideJudgementsEnabled = true;
@@ -679,6 +673,8 @@ namespace Bismuth
                 HidePerfectJudgements = false;
             }
 
+            // Curated default game-HUD layout (win/death texts toward center, scaled down),
+            // seeded once on fresh installs — never re-applied over an existing or emptied layout.
             if (!GameUiDefaultsSeeded)
             {
                 GameUiDefaultsSeeded = true;

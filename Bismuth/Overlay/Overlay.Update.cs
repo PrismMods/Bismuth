@@ -4,21 +4,14 @@ namespace Bismuth
 {
     public partial class Overlay
     {
-        /* Per-frame cost of everything Bismuth drives off this Update, sampled over a second.
-           Nothing here has ever been measured during actual play — the sweep work was all
-           scene-entry cost — so this says whether there is anything left worth cutting, and
-           separates the font/layout ticks from the overlay's own stat work. */
+        // Debug-mode frame-cost sampling (total vs the font/layout ticks). Kept permanently:
+        // every perf question so far was settled by these numbers. Off = one bool per frame.
         private static readonly System.Diagnostics.Stopwatch _frameWatch = new System.Diagnostics.Stopwatch();
         private static readonly System.Diagnostics.Stopwatch _tickWatch = new System.Diagnostics.Stopwatch();
         private static int _framesSampled;
         private static float _nextFrameReport;
 
-        // The body has several early returns; timing it from a wrapper means none of them can
-        // leave the stopwatch running into the next frame and report wall time as CPU time.
-        /* Debug-mode instrumentation, kept as a permanent tool rather than deleted after each
-           investigation — every perf question so far ("is the sweep hot?", "are shadows the
-           cost?", "is load ours?") was answered by numbers, and twice the reasonable-sounding
-           guess was wrong. Off, it costs one bool check per frame. */
+        // Timed from a wrapper so the body's early returns can't leave the watch running.
         private void Update()
         {
             if (MainClass.Settings == null || !MainClass.Settings.DebugMode) { UpdateBody(); return; }
@@ -237,12 +230,8 @@ namespace Bismuth
                 }
             }
 
-            // Duration rows: "elapsed/total" (e.g. 0:31/3:34). Totals computed lazily once
-            // the clip/floors exist; everything scales by pitch so it reads as real
-            // playback time. Both rows share ONE clock — the chart clock the game measures
-            // entryTimes against — so their current time ticks in step (audio position vs
-            // chart time are offset by the song intro and flip seconds at different
-            // moments, which read as "out of sync" side by side).
+            // Duration rows ("0:31/3:34"): totals lazily once clip/floors exist, all scaled by
+            // pitch. Both rows share the chart clock so their seconds flip together.
             if ((settings.ShowSongDuration || settings.ShowLevelDuration) && scrConductor.instance != null)
             {
                 var cond = scrConductor.instance;
@@ -362,12 +351,13 @@ namespace Bismuth
             int mi = (int)margin;
             if (mi >= 0 && mi < _judgementCounts.Length) _judgementCounts[mi]++;
 
-            RefreshDisplay();
+            RefreshDisplay(hitColumn: mi);
         }
 
         // includeAccuracy=false skips the acc/xacc repaint (SyncFromTracker holds the
-        // "--.--%" placeholder until the player's first hit).
-        private void RefreshDisplay(bool includeAccuracy = true)
+        // "--.--%" placeholder until the player's first hit). hitColumn limits the judgement
+        // repaint to the one column a hit changed; the default repaints them all.
+        private void RefreshDisplay(bool includeAccuracy = true, int hitColumn = int.MinValue)
         {
             var s = MainClass.Settings;
             string fmt = _fmt;
@@ -447,6 +437,9 @@ namespace Bismuth
                 {
                     var t = judgementTexts[i];
                     if (t == null) continue;
+                    // XPerfect's split columns (negative ids) all belong to Perfect.
+                    if (hitColumn != int.MinValue && cols[i] != hitColumn
+                        && !(cols[i] < 0 && hitColumn == (int)HitMargin.Perfect)) continue;
                     t.text = ColumnCount(cols[i]).ToString();
                     t.color = ColumnColor(cols[i]);
                 }

@@ -261,13 +261,10 @@ namespace Bismuth
             }
         }
 
-        /* The autoplay label is a scrShowIfDebug. 3.3.0 hides it through the game's own
-           flags — RDC.noHud (all HUD) and RDC.noAutoHud (autoplay HUD only) — both set from
-           Overlay.ShowOrHideElements. We no longer flip RDC.auto to hide it: the game's
-           autoplay toggle (Space / the auto button) reads RDC.auto, so flipping it mid-frame
-           made every play/toggle turn autoplay OFF (and made autoplay unusable with the
-           hide-autoplay-text option on). This postfix now only force-SHOWS the label while
-           the game-UI layout editor is open, so it can be positioned. */
+        /* Autoplay label (scrShowIfDebug) is hidden via RDC.noHud / RDC.noAutoHud from
+           Overlay.ShowOrHideElements — never by flipping RDC.auto, which the game's autoplay
+           toggle reads (flipping it turned autoplay OFF). This only force-SHOWS the label while
+           the game-UI layout editor is open. */
         [HarmonyPatch(typeof(scrShowIfDebug), "Update")]
         private static class ShowIfDebugUpdatePatch
         {

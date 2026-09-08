@@ -137,13 +137,9 @@ namespace Bismuth
             catch (Exception e) { BismuthLog.Log("TryPatchRawInput skipped: " + e.Message); }
         }
 
-        /* Harmony's own PatchAll aborts the WHOLE batch the moment one patch class can't
-           resolve its target — so a single hook whose game method was renamed/removed by an
-           ADOFAI update bricks the entire mod (dead overlay, dead panel, no way back), which
-           is exactly what a 3.3.0 API removal did. Patch each class in isolation instead: a
-           broken hook drops only its own feature and logs which one, and every other patch
-           still applies. CreateClassProcessor/PatchClassProcessor are long-standing HarmonyX
-           APIs (verified present in the loaded 0Harmony). */
+        /* PatchAll aborts the WHOLE batch when one patch class can't bind its target (a 3.3.0
+           API removal bricked the mod that way). Patch each class in isolation: a broken hook
+           drops only its own feature and logs which one. */
         private static void PatchAllResilient(Harmony h, Assembly asm)
         {
             int applied = 0, skipped = 0;
@@ -183,6 +179,7 @@ namespace Bismuth
                 availableFonts = FontLoader.ScanFonts(_modEntry.Path);
                 BuildUI();
                 if (Settings.ModEnabled) EnableFeatures();
+                if (Settings.DebugMode) DmNotePreset.SelfCheck();
                 UpdateChecker.Begin(_modEntry);
                 return true;
             }
@@ -280,18 +277,10 @@ namespace Bismuth
                 GameUiLayout.Reapply();
             }, availableFonts);
             UICore.OnKeyViewerRebuild = () => keyViewer?.Rebuild(Settings);
-            /* Tabs are grouped by WHOSE pixels they change, not by widget type. The old rail had
-               three tabs with "UI" in the name (Hide UI / UI / Game UI) that meant three
-               different things, and the position editor sat under panel styling instead of
-               with the overlay and key viewer it actually moves.
-                 Overlay    — Bismuth's own on-screen stuff
-                 Game UI    — the game's own UI
-                 Appearance — how Bismuth itself is drawn
-               Key Viewer keeps its own tab despite also being Bismuth's own UI — it's far too
-               big to sit as a section under Overlay. Composition order matters in two places:
-               PageKeyViewer's font-weight rows need PageOverlay to have run first (it resets
-               RefreshFontWeightRows, hence the tab order below), and pages composed into one
-               tab append to a shared root, so composition order is also section order. */
+            /* Tabs group by WHOSE pixels they change: Overlay = Bismuth's on-screen stuff, Game UI
+               = the game's, Appearance = the panel itself (Key Viewer is too big to nest). Order
+               matters: PageKeyViewer's weight rows need PageOverlay first (it resets
+               RefreshFontWeightRows), and pages sharing a tab append in composition order. */
             UICore.Tabs.AddTab("Overlay", stack =>
             {
                 PageOverlay.Build(stack);
@@ -359,11 +348,8 @@ namespace Bismuth
             }
         }
 
-        /* Wall clock from "the level scene arrived" to "the level is actually running", so
-           Bismuth's own sweep cost can be read as a FRACTION of a load rather than in
-           isolation. Level loading is dominated by main-thread object creation inside the
-           game — none of which a mod can move to another core — so the only question worth
-           answering is whether our share is big enough to be worth cutting. */
+        // Wall clock from scene arrival to the level running, so Bismuth's sweep cost reads as
+        // a fraction of a load (which is dominated by the game's own main-thread object creation).
         internal static float LevelLoadStartedAt { get; private set; }
         internal static bool LevelLoadPending { get; set; }
 

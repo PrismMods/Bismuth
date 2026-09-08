@@ -7,11 +7,9 @@ using UnityEngine.UI;
 
 namespace Bismuth.UI
 {
-    // Full-screen edit overlay for the GAME's own HUD elements (Locations tab) — the
-    // counterpart of LocationEditor. Drag moves, scroll scales, right-click resets one
-    // element. Currently-inactive elements (death %, congrats, …) keep a dimmed handle at
-    // their last position so they're editable without dying first. Writes go through
-    // GameUiLayout (wrapper transforms / error meter override) and apply live.
+    // LocationEditor's counterpart for the GAME's HUD: drag moves, scroll scales, right-click
+    // resets. Inactive elements (death %, congrats, …) keep a dimmed handle so they're editable
+    // without dying first. Writes go through GameUiLayout and apply live.
     internal static class GameUiEditor
     {
         public static bool IsActive => _canvasGo != null;
@@ -116,10 +114,8 @@ namespace Bismuth.UI
         }
 
         // ── Force-show while editing ───────────────────────────────────────
-        // Most game elements only show at specific moments (death %, congrats, …) and many
-        // sit inside inactive containers, so activating just the element left invisible
-        // handles. Activate the whole ancestor chain to the canvas, lift faded
-        // CanvasGroup/text alphas, and fill empty texts with samples. Restored on Close.
+        // Elements that only show at specific moments sit in inactive containers: activate the
+        // ancestor chain, lift faded alphas, fill empty texts with samples. Restored on Close.
 
         private static readonly List<KeyValuePair<GameObject, bool>> _shownGos =
             new List<KeyValuePair<GameObject, bool>>();

@@ -386,10 +386,8 @@ namespace Bismuth.UI.Pages
         }
 
         // ── Per-part font weight overrides ─────────────────────────────────
-        // Each AddWeightRow plants a self-rebuilding row whose options track the overlay
-        // font family (PageUI calls RefreshFontWeightRows after a font change). The row
-        // only exists while the family has multiple weights. Rows on subpages die with
-        // their view; their handler unhooks itself on the next refresh.
+        // Self-rebuilding rows tracking the font family (PageUI fires RefreshFontWeightRows);
+        // shown only for multi-weight families. Rows on dead subpages unhook on the next refresh.
 
         internal static Action RefreshFontWeightRows;
 

@@ -5,27 +5,12 @@ using UnityEngine.UI;
 
 namespace Bismuth
 {
-    /* Moves and scales the game's own HUD elements (death %, congrats, difficulty
-       pill, pause button, hit error meter, …) per saved overrides. Two mechanisms:
-
-       1. scrUIController elements get a full-stretch wrapper RectTransform inserted
-          between the element and its parent. The wrapper rect equals the parent
-          rect, so the element's own anchors and anchoredPosition keep their exact
-          meaning. Everything the game does to the element (difficulty show/minimize
-          tweens, text rewrites) happens inside the wrapper and never fights our
-          offset/scale. Scale pivots on the element's own center (computed per
-          apply), not screen center, so growing an element doesn't slide it across
-          the screen.
-
-       2. The hit error meter already has the game's own layout pass
-          (scrHitErrorMeter.UpdateLayout: anchors and pivot from pos, localScale
-          from meterScale), called on scrController.Awake and from the settings
-          menu. A Harmony postfix re-applies the absolute normalized position and
-          scale multiplier on top, so persistence is free and no sweeps are needed.
-
-       Scene loads spawn fresh game objects, so Reapply re-wraps on the same
-       triggers GameFontApplier sweeps on: scene change, level start, state-change
-       ticks. */
+    /* Moves/scales the game's own HUD elements per saved overrides. scrUIController elements
+       get a full-stretch wrapper RectTransform inserted above them (the wrapper equals the
+       parent rect, so the element's anchors keep their meaning and the game's own tweens/text
+       rewrites happen inside it); scale pivots on the element's center. The hit error meter
+       already has a game layout pass (scrHitErrorMeter.UpdateLayout), so a postfix re-applies
+       position/scale on top. Reapply re-wraps on the same triggers GameFontApplier sweeps on. */
     internal static class GameUiLayout
     {
         private const string WrapPrefix = "BismuthGameUiWrap_";

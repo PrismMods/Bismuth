@@ -12,23 +12,16 @@ using UnityEngine.SceneManagement;
 
 namespace Bismuth
 {
-    /* Ported from Quartz's optimizer module (optimizer.qmod, HitSoundRenderer).
+    /* Quartz optimizer port (HitSoundRenderer). The game schedules every hit sound as its own
+       PlayScheduled — thousands of voices on dense charts, on the main thread. Instead the
+       hit-sound track is captured once, mixed on a BACKGROUND thread into half-second PCM
+       segments a few seconds ahead of the playhead, and played through a small AudioSource pool.
 
-       The game schedules every hit sound as its own AudioSource.PlayScheduled. On dense charts
-       that is thousands of voices, and the scheduling work lands on the main thread during play.
-       This replaces it: the whole hit-sound track is captured once, mixed down on a BACKGROUND
-       thread into half-second PCM segments a few seconds ahead of the playhead, and played back
-       through a small pool of pre-allocated AudioSources.
-
-       TIMING IS THE ENTIRE POINT OF THIS FILE. Every constant, rounding, and clamp below is
-       kept exactly as Quartz has it — the segment length, the 12s lookahead, the 50ms late
-       margin, the linear resample in MixEvent, the `timeSamples` offset when a segment is
-       already partly in the past. Changing any of them desyncs hit sounds, which is both the
-       worst bug class in a rhythm game and invisible to any static check. VERIFY BY EAR.
-
-       Off by default (OptRenderAllHitSounds). Differences from Quartz, all plumbing:
-       Quartz's config/logging swapped for Bismuth's, and the clip loader calls
-       AudioManager.FindOrLoadAudioClip by reflection instead of Quartz's compat layer. */
+       TIMING IS THE ENTIRE POINT OF THIS FILE. Every constant, rounding and clamp is kept
+       exactly as Quartz has it (segment length, 12s lookahead, 50ms late margin, the linear
+       resample in MixEvent, the timeSamples offset for partly-past segments). Changing any
+       desyncs hit sounds, invisible to any static check. VERIFY BY EAR. Off by default; only
+       the config/logging plumbing and the reflected clip loader differ from Quartz. */
     internal static class HitSoundRenderer
     {
         private sealed class HitSoundEvent { public double Time; public float Volume; public ClipData Data; }

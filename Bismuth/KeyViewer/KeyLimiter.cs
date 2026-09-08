@@ -56,14 +56,9 @@ namespace Bismuth
         // avoiding the ambiguity in SkyHookKeyToUnityKey (multiple KeyCodes share one label slot).
         private static readonly HashSet<ushort> _allowedLabels = new HashSet<ushort>();
 
-        // Raw-key → Unity KeyCode fallback for when SkyHook reports KeyLabel.Unknown.
-        // The raw byte's meaning is PER PLATFORM and the spaces collide (0x39 = HID
-        // CapsLock vs VK '9'), so EnsureReflection picks the table:
-        //  - macOS native bundle: USB HID usage IDs (page 0x07) — modifiers confirmed
-        //    via diagnostic logging (0xE1 LShift, 0xE5 RShift, …).
-        //  - Windows build (incl. Proton): Win32 VK codes — confirmed via a Proton
-        //    tester's diagnostics (0x42 'B', 0xA2 VK_LCONTROL, …).
-        //  - anything else (native Linux): NULL. See EnsureReflection.
+        // Raw-key fallback for entries SkyHook labels Unknown. The byte's meaning is per
+        // platform and the spaces collide (0x39 = HID CapsLock vs VK '9'): macOS = USB HID
+        // usage IDs, Windows/Proton = Win32 VK codes, anything else = null (fail open).
         private static Dictionary<ushort, KeyCode> _rawToKeyCode;
 
         private static readonly Dictionary<ushort, KeyCode> _hidToKeyCode = new Dictionary<ushort, KeyCode>
@@ -87,12 +82,9 @@ namespace Bismuth
         private const ushort LabelIgnored = 119;
         private const ushort LabelUnknown = 120;
 
-        /* SkyHookKeyMapper's table has no entry for ' or ` — UnityKeyToSkyHookKey returns
-           Unknown for both and SkyHookKeyToUnityKey can't map their labels back. Two ways
-           that broke the limiter: an allowed ' / ` (the shipped 16k preset binds ` to the
-           Caps slot) put Unknown into _allowedLabels, so EVERY press the mapper couldn't
-           name counted as allowed; and their own presses resolved to nothing. Supply the
-           missing pairs ourselves — the labels exist, only the mapper's rows are absent. */
+        /* SkyHookKeyMapper has no rows for ' or ` (the labels exist). Without these, an
+           allowed ` put Unknown into _allowedLabels — matching every unnameable press —
+           and the keys' own presses resolved to nothing. */
         private static readonly Dictionary<KeyCode, ushort> _extraKeyToLabel = new Dictionary<KeyCode, ushort>
         {
             { KeyCode.Quote,     64 },  // KeyLabel.Apostrophe
@@ -188,12 +180,9 @@ namespace Bismuth
             _keyLabelType     = AccessTools.TypeByName("SkyHook.KeyLabel");
             _labelToNative    = mapper      != null ? AccessTools.Method(mapper, "KeyLabelToNativeKeyCode") : null;
 
-            /* Only platforms whose raw codes a tester's diagnostics actually showed us get a
-               table. Native Linux used to fall through to the macOS HID one, which is a
-               different code space: it misnames presses AND — since b3 hands the same guess
-               to the game's limiter — writes a code no real press can match, blocking a key
-               the player allowed. No table is better than a wrong one: presses fail open and
-               keys we can't name keep us off the delegation path. */
+            /* Only platforms whose raw codes testers' diagnostics confirmed get a table. A
+               wrong table misnames presses and hands the game's limiter codes no real press
+               matches; no table fails open and keeps us off the delegation path. */
             var plat = Application.platform;
             _rawToKeyCode = plat == RuntimePlatform.WindowsPlayer || plat == RuntimePlatform.WindowsEditor ? BuildVkMap()
                           : plat == RuntimePlatform.OSXPlayer     || plat == RuntimePlatform.OSXEditor     ? _hidToKeyCode
@@ -206,15 +195,21 @@ namespace Bismuth
 
         // SkyHook label → Unity KeyCode. `label` is the boxed KeyLabel read off the entry;
         // labelVal is its numeric value. KeyCode.None = the label names no key we know.
+        // Both mappers are pure, so memoize: they sit on the per-frame press path, and a
+        // reflected Invoke allocates its argument array every call.
+        private static readonly Dictionary<ushort, KeyCode> _labelToKeyMemo = new Dictionary<ushort, KeyCode>();
+        private static readonly Dictionary<KeyCode, ushort> _keyToLabelMemo = new Dictionary<KeyCode, ushort>();
+        private static readonly object[] _oneArg = new object[1];
+
         private static KeyCode KeyFromLabel(object label, ushort labelVal)
         {
             if (_extraLabelToKey.TryGetValue(labelVal, out KeyCode extra)) return extra;
             if (labelVal == LabelIgnored || labelVal == LabelUnknown || _asyncToUnity == null)
                 return KeyCode.None;
-            var resolved = _asyncToUnity.Invoke(null, new object[] { label });
-            if (resolved == null) return KeyCode.None;
-            int kc = System.Convert.ToInt32(resolved);
-            return kc == (int)KeyCode.None ? KeyCode.None : (KeyCode)kc;
+            if (_labelToKeyMemo.TryGetValue(labelVal, out KeyCode memo)) return memo;
+            _oneArg[0] = label;
+            var resolved = _asyncToUnity.Invoke(null, _oneArg);
+            return _labelToKeyMemo[labelVal] = (KeyCode)(resolved == null ? 0 : System.Convert.ToInt32(resolved));
         }
 
         // Unity KeyCode → SkyHook label, or LabelUnknown when the key has none.
@@ -222,8 +217,10 @@ namespace Bismuth
         {
             if (_extraKeyToLabel.TryGetValue(k, out ushort extra)) return extra;
             if (_unityToAsync == null) return LabelUnknown;
-            var lbl = _unityToAsync.Invoke(null, new object[] { k });
-            return lbl == null ? LabelUnknown : (ushort)System.Convert.ToInt32(lbl);
+            if (_keyToLabelMemo.TryGetValue(k, out ushort memo)) return memo;
+            _oneArg[0] = k;
+            var lbl = _unityToAsync.Invoke(null, _oneArg);
+            return _keyToLabelMemo[k] = lbl == null ? LabelUnknown : (ushort)System.Convert.ToInt32(lbl);
         }
 
         // Resolve one GetStateKeys entry to a Unity KeyCode: direct KeyCode, SkyHook
@@ -326,12 +323,9 @@ namespace Bismuth
                 BismuthLog.Debug("KeyLimiter.Apply: allowed set is empty — limiter treated as disabled");
             }
 
-            /* Ghost keys (active hand preset only — foot has none) spawn rain without hitting
-               a tile, so suppressing them is a second way Bismuth withholds presses from the
-               game. It rides the limiter toggle: collected only once the limiter is confirmed
-               active, so "limiter off" means every key reaches the game. Before this, a preset
-               with ghost keys ate them with the limiter disabled and nothing in the Input tab
-               could stop it. */
+            /* Ghost keys (hand preset only) are withheld from the game. That rides the limiter
+               toggle — collected only while it's active — so "limiter off" means every key
+               reaches the game. */
             if (_active && settings.Hand != null && settings.Hand.GhostKeysEnabled && settings.Hand.GhostKeys != null)
             {
                 foreach (var tok in settings.Hand.GhostKeys)
@@ -341,18 +335,11 @@ namespace Bismuth
                 }
             }
 
-            /* Can the game's limiter even express this key set? KeysSetting.Add maps each key
-               through SkyHook, and a key SkyHook has no label for (Menu/Apps — its KeyLabel
-               enum simply has no entry) lands on Unknown, whose native code never matches the
-               real press. The game would then block a key the player explicitly allowed, while
-               the key viewer — which polls Unity directly — still counts it. That's the split
-               a tester hit with Menu.
-
-               So it's one limiter or the other, never both: delegate when every key survives
-               the mapping, otherwise give the player their list back and filter here, the way
-               Bismuth did before b3. */
-            // EnsureGameRefl only runs once, so "is there a game limiter" has to be re-read
-            // here — a latch set inside it would be cleared by the next Apply and never re-set.
+            /* One limiter or the other, never both. A key SkyHook has no label for (Menu) maps
+               to Unknown in the game's limiter and its native code never matches the press, so
+               the game would block a key the player allowed. Delegate only when every key
+               survives the mapping; otherwise filter here. Availability is re-read every Apply
+               (EnsureGameRefl runs once). */
             _localFilter = !GameLimiterAvailable;
             if (!_localFilter)
             {
@@ -379,18 +366,11 @@ namespace Bismuth
 
         private static string _lastApplyLog;
 
-        /* ── The game's own key limiter ───────────────────────────────────────
-           ADOFAI ships "only treat these keys as input" as Persistence.keyLimiterKeys, and
-           filters against it inside RDInputType_AsyncKeyboard.Main / RDInputType_Keyboard.
-           MainIgnoreActive — upstream of RDInput.GetMain, where Bismuth used to clamp. Two
-           filters over two different lists is what blocked keys the player had allowed, so
-           Bismuth now only WRITES the list and lets the game do the blocking.
-
-           This setting is persisted (KeysSetting's setters write Persistence.generalPrefs
-           immediately) and shared with the player's own menu, so we snapshot what was there
-           before touching it and put it back when the limiter goes off or the mod unloads.
-           Leaving Bismuth's keys behind would silently rewrite a game setting the player
-           never edited. */
+        /* The game's own limiter: Persistence.keyLimiterKeys, filtered upstream of
+           RDInput.GetMain. Bismuth writes the list and lets the game block — two filters over
+           two lists is what blocked keys the player had allowed. The setting is persisted and
+           shared with the player's own menu, so snapshot it first and restore it when the
+           limiter goes off or the mod unloads. */
         // True when the key set can't be handed to the game (see Apply) and Bismuth filters itself.
         private static bool _localFilter;
 
@@ -454,12 +434,9 @@ namespace Bismuth
             var args2 = new object[2];
             foreach (var k in keys)
             {
-                /* Always the two-arg Add, with the native code WE resolved. Add(KeyCode) would
-                   re-derive it as KeyLabelToNativeKeyCode(UnityKeyToSkyHookKey(k)) — and the
-                   mapper has no row for ' or ` , so it stores the 0xFFFF sentinel, no async
-                   code lands in the set, and the game's async filter (which compares raw
-                   AsyncKeyCode.key values) then blocks a key we thought we had delegated.
-                   The shipped 16k preset binds ` , so that was every 16k player. */
+                /* Two-arg Add with the native code WE resolved: Add(KeyCode) re-derives it
+                   through the mapper, which has no row for ' or ` and would store the 0xFFFF
+                   sentinel — the game's async filter then blocks a key we delegated. */
                 ushort native = NativeForKey(k);
                 if (_ksAddKeyRaw == null)
                 {
@@ -534,10 +511,8 @@ namespace Bismuth
                 var s = MainClass.Settings;
                 if (on)
                 {
-                    /* Take ownership once, and record it on disk. The in-memory snapshot alone
-                       was the bug behind "Menu still blocked after the fix": a session that
-                       started with our own b3 keys already in the game's settings snapshotted
-                       THOSE as the player's, so releasing handed the same unusable list back. */
+                    /* Take ownership once and record it on disk; an in-memory snapshot alone
+                       could capture our own keys from a previous session as the player's. */
                     if (s != null && !s.GameLimiterOwned)
                     {
                         var existing = ReadGameKeys();
@@ -552,8 +527,7 @@ namespace Bismuth
                     var current = ReadGameKeys();
                     if (current.SetEquals(keys))
                     {
-                        // Silence here used to be ambiguous: an already-correct list and a
-                        // sync that never ran looked identical in the log.
+                        // Logged once: an already-correct list must read differently from a sync that never ran.
                         if (!_matchLogged)
                         {
                             _matchLogged = true;
@@ -568,10 +542,8 @@ namespace Bismuth
                 }
                 else if (s != null && s.GameLimiterOwned)
                 {
-                    /* Release: put back what the player had, which is usually nothing — and an
-                       EMPTY list is what disables the game's limiter (its filter is gated on
-                       asyncKeysCache.Count > 0). That is what lets a key the game can't name,
-                       like Menu, work again under Bismuth's own filtering. */
+                    // Release: restore the player's list. An EMPTY list disables the game's
+                    // limiter (filter gated on asyncKeysCache.Count > 0).
                     var restore = ParseKeyList(s.GameLimiterUserKeys);
                     WriteGameKeys(restore);
                     s.GameLimiterOwned = false;
@@ -625,11 +597,9 @@ namespace Bismuth
             }
         }
 
-        // Counts keys in the game's press list this frame that pass our filters (KeyLimiter
-        // allowed-set + ChatterBlocker). Uses GetStateKeys (the game's own source, immune to
-        // async timing) and is idempotent within a frame (chatter state is frame-cached).
-        // Entries we can't name pass through untouched (platform key tables differ; a Linux
-        // tester had every press eaten because SkyHook labels didn't match ours).
+        // Presses in the game's own list (GetStateKeys) this frame that pass our filters.
+        // Idempotent within a frame (chatter decisions are frame-cached); entries we can't
+        // name pass through untouched.
         private static bool _inCount;
         private static bool _failOpenLogged;
         private static int _pressDiagLeft = 16; // one-time per-session press dump for ports
@@ -711,10 +681,8 @@ namespace Bismuth
                 // Ghost filter — always applies. Ghost-key presses are never input to the game.
                 if (resolvedKey != KeyCode.None && _ghosts.Contains(resolvedKey)) continue;
 
-                /* Fail open, per ENTRY: this platform's label/raw tables don't name this key,
-                   so filtering it would eat an input we can't identify. Was a whole-frame
-                   bail-out, which meant one unnameable key (' and ` resolved to nothing until
-                   _extraLabelToKey existed) let every key pressed alongside it through too. */
+                // Fail open per ENTRY (not per frame — that let every key pressed alongside
+                // an unnameable one through).
                 if (resolvedKey == KeyCode.None)
                 {
                     n++;
@@ -726,10 +694,8 @@ namespace Bismuth
                     continue;
                 }
 
-                /* Only when we could NOT delegate (see Apply). While the game holds our list it
-                   has already filtered upstream of GetMain, and a second pass over our own copy
-                   is what ate keys it had accepted, like = and Backspace. Ghost keys and chatter
-                   below have no game-side equivalent, so they always run. */
+                // Only when we could NOT delegate: the game already filtered upstream, and a
+                // second pass ate keys it had accepted. Ghost/chatter have no game-side equivalent.
                 if (_active && _localFilter && !allowed) continue;
 
                 // Chatter filter — skip mouse, skip entries we couldn't resolve to a KeyCode.
@@ -766,19 +732,11 @@ namespace Bismuth
             return n;
         }
 
-        // While the menu is open the game must not see keyboard input. It reads the keyboard
-        // through three independent RDInput entry points, each needing its own gate:
-        //   GetMain(ButtonState)            — press counting → planet hits
-        //   WentDown/IsDown(KeyCode)        — raw shortcut keys (R restart, arrows, …)
-        //   GetState(InputAction, state)    — Rewired actions (restartPress, backPress, …)
-        // The settings panel polls UnityEngine.Input directly (Ctrl+B, text fields), so it
-        // stays responsive while all of these return "nothing pressed".
-        //
-        // Autoplay is EXEMPT: the game drives an autoplay run through this same input
-        // pipeline (PlayerControl_Update → planet hits), so blocking it starved the hit
-        // tracker — the results showed empty counts / NaN accuracy when the panel was open
-        // during an autoplay run. The player isn't hitting tiles manually then, so there's
-        // nothing to block.
+        // Menu-open input block. The game reads the keyboard through three RDInput entry
+        // points (GetMain, WentDown/IsDown, GetState) plus raw Input.GetKeyDown in menus; each
+        // gets its own gate below. The panel polls UnityEngine.Input itself, so it stays live.
+        // Autoplay is exempt: it drives hits through the same pipeline, and blocking it
+        // starved the hit tracker (empty counts / NaN accuracy).
         private static bool BlockInputs => _blockWhileOpen && UICore.IsOpen && !Autoplaying;
 
         private static bool Autoplaying
@@ -799,12 +757,9 @@ namespace Bismuth
             public static void Postfix(ButtonState __0, ref int __result)
             {
                 if (BlockInputs && __0 == ButtonState.WentDown) { __result = 0; return; }
-                /* Counting costs a reflected GetStateKeys plus a reflected field read per
-                   pressed key, every keydown frame. Since the game owns the allowlist now,
-                   that work can only change the outcome when WE still filter something:
-                   local filtering (a key the game can't name), chatter, or ghost keys.
-                   Delegating with neither of those on — the common case — returns here.
-                   Also skips re-entry, since GetStateKeys calls GetMain internally. */
+                // Counting reflects over the press list; only worth it while WE still filter
+                // something (local filter, chatter, ghosts). Also skips re-entry — GetStateKeys
+                // calls GetMain internally.
                 bool weStillFilter = (_active && _localFilter) || _chatterActive || _ghosts.Count > 0;
                 if (!weStillFilter || __result == 0 || __0 != ButtonState.WentDown || _inCount) return;
 
@@ -859,17 +814,10 @@ namespace Bismuth
             }
         }
 
-        // ── UnityEngine.Input.GetKeyDown — direct polls below RDInput ──────
-        // Menu scenes read number-key navigation straight off Input.GetKeyDown, bypassing
-        // RDInput. GetKeyDown is an extern icall, so it's patched outside PatchAll: if the
-        // native detour fails, only this layer is lost instead of aborting every patch.
-        //
-        // Applied via PatchProcessor rather than harmony.Patch(m, postfix: …): the latter binds
-        // (at build time, against MelonLoader's HarmonyX 2.10) to the 6-arg Patch overload with
-        // the extra `ilmanipulator` HarmonyMethod, which native UMM's older 0Harmony lacks — so
-        // the method failed to JIT and threw MissingMethodException before the try even ran,
-        // aborting the whole mod load on Windows/native UMM. CreateProcessor/AddPostfix/Patch
-        // have been stable since Harmony 2.0.
+        // Menu scenes read number keys straight off Input.GetKeyDown (an extern icall), so it's
+        // patched outside PatchAll — a failed native detour loses only this layer. PatchProcessor
+        // rather than harmony.Patch(…): that overload binds to HarmonyX 2.10's 6-arg signature,
+        // which native UMM's older 0Harmony lacks (MissingMethodException at JIT, whole mod dead).
         internal static void TryPatchRawInput(Harmony harmony)
         {
             try

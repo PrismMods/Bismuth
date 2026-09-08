@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -7,7 +8,7 @@ using UnityEngine.UI;
 
 namespace Bismuth.UI.Pages
 {
-    internal static class PageKeyViewer
+    internal static partial class PageKeyViewer
     {
         // Page-lifetime navigation state. The page is built once per session by TabRail;
         // subpage bodies are (re)built by the PageStack on push/reveal.
@@ -74,6 +75,63 @@ namespace Bismuth.UI.Pages
             UIBuilder.Collapsible(parent, "Enabled", s.ShowFootViewer,
                 v => { s.ShowFootViewer = v; notify?.Invoke(); rebuild(); }, null);
             BuildPresetList(parent, isFoot: true, s, notify, rebuild);
+
+            UIBuilder.Spacer(parent);
+            UIBuilder.NavRow(parent, "DM Note presets",
+                () => _stack.Push("DM Note", body => BuildDmNotePage(body, s, notify, rebuild)),
+                keywords: "dmnote,import,export,json");
+        }
+
+        // <mod>/DmNote/*.json ↔ presets. Import appends a new preset and makes it active;
+        // export sits in the preset editor.
+        private static void BuildDmNotePage(Transform body, Settings s, Action notify, Action rebuild)
+        {
+            UIBuilder.SectionHeaderWithHelp(body, "DM Note presets",
+                "Drop a DM Note preset.json into the DmNote folder,\n"
+                + "then import it as a hand or foot preset.\n"
+                + "Export (in a preset's editor) writes a preset.json\n"
+                + "DM Note can open. Layout, binds, and colors carry\n"
+                + "over; rain and ghost keys as far as DM Note allows.");
+            var listHost = UIBuilder.VGroup(body, "DmNoteList");
+            Action rebuildList = null;
+            rebuildList = () =>
+            {
+                for (int i = listHost.transform.childCount - 1; i >= 0; i--)
+                {
+                    var c = listHost.transform.GetChild(i);
+                    c.SetParent(null);
+                    UnityEngine.Object.Destroy(c.gameObject);
+                }
+                var names = DmNotePreset.ListFiles();
+                if (names.Count == 0)
+                    UIBuilder.Label(listHost.transform, Loc.T("No .json files in the DmNote folder yet."),
+                        (int)UIBuilder.LabelFontSize, TextAnchor.MiddleLeft, Theme.TextMuted);
+                foreach (var name in names)
+                {
+                    var row = UIBuilder.Row(listHost.transform);
+                    UIBuilder.SolidImage(row, Theme.RowBg);
+                    var label = UIBuilder.Label(row.transform, name, (int)UIBuilder.LabelFontSize, TextAnchor.MiddleLeft, Theme.Text);
+                    label.rectTransform.offsetMin = new Vector2(8f, 0);
+                    label.rectTransform.offsetMax = new Vector2(-160f, 0);
+                    MakeMiniButton(row.transform, Loc.T("→ Hand"), 70f, -84f, () => ImportDmNote(name, false, s, notify, rebuild));
+                    MakeMiniButton(row.transform, Loc.T("→ Foot"), 70f, -8f, () => ImportDmNote(name, true, s, notify, rebuild));
+                }
+            };
+            rebuildList();
+            UIBuilder.Button(body, "Rescan folder", rebuildList);
+            UIBuilder.Button(body, "Open DM Note folder", () => OsShell.OpenFolder(DmNotePreset.DirPath()));
+        }
+
+        private static void ImportDmNote(string name, bool isFoot, Settings s, Action notify, Action rebuild)
+        {
+            if (!DmNotePreset.Import(name, out var preset, out string err)) { BismuthLog.Log("DmNote: " + err); return; }
+            var presets = isFoot ? s.KvFootPresets : s.KvHandPresets;
+            if (presets == null) return;
+            presets.Add(preset);
+            if (isFoot) s.KvActiveFoot = presets.Count - 1; else s.KvActiveHand = presets.Count - 1;
+            notify?.Invoke();
+            rebuild();
+            _stack.Pop();   // back to the lists, where the new preset now shows as active
         }
 
         private static void BuildPresetList(Transform parent, bool isFoot, Settings s, Action notify, Action rebuild)
@@ -318,6 +376,13 @@ namespace Bismuth.UI.Pages
                     notify?.Invoke();
                 }
             });
+            GameObject exportBtn = null;
+            exportBtn = UIBuilder.Button(parent, "Export to DM Note", () =>
+            {
+                if (!DmNotePreset.Export(preset, out string path, out string _)) return;
+                var t = exportBtn.GetComponentInChildren<TextMeshProUGUI>();
+                if (t != null) t.text = Loc.T("Exported to DmNote/") + Path.GetFileName(path);
+            });
 
             UIBuilder.Spacer(parent);
             UIBuilder.SectionHeader(parent, "Main");
@@ -452,831 +517,6 @@ namespace Bismuth.UI.Pages
                             + "but also hit tiles.");
                         BuildGhostSection(body, preset, notify, rebuild);
                     }));
-            }
-        }
-
-        // ── Ghost keys ─────────────────────────────────────────────────────
-
-        // Re-syncs the ghost slot chips when the top row's cells change (slot count is
-        // derived from the top row). Set while a hand preset's editor is open.
-        private static Action _ghostRefresh;
-
-        private static int TopRowKeySlots(KeyViewerPreset preset)
-        {
-            if (preset?.Rows == null || preset.Rows.Count == 0) return 0;
-            var row = preset.Rows[0];
-            if (row?.Cells == null) return 0;
-            int n = 0;
-            foreach (var c in row.Cells)
-                if (c.Token != "KPS" && c.Token != "Total") n++;
-            return n;
-        }
-
-        private static void BuildGhostSection(Transform parent, KeyViewerPreset preset, Action notify, Action rebuild)
-        {
-            Action structural = () => { notify?.Invoke(); rebuild(); };
-
-            var body = UIBuilder.Rect("GhostBody", parent);
-            var vlg = body.AddComponent<VerticalLayoutGroup>();
-            vlg.childControlWidth = true;
-            vlg.childControlHeight = true;
-            vlg.childForceExpandWidth = true;
-            vlg.childForceExpandHeight = false;
-            vlg.spacing = 2f;
-
-            // One chip per non-stat top-row cell. Click empty → listen; click assigned → clear.
-            var stripGo = UIBuilder.Rect("Slots", body.transform);
-            var stripLe = stripGo.AddComponent<LayoutElement>();
-            stripLe.preferredHeight = 32f;
-            stripLe.minHeight = 32f;
-            var hlg = stripGo.AddComponent<HorizontalLayoutGroup>();
-            hlg.childControlWidth = true;
-            hlg.childControlHeight = true;
-            hlg.childForceExpandWidth = false;
-            hlg.childForceExpandHeight = false;
-            hlg.childAlignment = TextAnchor.MiddleLeft;
-            hlg.spacing = 4f;
-            hlg.padding = new RectOffset(8, 0, 4, 4);
-
-            var listenerGo = UIBuilder.Rect("GhostListener", body.transform);
-            var listener = listenerGo.AddComponent<KeyListener>();
-
-            int listenIdx = -1;
-            Action rebuildSlots = null;
-            rebuildSlots = () =>
-            {
-                for (int i = stripGo.transform.childCount - 1; i >= 0; i--)
-                {
-                    var c = stripGo.transform.GetChild(i);
-                    c.SetParent(null);
-                    UnityEngine.Object.Destroy(c.gameObject);
-                }
-
-                int slots = TopRowKeySlots(preset);
-                if (preset.GhostKeys == null) preset.GhostKeys = new List<string>();
-                while (preset.GhostKeys.Count < slots) preset.GhostKeys.Add("None");
-                while (preset.GhostKeys.Count > slots) preset.GhostKeys.RemoveAt(preset.GhostKeys.Count - 1);
-                if (listenIdx >= slots) { listenIdx = -1; listener.Active = false; }
-
-                if (slots == 0)
-                {
-                    MakeGhostChip(stripGo.transform, Loc.T("(top row has no key cells)"), false, null);
-                    return;
-                }
-
-                for (int i = 0; i < slots; i++)
-                {
-                    int si = i;
-                    string tok = preset.GhostKeys[si] ?? "None";
-                    bool assigned = tok != "None" && !string.IsNullOrEmpty(tok);
-                    bool listeningThis = listenIdx == si;
-                    string label = listeningThis ? "…" : (assigned ? KeyTokens.PrettyTokenLabel(tok) : "None");
-                    var chipGo = MakeGhostChip(stripGo.transform, label, listeningThis, () =>
-                    {
-                        if (listeningThis) { listenIdx = -1; listener.Active = false; }
-                        else if (assigned)
-                        {
-                            preset.GhostKeys[si] = "None";
-                            structural();
-                        }
-                        else { listenIdx = si; listener.Active = true; }
-                        rebuildSlots();
-                    });
-                    if (listeningThis) listener.CancelRect = (RectTransform)chipGo.transform;
-                }
-            };
-            listener.OnKey = kc =>
-            {
-                if (listenIdx < 0) return;
-                if (kc != KeyCode.Escape && listenIdx < preset.GhostKeys.Count)
-                {
-                    preset.GhostKeys[listenIdx] = KeyTokens.TokenFromKeyCode(kc);
-                    structural();
-                }
-                listenIdx = -1;
-                listener.Active = false;
-                rebuildSlots();
-            };
-            rebuildSlots();
-            _ghostRefresh = rebuildSlots;
-
-            // Rain color defaults to yellow when unset (null). The picker binds one persistent
-            // KvColor; the toggle points GhostRainColor at it or back to null, so edits
-            // survive toggling custom off and on.
-            var ghostCol = preset.GhostRainColor ?? new KvColor { R = 1f, G = 0.9f, B = 0f, A = 1f };
-            GameObject pickerGo = null;
-            UIBuilder.Collapsible(body.transform, "Custom rain color", preset.GhostRainColor != null,
-                v =>
-                {
-                    preset.GhostRainColor = v ? ghostCol : null;
-                    if (pickerGo != null) pickerGo.SetActive(v);
-                    structural();
-                }, null);
-            pickerGo = UIBuilder.ColorPicker(body.transform, "Rain color",
-                new Color(ghostCol.R, ghostCol.G, ghostCol.B, ghostCol.A), true,
-                c =>
-                {
-                    ghostCol.R = c.r; ghostCol.G = c.g; ghostCol.B = c.b; ghostCol.A = c.a;
-                    notify?.Invoke();
-                });
-            pickerGo.SetActive(preset.GhostRainColor != null);
-        }
-
-        private static GameObject MakeGhostChip(Transform parent, string text, bool active, Action onClick)
-        {
-            var go = UIBuilder.Rect("Chip", parent);
-            float width = Mathf.Max(36f, text.Length * 8f + 14f);
-            var le = go.AddComponent<LayoutElement>();
-            le.preferredWidth = width;
-            le.preferredHeight = 24f;
-            le.minWidth = width;
-            le.minHeight = 24f;
-
-            var bg = go.AddComponent<RoundedRectGraphic>();
-            bg.Radius = 3f;
-            bg.AAFringe = 0.5f;
-            bg.color = active ? Theme.ToggleOn : Theme.ButtonBg;
-            bg.raycastTarget = onClick != null;
-            if (active) go.AddComponent<AccentFill>();
-
-            var txtGo = UIBuilder.Rect("T", go.transform);
-            var txtRect = (RectTransform)txtGo.transform;
-            txtRect.anchorMin = Vector2.zero;
-            txtRect.anchorMax = Vector2.one;
-            txtRect.offsetMin = new Vector2(6f, 0f);
-            txtRect.offsetMax = new Vector2(-6f, 0f);
-            var txt = UIBuilder.Tmp(txtGo, text, (int)UIBuilder.LabelFontSize, TextAnchor.MiddleCenter,
-                onClick != null ? Theme.Text : Theme.TextMuted);
-
-            if (onClick != null) ClickHandler.Attach(go, onClick);
-            return go;
-        }
-
-        // ── Rebind mode ────────────────────────────────────────────────────
-        // While on, clicking a cell arms it for rebinding (next keypress binds it)
-        // instead of opening its settings — bulk-friendly: click key, press bind, next.
-        private static bool _rebindMode;
-
-        private static void BuildRebindModeButton(Transform parent)
-        {
-            _rebindMode = false;
-            var row = UIBuilder.Row(parent);
-            var bg = UIBuilder.SolidImage(row, Theme.ButtonBg);
-            bg.raycastTarget = true;
-            var label = UIBuilder.Label(row.transform, "", (int)UIBuilder.LabelFontSize, TextAnchor.MiddleCenter, Theme.Text);
-
-            bool hover = false;
-            void Paint()
-            {
-                if (_rebindMode)
-                {
-                    var a = Theme.ToggleOn;
-                    bg.color = new Color(a.r, a.g, a.b, hover ? 0.5f : 0.35f);
-                    label.text = Loc.T("Rebind mode ON — click a key, press its new bind. Click here to finish.");
-                }
-                else
-                {
-                    bg.color = hover ? Theme.ButtonHover : Theme.ButtonBg;
-                    label.text = Loc.T("Rebind Keys");
-                }
-            }
-            Paint();
-
-            var h = row.AddComponent<HoverHandler>();
-            h.OnEnter = () => { hover = true; Paint(); };
-            h.OnExit = () => { hover = false; Paint(); };
-            ClickHandler.Attach(row, () =>
-            {
-                _rebindMode = !_rebindMode;
-                if (!_rebindMode)
-                {
-                    // Leaving the mode cancels any armed cell.
-                    _rebindCell = null;
-                    if (_rebindListener != null) _rebindListener.Active = false;
-                    _rebindRebuild?.Invoke();
-                }
-                Paint();
-            });
-        }
-
-        // ── Rows section + cell grid ───────────────────────────────────────
-
-        // Visual row grid: each row is a horizontal strip of cell buttons + a Row Settings
-        // button on the right. Click cell → key submenu. Right-click cell → listen-rebind.
-        // Click row settings → row submenu. Drag-reorder is deferred.
-        private static void BuildRowsSection(
-            Transform parent, KeyViewerPreset preset, bool isFoot,
-            Settings s, Action notify, Action rebuild)
-        {
-            // KeyListener for rebind, attached once per editor build. Its OnKey is wired
-            // by the right-click handlers and rewires the rebind state on each capture.
-            var listenerGo = UIBuilder.Rect("RebindListener", parent);
-            _rebindListener = listenerGo.AddComponent<KeyListener>();
-            _rebindCell = null;
-            _rebindRebuild = null;
-            _rebindListener.OnKey = kc =>
-            {
-                if (_rebindCell == null) return;
-                if (kc == KeyCode.Escape)
-                {
-                    // Cancel rebind without changing anything
-                    _rebindCell = null;
-                    _rebindListener.Active = false;
-                    _rebindRebuild?.Invoke();
-                    return;
-                }
-                // Swap the token first so TransferKeyCount's "is oldKey still in use" scan
-                // sees the new binding, else it spots this cell still on the old token and
-                // leaves the old count behind.
-                bool hadOld = KeyViewer.TryParseKey(_rebindCell.Token, out KeyCode oldKey);
-                _rebindCell.Token = KeyTokens.TokenFromKeyCode(kc);
-                _rebindCell.Label = null; // clear stale override
-                if (hadOld && KeyViewer.Instance != null)
-                    KeyViewer.Instance.TransferKeyCount(preset, oldKey, kc);
-                _rebindCell = null;
-                _rebindListener.Active = false;
-                _rebindRebuild?.Invoke();
-                notify?.Invoke();
-                rebuild();
-            };
-
-            var rowsContainer = UIBuilder.Rect("RowsContainer", parent);
-            var rvlg = rowsContainer.AddComponent<VerticalLayoutGroup>();
-            rvlg.childControlWidth = true;
-            rvlg.childControlHeight = true;
-            rvlg.childForceExpandWidth = true;
-            rvlg.childForceExpandHeight = false;
-            rvlg.spacing = 4f;
-
-            Action rebuildRows = null;
-            rebuildRows = () =>
-            {
-                for (int i = rowsContainer.transform.childCount - 1; i >= 0; i--)
-                {
-                    var c = rowsContainer.transform.GetChild(i);
-                    c.SetParent(null);
-                    UnityEngine.Object.Destroy(c.gameObject);
-                }
-                if (preset.Rows == null) return;
-                for (int i = 0; i < preset.Rows.Count; i++)
-                {
-                    BuildRowStrip(rowsContainer.transform, preset, isFoot, i, s, notify, rebuild, rebuildRows);
-                }
-                // Ghost slot count derives from the top row's cells — keep the chips in sync.
-                _ghostRefresh?.Invoke();
-            };
-            _rebindRebuild = rebuildRows;
-            rebuildRows();
-
-            UIBuilder.Spacer(parent, 8f);
-            UIBuilder.Button(parent, "+ Add Row", () =>
-            {
-                if (preset.Rows == null) preset.Rows = new List<KeyViewerRow>();
-                var newRow = new KeyViewerRow { Cells = new List<KeyViewerCell>(), Height = 60f, ShowRain = true };
-                preset.Rows.Add(newRow);
-                rebuildRows();
-                notify?.Invoke();
-                rebuild();
-            });
-        }
-
-        private static void BuildRowStrip(
-            Transform parent, KeyViewerPreset preset, bool isFoot, int rowIdx,
-            Settings s, Action notify, Action rebuild, Action rebuildRows)
-        {
-            const float cellH = 32f;
-            // Reserved horizontal space for the right cluster (+ KPS Total Settings + gaps).
-            const float rightClusterReserve = 280f;
-
-            var row = preset.Rows[rowIdx];
-
-            var stripGo = UIBuilder.Rect("Row_" + rowIdx, parent);
-            var stripLe = stripGo.AddComponent<LayoutElement>();
-            stripLe.preferredHeight = cellH + 4f;
-            stripLe.minHeight = cellH + 4f;
-
-            // Cells container — left-anchored, only data cells. The + / KPS / Total /
-            // Settings buttons sit in the right cluster so drag-reorder needn't skip them.
-            var cellsGo = UIBuilder.Rect("Cells", stripGo.transform);
-            var cellsRect = (RectTransform)cellsGo.transform;
-            cellsRect.anchorMin = new Vector2(0, 0);
-            cellsRect.anchorMax = new Vector2(1, 1);
-            cellsRect.offsetMin = new Vector2(8f, 2f);
-            cellsRect.offsetMax = new Vector2(-rightClusterReserve, -2f);
-            var cellsHlg = cellsGo.AddComponent<HorizontalLayoutGroup>();
-            cellsHlg.childControlWidth = true;
-            cellsHlg.childControlHeight = true;
-            cellsHlg.childForceExpandWidth = false;
-            cellsHlg.childForceExpandHeight = false;
-            cellsHlg.childAlignment = TextAnchor.MiddleLeft;
-            cellsHlg.spacing = 2f;
-
-            if (row.Cells != null)
-            {
-                for (int j = 0; j < row.Cells.Count; j++)
-                {
-                    BuildCellButton(cellsGo.transform, preset, isFoot, rowIdx, j, row.Cells[j], s, notify, rebuild, rebuildRows);
-                }
-            }
-
-            // Right cluster: + / + KPS / + Total / ⚙ Settings, packed against the right edge.
-            var rightCluster = UIBuilder.Rect("RightCluster", stripGo.transform);
-            var rcRect = (RectTransform)rightCluster.transform;
-            rcRect.anchorMin = new Vector2(1, 0);
-            rcRect.anchorMax = new Vector2(1, 1);
-            rcRect.pivot = new Vector2(1, 0.5f);
-            rcRect.anchoredPosition = new Vector2(-8f, 0);
-            rcRect.sizeDelta = new Vector2(0, 0);
-            var rcHlg = rightCluster.AddComponent<HorizontalLayoutGroup>();
-            rcHlg.childControlWidth = true;
-            rcHlg.childControlHeight = true;
-            rcHlg.childForceExpandWidth = false;
-            rcHlg.childForceExpandHeight = false;
-            rcHlg.childAlignment = TextAnchor.MiddleRight;
-            rcHlg.spacing = 4f;
-            // Auto-size width to fit children; right-anchored placement keeps it pinned.
-            var rcCsf = rightCluster.AddComponent<ContentSizeFitter>();
-            rcCsf.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
-
-            BuildAddCellButton(rightCluster.transform, row, rebuildRows);
-            BuildAddSpecialButton(rightCluster.transform, row, "KPS", rebuildRows);
-            BuildAddSpecialButton(rightCluster.transform, row, "Total", rebuildRows);
-            BuildRowSettingsButton(rightCluster.transform, preset, isFoot, rowIdx, s, notify, rebuild);
-        }
-
-        // Row Settings button (HLG-positioned, no manual anchoredPosition).
-        private static void BuildRowSettingsButton(Transform parent, KeyViewerPreset preset, bool isFoot, int rowIdx, Settings s, Action notify, Action rebuild)
-        {
-            const float w = 84f;
-            var btn = UIBuilder.Rect(Loc.T("Settings"), parent);
-            var le = btn.AddComponent<LayoutElement>();
-            le.preferredWidth = w;
-            le.preferredHeight = 32f;
-            le.minWidth = w;
-            le.minHeight = 32f;
-
-            var bg = btn.AddComponent<RoundedRectGraphic>();
-            bg.Radius = 3f;
-            bg.AAFringe = 0.5f;
-            bg.color = Theme.ButtonBg;
-            bg.raycastTarget = true;
-
-            var lblGo = UIBuilder.Rect("L", btn.transform);
-            var lblRect = (RectTransform)lblGo.transform;
-            lblRect.anchorMin = Vector2.zero;
-            lblRect.anchorMax = Vector2.one;
-            lblRect.offsetMin = Vector2.zero;
-            lblRect.offsetMax = Vector2.zero;
-            var txt = UIBuilder.Tmp(lblGo, "Settings", (int)UIBuilder.LabelFontSize - 1, TextAnchor.MiddleCenter, Theme.Text);
-
-            ClickHandler.Attach(btn, () => OpenRowSubmenu(preset, isFoot, rowIdx, s, notify, rebuild));
-        }
-
-        // Per-cell button. Label = override if set, else PrettyTokenLabel(Token). Click →
-        // key submenu, right-click → enter rebind state for this cell (visual feedback via
-        // accent tint until next keypress or Esc).
-        private static void BuildCellButton(
-            Transform parent, KeyViewerPreset preset, bool isFoot,
-            int rowIdx, int cellIdx, KeyViewerCell cell,
-            Settings s, Action notify, Action rebuild, Action rebuildRows)
-        {
-            float w = Mathf.Max(28f, cell.WidthMul * 40f);
-            var btn = UIBuilder.Rect("Cell_" + cellIdx, parent);
-            var le = btn.AddComponent<LayoutElement>();
-            le.preferredWidth = w;
-            le.preferredHeight = 32f;
-            le.minWidth = w;
-            le.minHeight = 32f;
-
-            bool isRebinding = (cell == _rebindCell);
-            var bg = btn.AddComponent<RoundedRectGraphic>();
-            bg.Radius = 3f;
-            bg.AAFringe = 0.5f;
-            bg.color = isRebinding ? Theme.ToggleOn : Theme.ButtonBg;
-            bg.raycastTarget = true;
-            if (isRebinding)
-            {
-                btn.AddComponent<AccentFill>();
-                // Re-pointed on every rebuild, so clicking the armed cell cancels rather
-                // than binding a mouse button to it.
-                _rebindListener.CancelRect = (RectTransform)btn.transform;
-            }
-
-            var txtGo = UIBuilder.Rect("L", btn.transform);
-            var txtRect = (RectTransform)txtGo.transform;
-            txtRect.anchorMin = Vector2.zero;
-            txtRect.anchorMax = Vector2.one;
-            txtRect.offsetMin = new Vector2(2f, 0);
-            txtRect.offsetMax = new Vector2(-2f, 0);
-            var txt = UIBuilder.Tmp(txtGo, "", (int)UIBuilder.LabelFontSize - 1, TextAnchor.MiddleCenter, Theme.Text);
-            // Auto-size so long labels (Space, Total, RAlt…) shrink instead of wrapping
-            // into two lines and clipping. Short labels still render at the normal size.
-            txt.enableAutoSizing = true;
-            txt.fontSizeMin = 8;
-            txt.fontSizeMax = (int)UIBuilder.LabelFontSize - 1;
-            txt.overflowMode = TextOverflowModes.Truncate;
-            txt.text = isRebinding ? "…"
-                : (!string.IsNullOrEmpty(cell.Label) ? cell.Label : KeyTokens.PrettyTokenLabel(cell.Token));
-
-            // Left click: cell settings, or arm-for-rebind while rebind mode is on.
-            // Right click: always arm-for-rebind.
-            Action armRebind = () =>
-            {
-                // Cancel any prior pending rebind, then enter rebind state for this cell.
-                _rebindCell = cell;
-                _rebindListener.Active = true;
-                rebuildRows();
-            };
-            var ch = ClickHandler.Attach(btn, () =>
-            {
-                if (_rebindMode) armRebind();
-                else OpenKeySubmenu(preset, isFoot, rowIdx, cellIdx, s, notify, rebuild);
-            });
-            ch.OnRightClick = armRebind;
-
-            // Drag-reorder. Cross-row drops route through Preset.Rows lookup in the handler.
-            var dr = btn.AddComponent<CellDragReorder>();
-            dr.Cell = cell;
-            dr.Row = preset.Rows[rowIdx];
-            dr.Preset = preset;
-            dr.CellsContainer = (RectTransform)parent;
-            dr.GhostHost = _editorBody;
-            // After reorder: rebuild the editor's grid AND fire the live KeyViewer rebuild
-            // so the overlay reflects the new cell order immediately.
-            dr.OnReorder = () =>
-            {
-                rebuildRows();
-                notify?.Invoke();
-                rebuild();
-            };
-        }
-
-        // Inline "+ add cell" button at the end of each row strip. Adds an empty-token cell
-        // and immediately enters rebind state for it, so the next keypress sets the token.
-        private static void BuildAddCellButton(Transform parent, KeyViewerRow row, Action rebuildRows)
-        {
-            const float w = 28f;
-            var btn = UIBuilder.Rect("AddCell", parent);
-            var le = btn.AddComponent<LayoutElement>();
-            le.preferredWidth = w;
-            le.preferredHeight = 32f;
-            le.minWidth = w;
-            le.minHeight = 32f;
-
-            var bg = btn.AddComponent<RoundedRectGraphic>();
-            bg.Radius = 3f;
-            bg.AAFringe = 0.5f;
-            // Half-alpha button bg — visually distinct from regular cells so it reads as
-            // an affordance rather than another key.
-            var c = Theme.ButtonBg; c.a *= 0.5f;
-            bg.color = c;
-            bg.raycastTarget = true;
-
-            var txtGo = UIBuilder.Rect("L", btn.transform);
-            var txtRect = (RectTransform)txtGo.transform;
-            txtRect.anchorMin = Vector2.zero;
-            txtRect.anchorMax = Vector2.one;
-            txtRect.offsetMin = Vector2.zero;
-            txtRect.offsetMax = Vector2.zero;
-            var txt = UIBuilder.Tmp(txtGo, "+", (int)UIBuilder.LabelFontSize + 2, TextAnchor.MiddleCenter, Theme.TextMuted);
-
-            ClickHandler.Attach(btn, () =>
-            {
-                if (row.Cells == null) row.Cells = new List<KeyViewerCell>();
-                var newCell = new KeyViewerCell { Token = "", WidthMul = 1f };
-                row.Cells.Add(newCell);
-                // Immediately listen-rebind the new cell — next keypress sets its token.
-                _rebindCell = newCell;
-                if (_rebindListener != null) _rebindListener.Active = true;
-                rebuildRows();
-            });
-        }
-
-        // Inline button that inserts a special-token cell (KPS or Total). No rebind step
-        // since these aren't keyboard keys — they're computed by the runtime.
-        private static void BuildAddSpecialButton(Transform parent, KeyViewerRow row, string token, Action rebuildRows)
-        {
-            float w = token.Length * 9f + 18f;
-            var btn = UIBuilder.Rect("Add" + token, parent);
-            var le = btn.AddComponent<LayoutElement>();
-            le.preferredWidth = w;
-            le.preferredHeight = 32f;
-            le.minWidth = w;
-            le.minHeight = 32f;
-
-            var bg = btn.AddComponent<RoundedRectGraphic>();
-            bg.Radius = 3f;
-            bg.AAFringe = 0.5f;
-            var c = Theme.ButtonBg; c.a *= 0.5f;
-            bg.color = c;
-            bg.raycastTarget = true;
-
-            var txtGo = UIBuilder.Rect("L", btn.transform);
-            var txtRect = (RectTransform)txtGo.transform;
-            txtRect.anchorMin = Vector2.zero;
-            txtRect.anchorMax = Vector2.one;
-            txtRect.offsetMin = Vector2.zero;
-            txtRect.offsetMax = Vector2.zero;
-            var txt = UIBuilder.Tmp(txtGo, "+ " + token, (int)UIBuilder.LabelFontSize - 1, TextAnchor.MiddleCenter, Theme.TextMuted);
-
-            ClickHandler.Attach(btn, () =>
-            {
-                if (row.Cells == null) row.Cells = new List<KeyViewerCell>();
-                row.Cells.Add(new KeyViewerCell { Token = token, WidthMul = 1f });
-                rebuildRows();
-            });
-        }
-
-        // ── Submenus ───────────────────────────────────────────────────────
-        // Pushed on top of the editor view; the editor rebuilds on reveal, so deletes and
-        // reorders show up when Back pops to it.
-
-        private static void OpenRowSubmenu(
-            KeyViewerPreset preset, bool isFoot, int rowIdx,
-            Settings s, Action notify, Action rebuild)
-        {
-            _stack.Push(Loc.T("Row") + " " + (rowIdx + 1), body =>
-            {
-                var row = preset.Rows[rowIdx];
-
-                UIBuilder.SectionHeader(body, "Row");
-                UIBuilder.Slider(body, "Height", row.Height, 30f, 200f,
-                    v => { row.Height = v; notify?.Invoke(); rebuild(); }, "0", 1f);
-                UIBuilder.Collapsible(body, "Show rain", row.ShowRain,
-                    v => { row.ShowRain = v; notify?.Invoke(); rebuild(); }, null);
-                // 0 = follow the preset's Width step, which can't narrow the top row.
-                UIBuilder.Slider(body, "Rain width (0 = auto)", row.RainWidth, 0f, 200f,
-                    v => { row.RainWidth = v; notify?.Invoke(); rebuild(); }, "0", 1f);
-
-                EnsureKv(ref row.RainColor, 1, 1, 1, 1);
-                BindKv(body, "Rain color", row.RainColor,
-                    () => { row.RainColorCustom = true; notify?.Invoke(); });
-
-                UIBuilder.Spacer(body);
-                // Only the live action gets the danger styling — arming a two-click confirm
-                // on a button that can't do anything would just look broken.
-                if (preset.Rows.Count > 1)
-                    UIBuilder.DangerButton(body, "Delete this row", () =>
-                    {
-                        preset.Rows.RemoveAt(rowIdx);
-                        notify?.Invoke();
-                        rebuild();
-                        _stack.Pop();
-                    });
-                else
-                    UIBuilder.Button(body, "Delete this row (last row — disabled)", null);
-            });
-        }
-
-        private static void OpenKeySubmenu(
-            KeyViewerPreset preset, bool isFoot, int rowIdx, int cellIdx,
-            Settings s, Action notify, Action rebuild)
-        {
-            _stack.Push(Loc.T("Row") + " " + (rowIdx + 1) + " / " + Loc.T("Cell") + " " + (cellIdx + 1), body =>
-            {
-                var cell = preset.Rows[rowIdx].Cells[cellIdx];
-
-                UIBuilder.SectionHeader(body, "Key");
-
-                // Bound-key display
-                var tokenRow = UIBuilder.Rect("Token", body);
-                var tokenLe = tokenRow.AddComponent<LayoutElement>();
-                tokenLe.preferredHeight = UIBuilder.RowHeight;
-                tokenLe.minHeight = UIBuilder.RowHeight;
-                var tokenLblGo = UIBuilder.Rect("Lbl", tokenRow.transform);
-                var tokenLblRect = (RectTransform)tokenLblGo.transform;
-                tokenLblRect.anchorMin = new Vector2(0, 0);
-                tokenLblRect.anchorMax = new Vector2(0, 1);
-                tokenLblRect.pivot = new Vector2(0, 0.5f);
-                tokenLblRect.sizeDelta = new Vector2(140f, 0);
-                tokenLblRect.anchoredPosition = new Vector2(8f, 0);
-                UIBuilder.Tmp(tokenLblGo, Loc.T("Bound key"), (int)UIBuilder.LabelFontSize, TextAnchor.MiddleLeft, Theme.Text);
-                var tokenValGo = UIBuilder.Rect("Val", tokenRow.transform);
-                var tokenValRect = (RectTransform)tokenValGo.transform;
-                tokenValRect.anchorMin = new Vector2(1, 0);
-                tokenValRect.anchorMax = new Vector2(1, 1);
-                tokenValRect.pivot = new Vector2(1, 0.5f);
-                tokenValRect.sizeDelta = new Vector2(220f, 0);
-                tokenValRect.anchoredPosition = new Vector2(-8f, 0);
-                UIBuilder.Tmp(tokenValGo, KeyTokens.PrettyTokenLabel(cell.Token), (int)UIBuilder.LabelFontSize, TextAnchor.MiddleRight, Theme.TextMuted);
-
-                /* In-page rebind. The editor's rebind listener sits on the (now hidden)
-                   editor view whose Update doesn't run, so the subpage carries its own.
-                   A tester renamed every cell via the Label field believing it rebinds —
-                   the binding needs a first-class control here, not just row right-click. */
-                var listener = UIBuilder.Rect("CellRebindListener", body).AddComponent<KeyListener>();
-                TMPro.TextMeshProUGUI bindBtnLabel = null;
-                string bindPrompt = Loc.T("Change key — click, then press the new key");
-                var bindBtn = UIBuilder.Button(body, bindPrompt, () =>
-                {
-                    listener.Active = true;
-                    if (bindBtnLabel != null) bindBtnLabel.text = Loc.T("Press a key… (Esc cancels)");
-                });
-                bindBtnLabel = bindBtn.GetComponentInChildren<TMPro.TextMeshProUGUI>();
-                listener.OnKey = kc =>
-                {
-                    listener.Active = false;
-                    if (kc == KeyCode.Escape)
-                    {
-                        if (bindBtnLabel != null) bindBtnLabel.text = bindPrompt;
-                        return;
-                    }
-                    // Same ordering as the row-grid rebind: swap the token first so
-                    // TransferKeyCount's "old key still in use" scan sees the new binding.
-                    bool hadOld = KeyViewer.TryParseKey(cell.Token, out KeyCode oldKey);
-                    cell.Token = KeyTokens.TokenFromKeyCode(kc);
-                    cell.Label = null; // clear stale display override
-                    if (hadOld && KeyViewer.Instance != null)
-                        KeyViewer.Instance.TransferKeyCount(preset, oldKey, kc);
-                    notify?.Invoke();
-                    rebuild();
-                    _stack.RefreshTop(); // re-render bound key + cleared display text
-                };
-
-                UIBuilder.TextInput(body, "Display text", cell.Label ?? "",
-                    v => { cell.Label = string.IsNullOrEmpty(v) ? null : v; notify?.Invoke(); rebuild(); });
-
-                UIBuilder.Slider(body, "Width", cell.WidthMul, 0.25f, 4f,
-                    v => { cell.WidthMul = v; notify?.Invoke(); rebuild(); }, "0.00");
-                // 0 = follow the preset's Label size (Main → Label Text).
-                UIBuilder.IntSlider(body, "Font size (0 = preset)", cell.LabelSize, 0, 48,
-                    v => { cell.LabelSize = v; notify?.Invoke(); rebuild(); });
-
-                UIBuilder.Spacer(body);
-                UIBuilder.DangerButton(body, "Delete this cell", () =>
-                {
-                    preset.Rows[rowIdx].Cells.RemoveAt(cellIdx);
-                    notify?.Invoke();
-                    rebuild();
-                    _stack.Pop();
-                });
-            });
-        }
-
-        // KvColor binding helpers — convert KvColor ↔ Color for the ColorPicker.
-        private static void EnsureKv(ref KvColor c, float r, float g, float b, float a)
-        {
-            if (c == null) c = new KvColor { R = r, G = g, B = b, A = a };
-        }
-
-        private static GameObject BindKv(Transform parent, string label, KvColor col, Action notify)
-        {
-            var initial = new Color(col.R, col.G, col.B, col.A);
-            return UIBuilder.ColorPicker(parent, label, initial, true, c =>
-            {
-                col.R = c.r; col.G = c.g; col.B = c.b; col.A = c.a;
-                notify?.Invoke();
-            });
-        }
-    }
-
-    // Drag-reorder for cell buttons. A ghost clone follows the cursor (preserving grab
-    // offset) while the original fades. On drop, the row strip under the cursor decides:
-    // same row → reorder, different row → splice across rows, outside any row → no-op.
-    internal class CellDragReorder : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
-    {
-        public KeyViewerCell Cell;
-        public KeyViewerRow Row;
-        public KeyViewerPreset Preset;
-        public RectTransform CellsContainer;
-        public RectTransform GhostHost;
-        public Action OnReorder;
-
-        private GameObject _ghost;
-        private RectTransform _ghostRt;
-        private CanvasGroup _selfCg;
-        private bool _dragging;
-        // Cursor-to-cell-pivot vector at grab time, in WORLD coords so the per-frame
-        // ScreenPointToWorldPointInRectangle conversion transparently handles CanvasScaler.
-        private Vector3 _grabOffsetWorld;
-
-        public void OnBeginDrag(PointerEventData e)
-        {
-            // Only respond to left-click drags. Right-click is rebind; middle is unused.
-            if (e.button != PointerEventData.InputButton.Left) return;
-            if (Row == null || Cell == null || CellsContainer == null || GhostHost == null) return;
-            _dragging = true;
-
-            // Compute grab offset in WORLD space — vector from cursor (converted to world
-            // via ScreenPointToWorldPointInRectangle) to cell pivot.
-            if (RectTransformUtility.ScreenPointToWorldPointInRectangle(
-                    (RectTransform)transform.parent, e.position, e.pressEventCamera, out Vector3 cursorWorld))
-            {
-                _grabOffsetWorld = transform.position - cursorWorld;
-            }
-
-            _selfCg = GetComponent<CanvasGroup>() ?? gameObject.AddComponent<CanvasGroup>();
-            _selfCg.alpha = 0.25f;
-            _selfCg.blocksRaycasts = false;
-
-            _ghost = UnityEngine.Object.Instantiate(gameObject, GhostHost);
-            var ghostDr = _ghost.GetComponent<CellDragReorder>();
-            if (ghostDr != null) UnityEngine.Object.Destroy(ghostDr);
-            var ghostCg = _ghost.GetComponent<CanvasGroup>() ?? _ghost.AddComponent<CanvasGroup>();
-            ghostCg.alpha = 0.9f;
-            ghostCg.blocksRaycasts = false;
-            var ghostLe = _ghost.GetComponent<LayoutElement>() ?? _ghost.AddComponent<LayoutElement>();
-            ghostLe.ignoreLayout = true;
-
-            _ghostRt = (RectTransform)_ghost.transform;
-            UpdateGhostPosition(e);
-        }
-
-        public void OnDrag(PointerEventData e)
-        {
-            if (!_dragging || _ghost == null) return;
-            UpdateGhostPosition(e);
-        }
-
-        public void OnEndDrag(PointerEventData e)
-        {
-            if (!_dragging) return;
-            _dragging = false;
-
-            if (_selfCg != null)
-            {
-                _selfCg.alpha = 1f;
-                _selfCg.blocksRaycasts = true;
-            }
-            if (_ghost != null)
-            {
-                UnityEngine.Object.Destroy(_ghost);
-                _ghost = null;
-            }
-
-            if (Preset == null || Row == null || Cell == null || CellsContainer == null) return;
-
-            var rowsContainer = CellsContainer.parent != null ? CellsContainer.parent.parent : null;
-            if (rowsContainer == null) return;
-
-            // Find which row's cells container the cursor is over. Sibling indices in
-            // rowsContainer line up with Preset.Rows since they're built in order.
-            RectTransform targetCells = null;
-            int targetRowIdx = -1;
-            for (int i = 0; i < rowsContainer.childCount && i < Preset.Rows.Count; i++)
-            {
-                var strip = rowsContainer.GetChild(i);
-                var cellsT = strip.Find("Cells") as RectTransform;
-                if (cellsT == null) continue;
-                if (RectTransformUtility.RectangleContainsScreenPoint(cellsT, e.position, e.pressEventCamera))
-                {
-                    targetCells = cellsT;
-                    targetRowIdx = i;
-                    break;
-                }
-            }
-            if (targetCells == null || targetRowIdx < 0) return;
-
-            var targetRow = Preset.Rows[targetRowIdx];
-
-            // Compare the cursor to each child's world center (GetWorldCorners) in world
-            // space — the CanvasScaler mismatch made every drop land at index 0 otherwise.
-            Vector3 cursorWorld;
-            if (!RectTransformUtility.ScreenPointToWorldPointInRectangle(
-                    targetCells, e.position, e.pressEventCamera, out cursorWorld))
-                return;
-
-            Vector3[] corners = new Vector3[4];
-            int targetIdx = 0;
-            for (int i = 0; i < targetCells.childCount; i++)
-            {
-                var child = (RectTransform)targetCells.GetChild(i);
-                if (child == transform) continue;
-                child.GetWorldCorners(corners);
-                float midX = (corners[0].x + corners[2].x) * 0.5f;
-                if (cursorWorld.x > midX) targetIdx++;
-            }
-
-            int fromIdx = Row.Cells.IndexOf(Cell);
-            if (fromIdx < 0) return;
-
-            if (targetRow == Row)
-            {
-                if (targetIdx == fromIdx) return;
-                Row.Cells.RemoveAt(fromIdx);
-                // targetIdx already excludes the dragged cell (loop skips `child == transform`),
-                // so it's the correct post-removal insertion index. No decrement.
-                Row.Cells.Insert(Mathf.Clamp(targetIdx, 0, Row.Cells.Count), Cell);
-            }
-            else
-            {
-                Row.Cells.RemoveAt(fromIdx);
-                if (targetRow.Cells == null) targetRow.Cells = new List<KeyViewerCell>();
-                targetRow.Cells.Insert(Mathf.Clamp(targetIdx, 0, targetRow.Cells.Count), Cell);
-            }
-            OnReorder?.Invoke();
-        }
-
-        private void UpdateGhostPosition(PointerEventData e)
-        {
-            if (_ghost == null) return;
-            var hostRt = (RectTransform)_ghost.transform.parent;
-            // Convert cursor to world space against the ghost's parent rect. World coords
-            // handle CanvasScaler correctly — screen pixels alone misalign under scaling.
-            if (RectTransformUtility.ScreenPointToWorldPointInRectangle(
-                    hostRt, e.position, e.pressEventCamera, out Vector3 cursorWorld))
-            {
-                _ghost.transform.position = cursorWorld + _grabOffsetWorld;
             }
         }
     }

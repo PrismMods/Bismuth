@@ -13,9 +13,8 @@ namespace Bismuth
        it), then the caller force-reloads to rebuild the panel and re-apply everything. */
     internal static class Profiles
     {
-        // Built-ins are generated, not files. Default IS the out-of-the-box preset (= the
-        // Settings class defaults: soft-red theme accent — final spec TBD by the user);
-        // Azure = the same but with the classic periwinkle accent, theme off.
+        // Built-ins are generated, not files: Default = the Settings class defaults (soft-red
+        // theme), Azure = the classic periwinkle accent with theme off.
         internal static readonly string[] BuiltIn = { "Default", "Azure" };
 
         private static string Dir => Path.Combine(MainClass.ModPath, "Profiles");

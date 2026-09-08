@@ -7,23 +7,13 @@ using UnityEngine.UI;
 
 namespace Bismuth
 {
-    /* Ported from Quartz's optimizer module (optimizer.qmod, LeakGuardPatches).
-
-       These reclaim GPU memory the game orphans: RenderTextures and Texture2Ds that are
-       replaced without being destroyed, so they live until the process exits. Unity does not
-       garbage-collect native texture memory — an unreferenced Texture2D leaks its VRAM.
-
-       Every one of these DESTROYS a texture, so the ownership tests are the whole safety
-       story and are kept exactly as Quartz has them:
-         - camera RT is freed only when it is neither the live material texture nor camRT
-         - workshop thumbnails only when this patch saw that sprite installed (OwnedThumbnails)
-         - practice waveforms only when the texture is actually named "Waveform"
-       Loosening any of those destroys something still in use, which shows as pink or missing
-       visuals. Each body is individually try/caught for the same reason: a throw here would
-       otherwise escape into a game method mid-frame.
-
-       Fields are reached with AccessTools because several are private; the public ones are
-       touched directly. All 14 were verified present in ADOFAI 3.3.0. */
+    /* Quartz optimizer port (LeakGuardPatches): frees RenderTextures/Texture2Ds the game
+       replaces without destroying (native texture memory is never GC'd). Every patch DESTROYS
+       a texture, so the ownership tests are the whole safety story, kept exactly as Quartz has
+       them: camera RT only when it's neither the live material texture nor camRT; workshop
+       thumbnails only when this patch saw the sprite installed; practice waveforms only when
+       the texture is named "Waveform". Loosening any shows as pink/missing visuals. Each body
+       is try/caught so a throw can't escape into a game method mid-frame. Fields verified in 3.3.0. */
     internal static class LeakGuard
     {
         private static bool Active =>

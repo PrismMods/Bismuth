@@ -8,12 +8,7 @@ using UnityEngine.UI;
 
 namespace Bismuth
 {
-    // KeyViewer is split into partial files by responsibility:
-    //   KeyViewer.cs         (this) — class shell, state fields, internal cell/column types, lifecycle
-    //   KeyViewer.Build.cs   — BuildLayout / BuildPresetPanel / cell + layer construction
-    //   KeyViewer.Rain.cs    — per-frame Update, StartRainColumn / StopRainColumn
-    //   KeyViewer.Sprites.cs — rain column + halo (shadow/glow) sprite bakes
-    //   KeyViewer.Keys.cs    — TryParseKey + GetDisplayName
+    // Partials: Build (layout), Rain (per-frame), Sprites (bakes), Keys (tokens) — docs/keyviewer.md.
     internal partial class KeyViewer : MonoBehaviour
     {
         internal static KeyViewer Instance { get; private set; }

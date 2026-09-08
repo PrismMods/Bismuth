@@ -106,6 +106,8 @@
         <Compile Include="Util\SemVer.cs" />
         <Compile Include="Util\OsShell.cs" />
         <Compile Include="Util\GameFontApplier.cs" />
+        <Compile Include="Util\GameFontApplier.Rules.cs" />
+        <Compile Include="Util\GameFontApplier.Scope.cs" />
         <Compile Include="Util\GameTextShadow.cs" />
         <Compile Include="Util\XPerfectBridge.cs" />
         <Compile Include="Util\Loc.cs" />
@@ -114,10 +116,12 @@
         <Compile Include="Util\GameUiLayout.cs" />
         <Compile Include="Util\Tweaks.cs" />
         <Compile Include="Util\Profiles.cs" />
+        <Compile Include="Util\DmNotePreset.cs" />
         <Compile Include="UI\UpdatePopup.cs" />
         <Compile Include="UI\LogViewer.cs" />
         <Compile Include="UI\Theme.cs" />
         <Compile Include="UI\UIBuilder.cs" />
+        <Compile Include="UI\UIBuilder.Handlers.cs" />
         <Compile Include="UI\DragHandle.cs" />
         <Compile Include="UI\ResizeHandle.cs" />
         <Compile Include="UI\TabRail.cs" />
@@ -128,6 +132,7 @@
         <Compile Include="UI\Pages\PageOverlay.cs" />
         <Compile Include="UI\Pages\KeyTokens.cs" />
         <Compile Include="UI\Pages\PageKeyViewer.cs" />
+        <Compile Include="UI\Pages\PageKeyViewer.Rows.cs" />
         <Compile Include="UI\Pages\PageInput.cs" />
         <Compile Include="UI\Pages\PageHideUi.cs" />
         <Compile Include="UI\Pages\PageUI.cs" />

@@ -49,30 +49,8 @@ namespace Bismuth
         }
     }
 
-    /* ADOFAI 3.3.0 removed TextureManager's per-ImageOptions variant system: CustomTexture
-       is now a plain holder and CustomSprite builds its single sprite in its ctor, so
-       CustomTexture.GetTexture / CustomSprite.GetSprite / the ImageOptions enum are gone.
-       The two variant-copy prefixes that lived here (keeping non-readable base textures
-       working through the old Instantiate-based duplication) no longer have a target — and
-       aren't needed, since nothing duplicates the texture anymore. The LoadTexture postfix
-       above still makes the loaded texture non-readable, which is now safe on its own. */
-
-    /* Ported from Quartz's optimizer module (UserData/Quartz/Module/optimizer.qmod,
-       NoOpScreenTilePatch / NoOpScreenScrollPatch). Both of these full-screen image effects
-       run their shader pass every frame even when configured to do nothing — tiling of 1x1,
-       or zero scroll offset AND speed. In that case a straight Blit is identical output for
-       one less material pass. Quartz reaches the fields by reflection because it must run on
-       many game versions; Bismuth compiles against Assembly-CSharp, and both classes' fields
-       are public, so it can read them directly.
-
-       Thresholds match Quartz's helpers exactly: IsOne = |v - 1| <= 1e-4, IsZero =
-       sqrMagnitude <= 1e-8. Parameters bind by name against the game's own
-       (sourceTexture, destTexture). */
-    /* Ported from Quartz's optimizer module (FastBloomPatch). VideoBloom's high-quality path
-       costs extra downsample/blur passes every frame; forcing it off for the duration of the
-       render and restoring it afterwards keeps the game's own setting untouched (it's a public
-       field the game and its options menu still own). Postfix restores unconditionally, so a
-       throw inside OnRenderImage can't strand the flag off. */
+    // Quartz optimizer port (FastBloomPatch): skip VideoBloom's extra downsample/blur passes
+    // for the duration of the render, restoring the game-owned flag unconditionally after.
     [HarmonyPatch(typeof(VideoBloom), "OnRenderImage")]
     internal static class FastBloomPatch
     {
@@ -86,6 +64,9 @@ namespace Bismuth
         public static void Postfix(VideoBloom __instance, bool __state) => __instance.HighQuality = __state;
     }
 
+    // Quartz optimizer port (NoOpScreenTile/ScrollPatch): these full-screen effects run their
+    // shader pass even when configured to do nothing (1x1 tiling, zero scroll offset AND speed);
+    // a plain Blit is identical output for one less pass. Thresholds match Quartz exactly.
     [HarmonyPatch(typeof(ScreenTile), "OnRenderImage")]
     internal static class ScreenTileNoOpPatch
     {

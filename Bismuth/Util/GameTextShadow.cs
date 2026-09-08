@@ -7,17 +7,10 @@ using UnityEngine.UI;
 
 namespace Bismuth
 {
-    /* Shadow renderer for a game legacy uGUI Text. The game's own scripts hold typed
-       references to the original Text and keep writing to it, so we can't replace the
-       component — instead we leave it alive and layout-contributing but render it
-       invisible (canvasRenderer alpha 0) and draw a child TextMeshProUGUI that mirrors
-       its content with the Bismuth font. This is how Bismuth styles legacy game text
-       without keeping a legacy Font: the original stays legacy, the visible glyphs are
-       TMP.
-
-       Lives on the original Text's GameObject, so it dies with it on scene unload.
-       GameFontApplier (re)pushes the font/style/scale via Configure; everything else is
-       mirrored live in LateUpdate (after the game's Update writes). */
+    /* Shadow renderer for a legacy uGUI Text: the game keeps typed references and writes to
+       the original, so it stays alive (layout-contributing, canvasRenderer alpha 0) and a child
+       TextMeshProUGUI mirrors it in the Bismuth font. Lives on the Text's GameObject; the
+       driver below mirrors content each LateUpdate, GameFontApplier pushes style via Configure. */
     [DisallowMultipleComponent]
     internal class GameTextShadow : MonoBehaviour
     {
@@ -48,10 +41,8 @@ namespace Bismuth
         private bool _stripSize;
         private static readonly Regex SizeTag = new Regex("</?size[^>]*>", RegexOptions.IgnoreCase);
 
-        /* Custom charts ship malformed hex in <color=#…> tags (seen in the wild: a
-           7-digit "#F4FA588" in a song title). TMP rejects invalid lengths and renders
-           the tag literally, so clamp the digits to the nearest valid length (8/6/4/3)
-           before mirroring; hopeless values drop the tag instead of showing it. */
+        // Custom charts ship malformed <color=#…> hex (a 7-digit one, in the wild); TMP would
+        // render the tag literally, so clamp to a valid length or drop it.
         private static readonly Regex ColorTag = new Regex("<color=#([0-9A-Fa-f]+)>", RegexOptions.IgnoreCase);
 
         internal static string SanitizeColorTags(string text)
@@ -147,11 +138,9 @@ namespace Bismuth
             _lastRaw = null;   // the tag chain's inputs changed, so re-derive from the source
         }
 
-        /* One driver instead of N MonoBehaviours. Unity invokes every component's LateUpdate
-           individually through the scripting bridge, and a styled scene holds thousands of
-           shadows — that per-call overhead is paid whether or not the body does anything.
-           A single LateUpdate walking a list pays it once. Registration follows enable state,
-           so a shadow on a disabled object stops ticking exactly as before. */
+        // One driver instead of N LateUpdates: a styled scene holds thousands of shadows and
+        // the per-component scripting-bridge call costs more than the body. Registration
+        // follows enable state.
         private static readonly List<GameTextShadow> _live = new List<GameTextShadow>();
         private static GameObject _driverGo;
 
@@ -216,10 +205,8 @@ namespace Bismuth
                 _lastSize = float.NaN; // re-derive size against the new scale
             }
 
-            /* Game text is overwhelmingly static (menu labels, credits), but the tag chain below
-               scans and can rewrite the string every frame, per shadow. UGUI's Text.text hands
-               back its backing field, so an unchanged label is the SAME reference — skip the
-               whole chain on that, and only re-derive when the game actually assigns. */
+            // Text.text returns its backing field, so an unchanged label is the SAME reference —
+            // skip the tag chain until the game actually assigns.
             string raw = _src.text;
             if (!ReferenceEquals(raw, _lastRaw))
             {

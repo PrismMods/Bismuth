@@ -53,6 +53,22 @@ namespace Bismuth.UI
             MakeButton(panel.transform, "Manual update", 70f, 130f, btnY,
                 () => Application.OpenURL(releasesUrl));
             MakeButton(panel.transform, "Later", 185f, 90f, btnY, Close);
+            AddCloseX(panel.transform);
+        }
+
+        // Corner dismiss, present in every state. The button row reads as a set of update
+        // actions, and "Later" means "remind me" — neither says "dismiss" once the popup is
+        // sitting on "Updated. Restart the game to apply.", which is where it got stranded.
+        private static void AddCloseX(Transform panel)
+        {
+            var go = MakeButton(panel, "×", 0f, 26f, 0f, Close);
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = rt.anchorMax = new Vector2(1f, 1f);
+            rt.pivot = new Vector2(1f, 1f);
+            rt.anchoredPosition = new Vector2(-6f, -6f);
+            rt.sizeDelta = new Vector2(26f, 26f);
+            var label = go.GetComponentInChildren<TextMeshProUGUI>();
+            if (label != null) label.fontSize = 18;
         }
 
         // allowRetry re-shows the Update button after a failed attempt. In-flight

@@ -114,12 +114,9 @@ namespace Bismuth.UI.Pages
             return -1;
         }
 
-        // One font selector = a family cycle row + a weight row (only when the family has
-        // multiple weights, rebuilt on each family change). Internal: PageGameUi reuses it.
-        // defaultOption prepends a sentinel family (e.g. "Game default") that fires onDefault
-        // instead of apply and clears the weight row; defaultSelected starts on it.
-        // showWeightRow=false drops the base-weight sub-row (used where dedicated per-part
-        // weight rows already exist) — family changes then land on Regular/lightest.
+        // Family cycle row + weight row (multi-weight families only). defaultOption prepends
+        // a sentinel family that fires onDefault instead of apply; showWeightRow=false drops
+        // the weight sub-row where per-part rows exist (family changes then land on Regular).
         internal static void BuildFontSelector(
             Transform parent, string label,
             IList<FontLoader.FontEntry> fonts, string currentName,
@@ -251,10 +248,8 @@ namespace Bismuth.UI.Pages
             }
         }
         // ── Profiles ───────────────────────────────────────────────────────
-        // Full-settings snapshots; the .xml files in the Profiles folder ARE the
-        // import/export format. Loading copies into the live Settings then rides the
-        // force-reload path (deferred, so the panel isn't torn down inside its own
-        // button handler).
+        // Full-settings snapshots (.xml in the Profiles folder = the import/export format).
+        // Load rides the deferred force-reload so the panel isn't torn down inside its own handler.
         private static void BuildProfiles(Transform content)
         {
             UIBuilder.SectionHeaderWithHelp(content, "Profiles",

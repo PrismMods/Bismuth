@@ -3,21 +3,11 @@ using UnityEngine;
 
 namespace Bismuth
 {
-    /* Panel localization. English IS the key, so an incomplete table ships fine — anything
-       without an entry renders as the English it always was, and the widget factories in
-       UIBuilder do the lookup, so page code never mentions localization at all.
-
-       Two things this also fixes, rather than fights:
-       - The game runs a source-text pass that rewrites on-screen text whose ENGLISH value
-         matches a localization entry (it turned Bismuth's "Misc" tab into 기타). Localized
-         text no longer matches those English sources, so the pass stops touching it, and
-         TabLabelGuard now pins the localized string instead of the English one.
-       - Search indexes the English alongside the localized label, so both still find a
-         setting regardless of the panel's language.
-
-       KEYS MUST MATCH THE RUNTIME STRING EXACTLY, including "\n" and any concatenation —
-       three help texts below are built from several source literals and are keyed on the
-       joined result. */
+    /* Panel localization. English IS the key (missing entries render as English) and the
+       UIBuilder factories do the lookup, so page code never mentions it. Localized text also
+       dodges the game's source-text pass that rewrites English matches (Misc → 기타); search
+       indexes both strings. KEYS MUST MATCH THE RUNTIME STRING EXACTLY, "\n" and
+       concatenation included — help texts are keyed on the joined result. */
     internal static class Loc
     {
         /* Panel language. Defaults to following the game (LanguageChangePatch rebuilds the
@@ -332,6 +322,16 @@ namespace Bismuth
             { "Press a key… (Esc cancels)",         "키를 누르세요… (Esc로 취소)" },
             { "+ Add Hand Preset",                  "+ 손 프리셋 추가" },
             { "+ Add Foot Preset",                  "+ 발 프리셋 추가" },
+            { "DM Note presets",                    "DM Note 프리셋" },
+            { "Export to DM Note",                  "DM Note로 내보내기" },
+            { "Exported to DmNote/",                "내보냄: DmNote/" },
+            { "Rescan folder",                      "폴더 다시 검색" },
+            { "Open DM Note folder",                "DM Note 폴더 열기" },
+            { "→ Hand",                             "→ 손" },
+            { "→ Foot",                             "→ 발" },
+            { "No .json files in the DmNote folder yet.", "DmNote 폴더에 .json 파일이 아직 없습니다." },
+            { "Drop a DM Note preset.json into the DmNote folder,\nthen import it as a hand or foot preset.\nExport (in a preset's editor) writes a preset.json\nDM Note can open. Layout, binds, and colors carry\nover; rain and ghost keys as far as DM Note allows.",
+              "DM Note의 preset.json을 DmNote 폴더에 넣은 뒤\n손 또는 발 프리셋으로 가져오세요.\n내보내기(프리셋 편집기)는 DM Note가 열 수 있는\npreset.json을 씁니다. 배치, 키, 색상은 그대로 옮겨지고\n레인과 고스트 키는 DM Note가 허용하는 만큼 옮겨집니다." },
             { "Hand / ",                            "손 / " },
             { "Foot / ",                            "발 / " },
             { "Hand preset: ",                      "손 프리셋: " },
