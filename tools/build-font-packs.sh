@@ -6,21 +6,23 @@
 #   <font-dir>  a folder of .ttf/.otf files named "<Family>-<Weight>.<ext>" — the file name
 #               (minus extension) is the name the mod shows and the name settings save, so it
 #               must not change between packs or saved fonts stop resolving.
-#   [out-dir]   where the zips and fonts.json land (default: ./font-packs, gitignored).
+#   [out-dir]   where the zips and fonts.json land (default: ./font-packs, which is TRACKED
+#               — the packs are served raw from the repo, not from a release, so that the
+#               releases list holds mod downloads and nothing else).
+#
+# The manifest is written to the repo root as fonts.json (one tracked copy, no drift).
 #
 # Then:
-#   gh release create fonts font-packs/*.zip --title "Font packs" --notes "..."
-#     (or `gh release upload fonts font-packs/*.zip --clobber` to replace them)
-#   cp font-packs/fonts.json . && git commit fonts.json
+#   git add font-packs fonts.json && git commit
 #
-# The "fonts" tag is deliberately not a version tag: UpdateChecker only considers releases
-# whose tag parses as a version, so this release is invisible to the updater.
+# Note that git keeps every revision of a binary forever, so rebuilding a pack that has not
+# actually changed adds its full size to history for nothing. Rebuild when the fonts change.
 
 set -e
 
 SRC="${1:?usage: $0 <font-dir> [out-dir]}"
 OUT="${2:-font-packs}"
-BASE_URL="https://github.com/PrismMods/Bismuth/releases/download/fonts"
+BASE_URL="https://raw.githubusercontent.com/PrismMods/Bismuth/main/font-packs"
 
 # Pack id | display name | note | filename glob
 PACKS=(
@@ -73,8 +75,11 @@ ZIPPY
 done
 
 rm -rf "$OUT/.stage"
-printf '%s\n' "${entries[@]}" | jq -s '{Packs: .}' > "$OUT/fonts.json"
+# Straight to the repo root: the manifest the mod fetches is that file, and a second copy
+# beside the zips would only be something to forget to update.
+MANIFEST="$(cd "$(dirname "$0")/.." && pwd)/fonts.json"
+printf '%s\n' "${entries[@]}" | jq -s '{Packs: .}' > "$MANIFEST"
 
 echo
-echo "Wrote $OUT/fonts.json:"
-cat "$OUT/fonts.json"
+echo "Wrote $MANIFEST:"
+cat "$MANIFEST"
