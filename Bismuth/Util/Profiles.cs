@@ -139,6 +139,63 @@ namespace Bismuth
                 s.ShowKps = false;
                 s.ShowBestProgress = false;
                 s.ShowProgressBar = false;
+
+                // Stats this profile turns on beyond the classic set.
+                s.ShowXScore = true;
+                s.ShowHitError = true;
+                s.ShowTimingGraph = true;
+                s.CustomResults = true;
+
+                // Timing graph: vertical, pinned to the right edge, sliding inward on results.
+                s.TimingGraphX = 0.9796875f;
+                s.TimingGraphY = 0.5f;
+                s.TimingGraphHeight = 50f;
+                s.TimingGraphScale = 1.36894929f;
+                s.TimingGraphRotation = 90f;
+                s.TimingGraphResultsX = 0.928906262f;
+                s.TimingGraphResultsY = 0.5f;
+                s.TimingGraphResultsScale = 1.33563578f;
+                s.TimingGraphResultsRotation = 90f;
+                s.TimingGraphRangeMs = 50f;
+                s.TimingScaleAnchorY = 0.113749996f;
+                s.TimingGraphBuckets = 80;
+                s.TimingGraphBackground = false;
+                s.TimingGraphResultsPos = true;
+
+                /* Curated layouts. Replaced wholesale rather than merged: a profile is a
+                   snapshot, and a half-applied layout is worse than either version. */
+                s.GameUiDefaultsSeeded = true;
+                s.GameUiOverrides = new List<GameUiOverride>
+                {
+                    new GameUiOverride { Key = "presstostart", OffX = 0f, OffY = -400f, Scale = 0.4f, Rotation = 0f, Align = -1 },
+                    new GameUiOverride { Key = "congrats", OffX = 0.41015625f, OffY = 5.00000048f, Scale = 0.85f, Rotation = 0f, Align = -1 },
+                    new GameUiOverride { Key = "countdown", OffX = 0f, OffY = 70f, Scale = 0.75f, Rotation = 0f, Align = -1 },
+                    new GameUiOverride { Key = "percent", OffX = 0f, OffY = -35f, Scale = 0.3f, Rotation = 0f, Align = -1 },
+                    new GameUiOverride { Key = "results", OffX = -1.27156554E-05f, OffY = 31.4583359f, Scale = 0.8f, Rotation = 0f, Align = -1 },
+                    new GameUiOverride { Key = "strictclear", OffX = -2.842171E-13f, OffY = 265f, Scale = 0.4f, Rotation = 0f, Align = -1 },
+                    new GameUiOverride { Key = "autoplay", OffX = 653.060547f, OffY = -137.5f, Scale = 0.7254728f, Rotation = 0f, Align = 1 },
+                };
+                s.ResultsFields = new List<ResultsField>
+                {
+                    new ResultsField { Key = "perfectM", X = 0.924119234f, Y = 0.460000038f, Scale = 1f, Rotation = 0f, LabelAlign = 0, ValueAlign = 2 },
+                    new ResultsField { Key = "xPerfect", X = 0.9241193f, Y = 0.5f, Scale = 1f, Rotation = 0f, LabelAlign = 0, ValueAlign = 2 },
+                    new ResultsField { Key = "perfectP", X = 0.9241193f, Y = 0.54f, Scale = 1f, Rotation = 0f, LabelAlign = 0, ValueAlign = 2 },
+                    new ResultsField { Key = "ePerfect", X = 0.9241193f, Y = 0.420000017f, Scale = 1f, Rotation = 0f, LabelAlign = 0, ValueAlign = 2 },
+                    new ResultsField { Key = "lPerfect", X = 0.924119234f, Y = 0.57875f, Scale = 1f, Rotation = 0f, LabelAlign = 0, ValueAlign = 2 },
+                    new ResultsField { Key = "early", X = 0.924119234f, Y = 0.380625f, Scale = 1f, Rotation = 0f, LabelAlign = 0, ValueAlign = 2 },
+                    new ResultsField { Key = "late", X = 0.924119234f, Y = 0.618125f, Scale = 1f, Rotation = 0f, LabelAlign = 0, ValueAlign = 2 },
+                    new ResultsField { Key = "tooLate", X = 0.924119234f, Y = 0.657499969f, Scale = 1f, Rotation = 0f, LabelAlign = 0, ValueAlign = 2 },
+                    new ResultsField { Key = "tooEarly", X = 0.924119234f, Y = 0.340625f, Scale = 1f, Rotation = 0f, LabelAlign = 0, ValueAlign = 2 },
+                    new ResultsField { Key = "overloadFails", X = 0.924119234f, Y = 0.301875f, Scale = 1f, Rotation = 0f, LabelAlign = 0, ValueAlign = 2 },
+                    new ResultsField { Key = "missFails", X = 0.924119234f, Y = 0.696875f, Scale = 1f, Rotation = 0f, LabelAlign = 0, ValueAlign = 2 },
+                    new ResultsField { Key = "deaths", X = 0.9241193f, Y = 0.105f, Scale = 1f, Rotation = 0f, LabelAlign = 0, ValueAlign = 2 },
+                    new ResultsField { Key = "xScore", X = 0.924119234f, Y = 0.775625f, Scale = 1f, Rotation = 0f, LabelAlign = 0, ValueAlign = 2 },
+                    new ResultsField { Key = "xAccuracy", X = 0.9241193f, Y = 0.815625f, Scale = 1f, Rotation = 0f, LabelAlign = 0, ValueAlign = 2 },
+                    new ResultsField { Key = "accuracy", X = 0.924119234f, Y = 0.85375f, Scale = 1f, Rotation = 0f, LabelAlign = 0, ValueAlign = 2 },
+                    new ResultsField { Key = "practiceAttempts", X = 0.9241193f, Y = 0.145625f, Scale = 1f, Rotation = 0f, LabelAlign = 0, ValueAlign = 2 },
+                    new ResultsField { Key = "checkpoints", X = 0.9241193f, Y = 0.185624987f, Scale = 1f, Rotation = 0f, LabelAlign = 0, ValueAlign = 2 },
+                    new ResultsField { Key = "maximumUsedKeys", X = 0.9241193f, Y = 0.225625f, Scale = 1f, Rotation = 0f, LabelAlign = 0, ValueAlign = 2 },
+                };
             }
             return s;
         }
