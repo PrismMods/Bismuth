@@ -3,6 +3,10 @@ set -e
 
 MODS_DIR="$HOME/Library/Application Support/Steam/steamapps/common/A Dance of Fire and Ice/UMMMods/Bismuth"
 
+# Compile-time reference only — the copy the game runs is installed by PrismBootstrap. Fetched
+# rather than committed so the checked-in tree never disagrees with the published release.
+[ -f "$(dirname "$0")/lib/PrismLib.dll" ] || "$(dirname "$0")/lib/update-prismlib.sh"
+
 xbuild Bismuth.sln > /dev/null
 
 mkdir -p "$MODS_DIR/Resources"
@@ -16,7 +20,6 @@ if ! [[ "$VERSION" =~ ^[^.]*[0-9][^.]*(\.[^.]*[0-9][^.]*)*$ ]]; then
   echo "Info.json Version is non-numeric; deploying as $VERSION"
 fi
 jq --arg v "$VERSION" '.Version = $v' Info.json > "$MODS_DIR/Info.json"
-cp Bismuth/Resources/bismuth-fonts "$MODS_DIR/Resources/"
 cp Bismuth/Resources/BismuthSymbols.ttf Bismuth/Resources/BismuthSymbols-LICENSE.txt "$MODS_DIR/Resources/"
 
 cmp -s Bismuth/bin/Debug/Bismuth.dll "$MODS_DIR/Bismuth.dll" || { echo "ERROR: deployed dll does not match build output" >&2; exit 1; }

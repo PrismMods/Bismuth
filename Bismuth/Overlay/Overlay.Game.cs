@@ -45,6 +45,9 @@ namespace Bismuth
                scnGame.Play skips RevertToLastCheckpoint outside editor, so on revive tracker
                still contains every pre-death hit */
             for (int i = 0; i < _judgementCounts.Length; i++) _judgementCounts[i] = 0;
+            Offsets.Clear();
+            ClearResultsShown();
+            RedrawTimingGraph();
 
             var hm = tracker.hitMargins;
             int depth = tracker.lastHitMarginsSize;
@@ -63,13 +66,10 @@ namespace Bismuth
                 for (int i = cap - 1; i >= 0; i--)
                 {
                     var m = hm[i];
-                    if (m == HitMargin.Perfect) { _combo++; continue; }
-                    if (m == HitMargin.Auto)
-                    {
-                        if (s != null && s.ComboCountAuto) { _combo++; continue; }
-                        // ComboCountAuto=false: auto neither breaks nor extends streak
-                        continue;
-                    }
+                    if (Margins.ExtendsCombo(m)) { _combo++; continue; }
+                    if (m == Margins.Auto && s != null && s.ComboCountAuto) { _combo++; continue; }
+                    // Auto and midspin tiles neither break the streak nor extend it.
+                    if (Margins.IsComboNeutral(m)) continue;
                     break;
                 }
             }
@@ -77,6 +77,8 @@ namespace Bismuth
             // Suppress saved-checkpoint accuracy on attempt start. The next AddHit repaints it.
             if (accValue != null)  { accValue.text  = "--.--%"; accValue.color  = Dim; }
             if (xaccValue != null) { xaccValue.text = "--.--%"; xaccValue.color = Dim; }
+            if (xScoreValue != null) { xScoreValue.text = "0"; xScoreValue.color = Dim; }
+            if (hitErrorValue != null) { hitErrorValue.text = "--"; hitErrorValue.color = Dim; }
 
             RefreshDisplay(includeAccuracy: false);
         }
@@ -149,6 +151,7 @@ namespace Bismuth
         public void OnLevelEnd()
         {
             inLevel = false;
+            ClearResultsShown();
             PersistBest();
         }
 
@@ -178,6 +181,8 @@ namespace Bismuth
             if (comboDisplayLabel != null)  { comboDisplayLabel.color = Color.white; }
             if (accValue != null)      { accValue.text      = "--.--%"; accValue.color      = Dim; }
             if (xaccValue != null)     { xaccValue.text     = "--.--%"; xaccValue.color     = Dim; }
+            if (xScoreValue != null)   { xScoreValue.text   = "0";      xScoreValue.color   = Dim; }
+            if (hitErrorValue != null) { hitErrorValue.text = "--";     hitErrorValue.color = Dim; }
             if (bpmValue != null)      { bpmValue.text      = "---";    bpmValue.color      = Dim; }
             if (tileBpmValue != null)      { tileBpmValue.text      = "---";    tileBpmValue.color      = Dim; }
             if (kpsValue != null)          { kpsValue.text          = "---";    kpsValue.color          = Dim; }
@@ -193,6 +198,9 @@ namespace Bismuth
             if (progressBarFill != null) progressBarFill.anchorMax = new Vector2(0f, 1f);
             if (timingScaleValue != null)  { timingScaleValue.text  = "---%";   timingScaleValue.color  = Dim; }
             for (int i = 0; i < _judgementCounts.Length; i++) _judgementCounts[i] = 0;
+            Offsets.Clear();
+            ClearResultsShown();
+            RedrawTimingGraph();
             if (judgementTexts != null)
             {
                 var cols = JudgementColumns;
@@ -253,6 +261,11 @@ namespace Bismuth
             if (accValue != null)       accValue.font       = vf;
             if (xaccLabel != null)      xaccLabel.font      = lf;
             if (xaccValue != null)      xaccValue.font      = vf;
+            SetResultsFont(lf, vf);
+            if (xScoreLabel != null)    xScoreLabel.font    = lf;
+            if (xScoreValue != null)    xScoreValue.font    = vf;
+            if (hitErrorLabel != null)  hitErrorLabel.font  = lf;
+            if (hitErrorValue != null)  hitErrorValue.font  = vf;
             if (bpmLabel != null)       bpmLabel.font       = lf;
             if (bpmValue != null)       bpmValue.font       = vf;
             if (tileBpmLabel != null)       tileBpmLabel.font       = lf;

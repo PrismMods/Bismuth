@@ -50,11 +50,13 @@ namespace Bismuth
         private int _fullAttempts;
         private string _currentLevelKey;
         private int _combo;
+        // Per-attempt hit offsets in ms, for the timing row and the timing graph.
+        internal readonly HitOffsets Offsets = new HitOffsets();
         private float _comboPulseT;
         /* Per-attempt hit counts (one slot per HitMargin). Tracked internally because
            game tracker.hitMarginsCount can carry stale checkpoint state into a fresh
            attempt */
-        private readonly int[] _judgementCounts = new int[12];
+        private readonly int[] _judgementCounts = new int[Margins.Count];
 
         private GameObject progressRow;
         private TextMeshProUGUI progressLabel;
@@ -71,6 +73,12 @@ namespace Bismuth
         private GameObject xaccRow;
         private TextMeshProUGUI xaccLabel;
         private TextMeshProUGUI xaccValue;
+        private GameObject xScoreRow;
+        private TextMeshProUGUI xScoreLabel;
+        private TextMeshProUGUI xScoreValue;
+        private GameObject hitErrorRow;
+        private TextMeshProUGUI hitErrorLabel;
+        private TextMeshProUGUI hitErrorValue;
         private GameObject bpmRow;
         private TextMeshProUGUI bpmLabel;
         private TextMeshProUGUI bpmValue;
@@ -117,14 +125,19 @@ namespace Bismuth
         private const int ComboValueBaseFontSize = 90;
         private int? _levelNameOrigFontSize;
 
-        private static readonly HitMargin[] DisplayedMargins =
+        // Built at runtime: the perfect band is one value or three depending on the game
+        // build (see Margins), and every value here is name-resolved rather than baked.
+        private static HitMargin[] BuildDisplayedMargins()
         {
-            HitMargin.FailOverload,
-            HitMargin.TooEarly, HitMargin.VeryEarly, HitMargin.EarlyPerfect,
-            HitMargin.Perfect,
-            HitMargin.LatePerfect, HitMargin.VeryLate, HitMargin.TooLate,
-            HitMargin.FailMiss,
-        };
+            var list = new List<HitMargin> { Margins.FailOverload,
+                Margins.TooEarly, Margins.VeryEarly, Margins.EarlyPerfect };
+            list.AddRange(Margins.PerfectBand);
+            list.AddRange(new[] { Margins.LatePerfect, Margins.VeryLate, Margins.TooLate,
+                Margins.FailMiss });
+            return list.ToArray();
+        }
+
+        private static readonly HitMargin[] DisplayedMargins = BuildDisplayedMargins();
 
         /* A judgement column is a HitMargin cast to int, except for these three: with the
            XPerfect mod loaded, the Perfect column splits into its breakdown and the counts
@@ -144,7 +157,9 @@ namespace Bismuth
                 var list = new List<int>(DisplayedMargins.Length + 2);
                 foreach (var m in DisplayedMargins)
                 {
-                    if (m == HitMargin.Perfect && XPerfectBridge.Available)
+                    // Only the OLD merged-Perfect build needs the mod's split grafted on; when
+                    // the game splits it natively the band is already three real columns.
+                    if (!Margins.SplitPerfect && Margins.IsPerfect(m) && XPerfectBridge.Available)
                     {
                         /* Early → late, matching the rest of the row (and the hit error meter
                            above it). XPerfect's GetDetailedJudge assigns PlusPerfect when its
@@ -247,6 +262,7 @@ namespace Bismuth
         private void OnSceneUnloaded(Scene _)
         {
             inLevel = false;
+            ClearResultsShown();
             RDC.noHud = false;
             _levelNameOrigPos = null;
             _levelNameOrigFontSize = null;
@@ -280,6 +296,8 @@ namespace Bismuth
             GameUiLayout.Reapply();
         }
 
+        internal static Color MarginColorFor(HitMargin m) => MarginColor(m);
+
         private static Color MarginColor(HitMargin m)
         {
             // RDConstants.data is a lazy getter that can NRE inside during startup
@@ -289,18 +307,18 @@ namespace Bismuth
             if (data == null) return Color.white;
             var c = data.hitMarginColoursUI;
             if (c == null) return Color.white;
-            switch (m)
-            {
-                case HitMargin.TooEarly:     return c.colourTooEarly;
-                case HitMargin.VeryEarly:    return c.colourVeryEarly;
-                case HitMargin.EarlyPerfect: return c.colourLittleEarly;
-                case HitMargin.Perfect:      return c.colourPerfect;
-                case HitMargin.LatePerfect:  return c.colourLittleLate;
-                case HitMargin.VeryLate:     return c.colourVeryLate;
-                case HitMargin.TooLate:      return c.colourTooLate;
-                case HitMargin.Multipress:   return c.colourMultipress;
-                default:                     return c.colourFail;
-            }
+            // Matches the game's own mapping: the signed perfects take colourPerfect and only
+            // XPerfect gets its own colour.
+            if (m == Margins.TooEarly)     return c.colourTooEarly;
+            if (m == Margins.VeryEarly)    return c.colourVeryEarly;
+            if (m == Margins.EarlyPerfect) return c.colourLittleEarly;
+            if (Margins.SplitPerfect && m == Margins.XPerfect) return Margins.XPerfectColour(c);
+            if (Margins.IsPerfect(m))      return c.colourPerfect;
+            if (m == Margins.LatePerfect)  return c.colourLittleLate;
+            if (m == Margins.VeryLate)     return c.colourVeryLate;
+            if (m == Margins.TooLate)      return c.colourTooLate;
+            if (m == Margins.Multipress)   return c.colourMultipress;
+            return c.colourFail;
         }
 
         private const string DefaultStatSeparator = " | ";

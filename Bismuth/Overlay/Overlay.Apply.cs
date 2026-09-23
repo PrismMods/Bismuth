@@ -9,6 +9,8 @@ namespace Bismuth
         public void ApplySettings(Settings settings)
         {
             PlaceRows(settings);
+            ApplyTimingGraph(settings);
+            ApplyResultsScreen(settings);
             ShowOrHideElements();
 
             bool ovr = settings.ShowOverlay;
@@ -17,6 +19,8 @@ namespace Bismuth
             if (attemptsFullRow != null) attemptsFullRow.SetActive(ovr && settings.ShowFullAttempts);
             if (accRow != null)          accRow.SetActive(ovr && settings.ShowAcc);
             if (xaccRow != null)         xaccRow.SetActive(ovr && settings.ShowXAcc);
+            if (xScoreRow != null)       xScoreRow.SetActive(ovr && settings.ShowXScore);
+            if (hitErrorRow != null)     hitErrorRow.SetActive(ovr && settings.ShowHitError);
             if (bpmRow != null)          bpmRow.SetActive(ovr && settings.ShowBpm);
             if (tileBpmRow != null)      tileBpmRow.SetActive(ovr && settings.ShowTileBpm);
             if (kpsRow != null)          kpsRow.SetActive(ovr && settings.ShowKps);
@@ -170,6 +174,8 @@ namespace Bismuth
             SetRow(progressRow, progressLabel, progressValue, settings.Scale);
             SetRow(accRow,      accLabel,      accValue,      settings.Scale);
             SetRow(xaccRow,     xaccLabel,     xaccValue,     settings.Scale);
+            SetRow(xScoreRow,   xScoreLabel,   xScoreValue,   settings.Scale);
+            SetRow(hitErrorRow, hitErrorLabel, hitErrorValue, settings.Scale);
             SetRow(bpmRow,      bpmLabel,      bpmValue,      settings.Scale);
             SetRow(tileBpmRow,  tileBpmLabel,  tileBpmValue,  settings.Scale);
             SetRow(kpsRow,      kpsLabel,      kpsValue,      settings.Scale);
@@ -223,19 +229,21 @@ namespace Bismuth
             while (trail < sep.Length && sep[sep.Length - 1 - trail] == ' ') trail++;
             string visible = sep.Substring(0, sep.Length - trail);
 
-            SetRowSeparator(progressRow, progressLabel, LabelOr(settings.ProgressLabel, "Progress"),  visible, trail);
-            SetRowSeparator(accRow,      accLabel,      LabelOr(settings.AccLabel,      "Accuracy"),  visible, trail);
-            SetRowSeparator(xaccRow,     xaccLabel,     LabelOr(settings.XAccLabel,     "XAccuracy"), visible, trail);
-            SetRowSeparator(bpmRow,      bpmLabel,      LabelOr(settings.BpmLabel,      "BPM"),       visible, trail);
-            SetRowSeparator(tileBpmRow,  tileBpmLabel,  LabelOr(settings.TileBpmLabel,  "TBPM"),      visible, trail);
-            SetRowSeparator(kpsRow,      kpsLabel,      LabelOr(settings.KpsLabel,      "KPS"),       visible, trail);
-            SetRowSeparator(songDurRow,  songDurLabel,  LabelOr(settings.SongDurationLabel,  "Song Length"),  visible, trail);
-            SetRowSeparator(levelDurRow, levelDurLabel, LabelOr(settings.LevelDurationLabel, "Level Length"), visible, trail);
+            SetRowSeparator(progressRow, progressLabel, LabelOr(settings.ProgressLabel, "Progress"),  visible, trail, settings.StatLabelColor("progress"));
+            SetRowSeparator(accRow,      accLabel,      LabelOr(settings.AccLabel,      "Accuracy"),  visible, trail, settings.StatLabelColor("acc"));
+            SetRowSeparator(xaccRow,     xaccLabel,     LabelOr(settings.XAccLabel,     "XAccuracy"), visible, trail, settings.StatLabelColor("xacc"));
+            SetRowSeparator(xScoreRow,   xScoreLabel,   LabelOr(settings.XScoreLabel,   "XScore"),    visible, trail, settings.StatLabelColor("xscore"));
+            SetRowSeparator(hitErrorRow, hitErrorLabel, LabelOr(settings.HitErrorLabel, "Timing"),    visible, trail, settings.StatLabelColor("hiterror"));
+            SetRowSeparator(bpmRow,      bpmLabel,      LabelOr(settings.BpmLabel,      "BPM"),       visible, trail, settings.StatLabelColor("bpm"));
+            SetRowSeparator(tileBpmRow,  tileBpmLabel,  LabelOr(settings.TileBpmLabel,  "TBPM"),      visible, trail, settings.StatLabelColor("tilebpm"));
+            SetRowSeparator(kpsRow,      kpsLabel,      LabelOr(settings.KpsLabel,      "KPS"),       visible, trail, settings.StatLabelColor("kps"));
+            SetRowSeparator(songDurRow,  songDurLabel,  LabelOr(settings.SongDurationLabel,  "Song Length"),  visible, trail, settings.StatLabelColor("songduration"));
+            SetRowSeparator(levelDurRow, levelDurLabel, LabelOr(settings.LevelDurationLabel, "Level Length"), visible, trail, settings.StatLabelColor("levelduration"));
             // Best uses the stat separator in a side panel, colon style in the attempts block.
             if (settings.BestInAttempts)
-                SetRowSeparator(bestRow, bestLabel, LabelOr(settings.BestLabel, "Best"), ":", 1);
+                SetRowSeparator(bestRow, bestLabel, LabelOr(settings.BestLabel, "Best"), ":", 1, settings.StatLabelColor("best"));
             else
-                SetRowSeparator(bestRow, bestLabel, LabelOr(settings.BestLabel, "Best"), visible, trail);
+                SetRowSeparator(bestRow, bestLabel, LabelOr(settings.BestLabel, "Best"), visible, trail, settings.StatLabelColor("best"));
 
             // Fixed-format rows keep their own separators but need same trailing-space treatment
             SetRowSeparator(attemptsRow,     attemptsLabel,     "Attempts",      ":", 1);
@@ -247,10 +255,11 @@ namespace Bismuth
             => string.IsNullOrEmpty(overrideText) ? fallback : overrideText;
 
         private static void SetRowSeparator(GameObject row, TextMeshProUGUI label, string baseText,
-            string visibleSep, int trailingSpaces)
+            string visibleSep, int trailingSpaces, Color? labelColor = null)
         {
             if (label == null) return;
             label.text = baseText + visibleSep;
+            if (labelColor.HasValue) label.color = labelColor.Value;
             var hlg = row != null ? row.GetComponent<HorizontalLayoutGroup>() : null;
             if (hlg != null)
                 hlg.spacing = trailingSpaces > 0 ? trailingSpaces * SpaceWidth(label) : 0f;
@@ -291,6 +300,8 @@ namespace Bismuth
             if (progressRow != null)  progressRow.transform.SetParent(null, false);
             if (accRow != null)       accRow.transform.SetParent(null, false);
             if (xaccRow != null)      xaccRow.transform.SetParent(null, false);
+            if (xScoreRow != null)    xScoreRow.transform.SetParent(null, false);
+            if (hitErrorRow != null)  hitErrorRow.transform.SetParent(null, false);
             if (bpmRow != null)       bpmRow.transform.SetParent(null, false);
             if (tileBpmRow != null)   tileBpmRow.transform.SetParent(null, false);
             if (kpsRow != null)       kpsRow.transform.SetParent(null, false);
@@ -301,6 +312,8 @@ namespace Bismuth
             Attach(progressRow,  settings.ProgressPosition);
             Attach(accRow,       settings.AccPosition);
             Attach(xaccRow,      settings.XAccPosition);
+            Attach(xScoreRow,    settings.XScorePosition);
+            Attach(hitErrorRow,  settings.HitErrorPosition);
             Attach(bpmRow,       settings.BpmPosition);
             Attach(tileBpmRow,   settings.TileBpmPosition);
             Attach(kpsRow,       settings.KpsPosition);

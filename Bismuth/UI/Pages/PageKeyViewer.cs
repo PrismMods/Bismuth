@@ -411,9 +411,8 @@ namespace Bismuth.UI.Pages
 
             UIBuilder.Spacer(parent);
             UIBuilder.SectionHeaderWithHelp(parent, "Style",
-                "Click a card to turn that part on or off\n"
-                + "(highlighted = on).\n"
-                + "Click the ··· button on a card for its settings.");
+                "Click a card for its settings, Enabled included.\n"
+                + "(highlighted = on).");
 
             var grid = UIBuilder.CardGrid(parent).transform;
 
@@ -501,8 +500,8 @@ namespace Bismuth.UI.Pages
                 BindKv(body, "Tint", preset.RainGlowColor, notify);
             }));
 
-            // Ghost Keys — hand presets only. Foot doesn't use them. The card carries the
-            // enable flag, so the subpage is just the slots and their rain color.
+            // Ghost Keys — hand presets only. Foot doesn't use them. The subpage carries the
+            // Enabled switch, so the rest of it is just the slots and their rain color.
             if (!isFoot)
             {
                 UIBuilder.NavCard(grid, "Ghost Keys", preset.GhostKeysEnabled,

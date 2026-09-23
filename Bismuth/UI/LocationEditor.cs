@@ -13,73 +13,30 @@ namespace Bismuth.UI
     // The floating "Done" pill fires the full OnSettingsChanged apply chain once.
     internal static class LocationEditor
     {
-        public static bool IsActive => _canvasGo != null;
+        /* The shell moved into GameUiEditor, which now hosts this as its "Overlay" layer —
+           the two editors were the same canvas, dim, handle set, Done button and undo poller,
+           and keeping both meant closing one to adjust the other. What stays here is what is
+           genuinely this editor's: which overlay elements are draggable and what a drag writes.
 
-        private static GameObject _canvasGo;
-        private static Canvas _canvas;
-
+           These entry points are kept so every existing caller and the Appearance-tab button
+           still work; they open the merged editor on this layer. */
+        public static bool IsActive => GameUiEditor.IsActive && GameUiEditor.CurrentLayer == GameUiEditor.Layer.Overlay;
+        public static void Open() => GameUiEditor.OpenOverlay();
+        public static void Close() => GameUiEditor.Close();
         public static void Toggle() { if (IsActive) Close(); else Open(); }
 
-        // Whether to reopen the settings panel when the editor closes (hidden while
-        // editing so it doesn't cover the overlay being positioned).
-        private static bool _reopenPanel;
-
-        public static void Open()
+        // Wire every overlay target onto a handle from the merged editor's factory.
+        internal static void AttachHandles(Func<string, Func<RectTransform>, LocHandle> factory)
         {
-            if (IsActive || Overlay.Instance == null) return;
-            GameUiEditor.Close(); // one editor at a time (both at 31000)
-            var s = UICore.Settings;
-
-            _reopenPanel = UICore.IsOpen;
-            if (_reopenPanel) UICore.Close();
-            Cursor.visible = true;
-            Cursor.lockState = CursorLockMode.None;
-
-            _canvasGo = new GameObject("BismuthLocationEditor");
-            UnityEngine.Object.DontDestroyOnLoad(_canvasGo);
-            _canvas = _canvasGo.AddComponent<Canvas>();
-            _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            // Above the game + overlays, below the settings panel (32000) so the panel
-            // can still be dragged out of the way while editing.
-            _canvas.sortingOrder = 31000;
-            var scaler = _canvasGo.AddComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
-            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-            scaler.matchWidthOrHeight = 0.5f;
-            _canvasGo.AddComponent<GraphicRaycaster>();
-
-            // Dim tint so edit mode reads as a distinct state. Not a raycast target.
-            var dim = UIBuilder.Rect("Dim", _canvasGo.transform);
-            var dimRect = (RectTransform)dim.transform;
-            dimRect.anchorMin = Vector2.zero;
-            dimRect.anchorMax = Vector2.one;
-            dimRect.offsetMin = Vector2.zero;
-            dimRect.offsetMax = Vector2.zero;
-            var dimImg = UIBuilder.SolidImage(dim, new Color(0f, 0f, 0f, 0.35f));
-            dimImg.raycastTarget = false;
-
-            Overlay.Instance.EditMode = true;
-            Overlay.Instance.ApplySettings(s);
-
-            foreach (var t in MakeTargets(s))
-                MakeHandle(t);
-            MakeDoneButton();
-            EditorUndo.Reset();
-            _canvasGo.AddComponent<UndoPoller>();
-        }
-
-        public static void Close()
-        {
-            if (!IsActive) return;
-            if (Overlay.Instance != null) Overlay.Instance.EditMode = false;
-            UnityEngine.Object.Destroy(_canvasGo);
-            _canvasGo = null;
-            _canvas = null;
-            // Full apply restores normal visibility rules and pushes final positions.
-            UICore.OnSettingsChanged?.Invoke();
-            if (_reopenPanel && UICore.CanvasRoot != null) UICore.Open();
-            _reopenPanel = false;
+            foreach (var t in MakeTargets(UICore.Settings))
+            {
+                var h = factory(t.Name, t.Get);
+                if (h == null) continue;
+                h.BeginDragCapture = t.BeginDrag;
+                h.DragBy = t.DragBy;
+                h.CaptureUndo = t.CaptureUndo;
+                h.LockX = t.LockX;
+            }
         }
 
         // ── Targets ────────────────────────────────────────────────────────
@@ -151,7 +108,7 @@ namespace Bismuth.UI
                     DragBy = d =>
                     {
                         float scale = Mathf.Max(0.01f, s.ComboDisplaySize);
-                        float canvasDeltaY = d.y / (_canvas != null ? _canvas.scaleFactor : 1f);
+                        float canvasDeltaY = d.y / GameUiEditor.EditorCanvasScale;
                         s.ComboLabelY = Mathf.Clamp(comboLabelStart + canvasDeltaY / scale, -100f, 200f);
                         var wrap = Overlay.Instance?.ComboLabelRect;
                         if (wrap != null) wrap.anchoredPosition = new Vector2(0f, s.ComboLabelY * scale);
@@ -193,65 +150,6 @@ namespace Bismuth.UI
             return list;
         }
 
-        // ── Handle / Done button construction ──────────────────────────────
-
-        private static void MakeHandle(Target t)
-        {
-            var go = UIBuilder.Rect("Handle_" + t.Name, _canvasGo.transform);
-            var bg = go.AddComponent<RoundedRectGraphic>();
-            bg.Radius = 4f;
-            bg.AAFringe = 0.5f;
-            bg.BorderWidth = 1.5f;
-            bg.BorderColor = Theme.Accent;
-            bg.color = new Color(Theme.Accent.r, Theme.Accent.g, Theme.Accent.b, 0.12f);
-            bg.raycastTarget = true;
-
-            var lbl = UIBuilder.Label(go.transform, t.Name.ToUpperInvariant(),
-                (int)UIBuilder.SmallCapsFontSize, TextAnchor.MiddleCenter, Theme.Text);
-            lbl.fontStyle = FontStyles.Bold;
-
-            var cg = go.AddComponent<CanvasGroup>();
-
-            var h = go.AddComponent<LocHandle>();
-            h.GetTarget = t.Get;
-            h.BeginDragCapture = t.BeginDrag;
-            h.DragBy = t.DragBy;
-            h.CaptureUndo = t.CaptureUndo;
-            h.LockX = t.LockX;
-            h.EditorCanvas = _canvas;
-            h.Group = cg;
-        }
-
-        private static void MakeDoneButton()
-        {
-            var btn = UIBuilder.Rect("Done", _canvasGo.transform);
-            var rect = (RectTransform)btn.transform;
-            rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 1f);
-            rect.pivot = new Vector2(0.5f, 1f);
-            rect.anchoredPosition = new Vector2(0f, -16f);
-            rect.sizeDelta = new Vector2(190f, 34f);
-
-            var bg = btn.AddComponent<RoundedRectGraphic>();
-            bg.Radius = 17f;
-            bg.AAFringe = 0.5f;
-            bg.color = Theme.Accent;
-            bg.raycastTarget = true;
-
-            var lbl = UIBuilder.Label(btn.transform, Loc.T("✓ Done editing"), (int)UIBuilder.LabelFontSize,
-                TextAnchor.MiddleCenter, Color.black);
-            lbl.fontStyle = FontStyles.Bold;
-
-            ClickHandler.Attach(btn, Close);
-
-            var hint = UIBuilder.Label(_canvasGo.transform,
-                Loc.T("Drag to move (Shift: 1 axis)  ·  Ctrl/⌘+Z undo"),
-                (int)UIBuilder.SmallCapsFontSize, TextAnchor.MiddleCenter, Theme.TextMuted);
-            var hintRect = hint.rectTransform;
-            hintRect.anchorMin = hintRect.anchorMax = new Vector2(0.5f, 1f);
-            hintRect.pivot = new Vector2(0.5f, 1f);
-            hintRect.anchoredPosition = new Vector2(0f, -54f);
-            hintRect.sizeDelta = new Vector2(420f, 20f);
-        }
     }
 
     // One draggable handle. Tracks its target's screen rect each frame (expanded to a
@@ -265,6 +163,8 @@ namespace Bismuth.UI
         public Action BeginDragCapture;
         public Action<Vector2> DragBy;   // screen-pixel delta from drag start
         public Func<float> GetScale;     // current scale, with SetScale enables scaling
+        public Func<float> GetRotation;  // current rotation in degrees, with SetRotation enables it
+        public Action<float> SetRotation; // absolute write (callee clamps/wraps)
         public Action<float> SetScale;   // absolute scale write (callee clamps)
         public Action ResetTarget;       // right-click, null = no reset
         public Func<Action> CaptureUndo; // snapshot current state, returns a restore closure (null = not undoable)
@@ -317,7 +217,7 @@ namespace Bismuth.UI
             _rt.anchoredPosition = min;
             _rt.sizeDelta = size;
 
-            if (SetScale != null && !_gripsMade) MakeGrips();
+            if ((SetScale != null || SetRotation != null) && !_gripsMade) MakeGrips();
         }
 
         // Handle center in screen pixels (SSO canvas world units are screen px).
@@ -335,6 +235,44 @@ namespace Bismuth.UI
         private void MakeGrips()
         {
             _gripsMade = true;
+
+            /* Rotation grip: a round knob floating above the top edge, the convention every
+               drawing tool uses, so it can never be confused with the square corner scale
+               grips. Only built when the target can actually rotate. */
+            if (SetRotation != null && GetRotation != null)
+            {
+                var rgo = new GameObject("RotateGrip", typeof(RectTransform));
+                var rrt = (RectTransform)rgo.transform;
+                rrt.SetParent(transform, false);
+                rrt.anchorMin = rrt.anchorMax = new Vector2(0.5f, 1f);
+                rrt.pivot = new Vector2(0.5f, 0.5f);
+                rrt.anchoredPosition = new Vector2(0f, 22f);
+                rrt.sizeDelta = new Vector2(14f, 14f);
+
+                var rbg = rgo.AddComponent<RoundedRectGraphic>();
+                rbg.Radius = 7f;                       // round, vs the square scale grips
+                rbg.AAFringe = 0.5f;
+                rbg.BorderWidth = 1f;
+                rbg.BorderColor = new Color(0f, 0f, 0f, 0.6f);
+                rbg.color = Theme.Accent;
+                rbg.raycastTarget = true;
+
+                // Stem, so the knob reads as attached to the handle rather than floating.
+                var stem = new GameObject("Stem", typeof(RectTransform));
+                var srt = (RectTransform)stem.transform;
+                srt.SetParent(transform, false);
+                srt.anchorMin = srt.anchorMax = new Vector2(0.5f, 1f);
+                srt.pivot = new Vector2(0.5f, 0f);
+                srt.anchoredPosition = Vector2.zero;
+                srt.sizeDelta = new Vector2(1.5f, 16f);
+                var simg = stem.AddComponent<RoundedRectGraphic>();
+                simg.color = new Color(Theme.Accent.r, Theme.Accent.g, Theme.Accent.b, 0.6f);
+                simg.raycastTarget = false;
+
+                rgo.AddComponent<RotateGrip>().Owner = this;
+            }
+
+            if (SetScale == null) return;
             var corners = new[] { Vector2.zero, Vector2.right, Vector2.up, Vector2.one };
             foreach (var c in corners)
             {
@@ -472,7 +410,8 @@ namespace Bismuth.UI
 
         public void OnScroll(PointerEventData e)
         {
-            if (SetScale == null || GetScale == null || Mathf.Approximately(e.scrollDelta.y, 0f)) return;
+            if (Mathf.Approximately(e.scrollDelta.y, 0f)) return;
+            if (SetScale == null || GetScale == null) return;
             EditorUndo.Capture(this);
             SetScale(GetScale() * (1f + 0.1f * Mathf.Sign(e.scrollDelta.y)));
         }
@@ -520,6 +459,52 @@ namespace Bismuth.UI
         {
             if (!_scaling) return;
             _scaling = false;
+            UICore.OnSettingsChanged?.Invoke();
+        }
+    }
+
+    /* Rotation knob on a LocHandle: dragging swings the target around the handle centre by
+       the angle the pointer sweeps. Absolute from the gesture's start angle rather than
+       incremental per frame, so a fast drag cannot accumulate drift. Shift snaps to 15°. */
+    internal class RotateGrip : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
+    {
+        public LocHandle Owner;
+
+        private bool _rotating;
+        private Vector2 _center;
+        private float _startPointerAngle;
+        private float _startRotation;
+
+        public void OnBeginDrag(PointerEventData e)
+        {
+            if (Owner == null || Owner.GetRotation == null || Owner.SetRotation == null ||
+                e.button != PointerEventData.InputButton.Left) return;
+            _center = Owner.ScreenCenter();
+            var v = e.position - _center;
+            if (v.sqrMagnitude < 4f) return;      // too close to the centre to read an angle
+            _startPointerAngle = Mathf.Atan2(v.y, v.x) * Mathf.Rad2Deg;
+            EditorUndo.Capture(Owner);
+            _startRotation = Owner.GetRotation();
+            _rotating = true;
+        }
+
+        public void OnDrag(PointerEventData e)
+        {
+            if (!_rotating) return;
+            var v = e.position - _center;
+            if (v.sqrMagnitude < 4f) return;
+            float now = Mathf.Atan2(v.y, v.x) * Mathf.Rad2Deg;
+            // Screen Y is up and rotation reads clockwise, hence the negated sweep.
+            float value = _startRotation - (now - _startPointerAngle);
+            if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
+                value = Mathf.Round(value / 15f) * 15f;
+            Owner.SetRotation(value);
+        }
+
+        public void OnEndDrag(PointerEventData e)
+        {
+            if (!_rotating) return;
+            _rotating = false;
             UICore.OnSettingsChanged?.Invoke();
         }
     }

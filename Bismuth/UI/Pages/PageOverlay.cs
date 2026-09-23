@@ -58,7 +58,7 @@ namespace Bismuth.UI.Pages
 
             UIBuilder.Spacer(content);
             UIBuilder.SectionHeaderWithHelp(content, "Stats",
-                "Click a card to show or hide that stat in game\n(highlighted = shown).\nClick the ··· button on a card for its settings:\nlabel, position, and colors.");
+                "Click a card for its settings: Enabled, label,\nposition, and colors.\nHighlighted = shown in game.");
 
             UIBuilder.TextInput(content, "Separator text", s.StatSeparator,
                 v => { s.StatSeparator = v; notify?.Invoke(); });
@@ -84,6 +84,7 @@ namespace Bismuth.UI.Pages
                     UIBuilder.Segmented(body, "Position", (int)s.ProgressPosition, PositionLabels,
                         i => { s.ProgressPosition = (OverlayPosition)i; notify?.Invoke(); });
                     ColorSection(body, s.ProgressGradient, notify);
+                    StatColorRows(body, "progress", notify, includeValue: false);
                 }), "label, position, color, gradient");
 
             UIBuilder.NavCard(statGrid, "Accuracy", s.ShowAcc,
@@ -94,6 +95,7 @@ namespace Bismuth.UI.Pages
                     UIBuilder.Segmented(body, "Position", (int)s.AccPosition, PositionLabels,
                         i => { s.AccPosition = (OverlayPosition)i; notify?.Invoke(); });
                     ColorSection(body, s.AccGradient, notify);
+                    StatColorRows(body, "acc", notify, includeValue: false);
                 }), "label, position, color, gradient");
 
             UIBuilder.NavCard(statGrid, "X-Accuracy", s.ShowXAcc,
@@ -116,7 +118,29 @@ namespace Bismuth.UI.Pages
                     colorHost = UIBuilder.VGroup(body, "ColorHost");
                     ColorSection(colorHost.transform, s.XAccGradient, notify);
                     colorHost.SetActive(!s.XAccUseAccGradient);
+                            StatColorRows(body, "xacc", notify, includeValue: false);
                 }), "label, position, use colors from accuracy, color, gradient, xacc");
+
+            UIBuilder.NavCard(statGrid, "X-Score", s.ShowXScore,
+                v => { s.ShowXScore = v; notify?.Invoke(); },
+                () => stack.Push("X-Score", body =>
+                {
+                    LabelInput(body, "XScore", () => s.XScoreLabel, v => s.XScoreLabel = v, notify);
+                    UIBuilder.Segmented(body, "Position", (int)s.XScorePosition, PositionLabels,
+                        i => { s.XScorePosition = (OverlayPosition)i; notify?.Invoke(); });
+                    StatColorRows(body, "xscore", notify, includeValue: true);
+                }), "label, position, color, label color, value color, xscore, x score");
+
+            UIBuilder.NavCard(statGrid, "Timing Error", s.ShowHitError,
+                v => { s.ShowHitError = v; notify?.Invoke(); },
+                () => stack.Push("Timing Error", body =>
+                {
+                    LabelInput(body, "Timing", () => s.HitErrorLabel, v => s.HitErrorLabel = v, notify);
+                    UIBuilder.Segmented(body, "Position", (int)s.HitErrorPosition, PositionLabels,
+                        i => { s.HitErrorPosition = (OverlayPosition)i; notify?.Invoke(); });
+                    // Value colour comes from the judgement ramp, so only the label is settable.
+                    StatColorRows(body, "hiterror", notify, includeValue: false);
+                }), "label, position, color, label color, ms, milliseconds, timing, offset, early, late");
 
             UIBuilder.NavCard(statGrid, "BPM", s.ShowBpm,
                 v => { s.ShowBpm = v; notify?.Invoke(); },
@@ -126,6 +150,7 @@ namespace Bismuth.UI.Pages
                     UIBuilder.Segmented(body, "Position", (int)s.BpmPosition, PositionLabels,
                         i => { s.BpmPosition = (OverlayPosition)i; notify?.Invoke(); });
                     ColorSection(body, s.BpmGradient, notify);
+                    StatColorRows(body, "bpm", notify, includeValue: false);
                 }), "label, position, color, gradient");
 
             UIBuilder.NavCard(statGrid, "Tile BPM", s.ShowTileBpm,
@@ -147,6 +172,7 @@ namespace Bismuth.UI.Pages
                     colorHost = UIBuilder.VGroup(body, "ColorHost");
                     ColorSection(colorHost.transform, s.TileBpmGradient, notify);
                     colorHost.SetActive(!s.TileBpmUseBpmGradient);
+                            StatColorRows(body, "tilebpm", notify, includeValue: false);
                 }), "label, position, use colors from bpm, color, gradient, tbpm");
 
             UIBuilder.NavCard(statGrid, "KPS", s.ShowKps,
@@ -168,6 +194,7 @@ namespace Bismuth.UI.Pages
                     colorHost = UIBuilder.VGroup(body, "ColorHost");
                     ColorSection(colorHost.transform, s.KpsGradient, notify);
                     colorHost.SetActive(!s.KpsUseTileBpmGradient);
+                            StatColorRows(body, "kps", notify, includeValue: false);
                 }), "label, position, use colors from tile bpm, color, gradient, keys per second");
 
             UIBuilder.NavCard(statGrid, "Song Duration", s.ShowSongDuration,
@@ -177,7 +204,8 @@ namespace Bismuth.UI.Pages
                     LabelInput(body, "Song Length", () => s.SongDurationLabel, v => s.SongDurationLabel = v, notify);
                     UIBuilder.Segmented(body, "Position", (int)s.SongDurationPosition, PositionLabels,
                         i => { s.SongDurationPosition = (OverlayPosition)i; notify?.Invoke(); });
-                }), "label, position, elapsed time, length");
+                    StatColorRows(body, "songduration", notify, includeValue: true);
+                }), "label, position, color, label color, value color, elapsed time, length");
 
             UIBuilder.NavCard(statGrid, "Level Duration", s.ShowLevelDuration,
                 v => { s.ShowLevelDuration = v; notify?.Invoke(); },
@@ -186,7 +214,8 @@ namespace Bismuth.UI.Pages
                     LabelInput(body, "Level Length", () => s.LevelDurationLabel, v => s.LevelDurationLabel = v, notify);
                     UIBuilder.Segmented(body, "Position", (int)s.LevelDurationPosition, PositionLabels,
                         i => { s.LevelDurationPosition = (OverlayPosition)i; notify?.Invoke(); });
-                }), "label, position, elapsed time, length");
+                    StatColorRows(body, "levelduration", notify, includeValue: true);
+                }), "label, position, color, label color, value color, elapsed time, length");
 
             UIBuilder.NavCard(statGrid, "Progress Bar", s.ShowProgressBar,
                 v => { s.ShowProgressBar = v; notify?.Invoke(); },
@@ -223,11 +252,12 @@ namespace Bismuth.UI.Pages
                     UIBuilder.Segmented(posHost.transform, "Position", (int)s.BestPosition, PositionLabels,
                         i => { s.BestPosition = (OverlayPosition)i; notify?.Invoke(); });
                     posHost.SetActive(!s.BestInAttempts);
+                            StatColorRows(body, "best", notify, includeValue: true);
                 }), "label, position, show in attempts block, best progress, record");
 
             UIBuilder.Spacer(content);
             UIBuilder.SectionHeaderWithHelp(content, "Timing",
-                "Click a card to show or hide that element in game\n(highlighted = shown).\nClick the ··· button on a card for its settings.");
+                "Click a card for its settings, Enabled included.\nHighlighted = shown in game.");
             var timingGrid = UIBuilder.CardGrid(content).transform;
 
             UIBuilder.NavCard(timingGrid, "Timing Scale", s.ShowTimingScale,
@@ -251,6 +281,57 @@ namespace Bismuth.UI.Pages
                     UIBuilder.Slider(body, "Gap", s.JudgementsGap, 0f, 60f,
                         v => { s.JudgementsGap = v; notify?.Invoke(); }, "0", 1f);
                 }), "offset, size, gap");
+
+            UIBuilder.NavCard(timingGrid, "Timing Graph", s.ShowTimingGraph,
+                v => { s.ShowTimingGraph = v; notify?.Invoke(); },
+                () => stack.Push("Timing Graph", body =>
+                {
+                    UIBuilder.Slider(body, "X", s.TimingGraphX, 0f, 1f,
+                        v => { s.TimingGraphX = v; notify?.Invoke(); }, "0.00");
+                    UIBuilder.Slider(body, "Y", s.TimingGraphY, 0f, 1f,
+                        v => { s.TimingGraphY = v; notify?.Invoke(); }, "0.00");
+                    UIBuilder.Slider(body, "Width", s.TimingGraphWidth, 120f, 1200f,
+                        v => { s.TimingGraphWidth = v; notify?.Invoke(); }, "0", 10f);
+                    UIBuilder.Slider(body, "Height", s.TimingGraphHeight, 30f, 400f,
+                        v => { s.TimingGraphHeight = v; notify?.Invoke(); }, "0", 5f);
+                    // 0 = auto: fit the widest hit. A fixed range makes plays comparable.
+                    UIBuilder.Slider(body, "Range (ms, 0 = auto)", s.TimingGraphRangeMs, 0f, 300f,
+                        v => { s.TimingGraphRangeMs = v; notify?.Invoke(); }, "0", 5f);
+                    UIBuilder.Slider(body, "Rotation", s.TimingGraphRotation, 0f, 360f,
+                        v => { s.TimingGraphRotation = v; notify?.Invoke(); }, "0", 1f);
+                    UIBuilder.IntSlider(body, "Buckets", s.TimingGraphBuckets, 4, 240,
+                        v => { s.TimingGraphBuckets = v; notify?.Invoke(); });
+                    UIBuilder.Collapsible(body, "Background", s.TimingGraphBackground,
+                        v => { s.TimingGraphBackground = v; notify?.Invoke(); }, null);
+
+                    UIBuilder.Spacer(body);
+                    UIBuilder.SectionHeaderWithHelp(body, "Results screen",
+                        "Give the graph a second place to sit once the level is\n"
+                        + "cleared. It slides there on completion.\n"
+                        + "Drag each one in its own editor layer: Overlay for\n"
+                        + "play, Results for the results screen.");
+                    GameObject resPosHost = null;
+                    UIBuilder.Collapsible(body, "Separate results position", s.TimingGraphResultsPos,
+                        v =>
+                        {
+                            s.TimingGraphResultsPos = v;
+                            if (resPosHost != null) resPosHost.SetActive(v);
+                            notify?.Invoke();
+                        }, null);
+                    resPosHost = UIBuilder.VGroup(body, "GraphResultsPos");
+                    var rp = resPosHost.transform;
+                    UIBuilder.Slider(rp, "Results X", s.TimingGraphResultsX, 0f, 1f,
+                        v => { s.TimingGraphResultsX = v; notify?.Invoke(); }, "0.00");
+                    UIBuilder.Slider(rp, "Results Y", s.TimingGraphResultsY, 0f, 1f,
+                        v => { s.TimingGraphResultsY = v; notify?.Invoke(); }, "0.00");
+                    UIBuilder.Slider(rp, "Results scale", s.TimingGraphResultsScale, 0.25f, 4f,
+                        v => { s.TimingGraphResultsScale = v; notify?.Invoke(); }, "0.00");
+                    UIBuilder.Slider(rp, "Results rotation", s.TimingGraphResultsRotation, 0f, 360f,
+                        v => { s.TimingGraphResultsRotation = v; notify?.Invoke(); }, "0", 1f);
+                    UIBuilder.Slider(rp, "Move time", s.TimingGraphMoveTime, 0f, 2f,
+                        v => { s.TimingGraphMoveTime = v; notify?.Invoke(); }, "0.00");
+                    resPosHost.SetActive(s.TimingGraphResultsPos);
+                }), "histogram, graph, timing, offset, ms, early, late, distribution, range, width, height, buckets, columns, bins, background");
 
             UIBuilder.NavCard(timingGrid, "Combo Display", s.ShowComboDisplay,
                 v => { s.ShowComboDisplay = v; notify?.Invoke(); },
@@ -305,6 +386,37 @@ namespace Bismuth.UI.Pages
         }
 
         // "Color" section header + flat gradient controls — the standard tail of a stat subpage.
+        /* Label colour for every stat, plus a flat value colour for the rows that have no
+           gradient. A row WITH a gradient already colours its value there, so offering a
+           second control would just be two things fighting over one pixel. */
+        private static void StatColorRows(Transform body, string key, Action notify, bool includeValue)
+        {
+            // A gradient row already opened its own "Color" section above; the label picker
+            // belongs under that one rather than under a second header saying the same word.
+            if (includeValue)
+            {
+                UIBuilder.Spacer(body);
+                UIBuilder.SectionHeader(body, "Color");
+            }
+            BindStatColor(body, "Label color", key, isLabel: true, notify: notify);
+            if (includeValue) BindStatColor(body, "Value color", key, isLabel: false, notify: notify);
+        }
+
+        // The entry is created lazily on first edit, so an untouched stat stores nothing.
+        private static void BindStatColor(Transform body, string label, string key, bool isLabel, Action notify)
+        {
+            var s = UICore.Settings;
+            var entry = s.StatColorFor(key);
+            var cur = (isLabel ? entry?.Label : entry?.Value)?.ToColor() ?? Color.white;
+            UIBuilder.ColorPicker(body, label, cur, true, c =>
+            {
+                var e = s.StatColorFor(key, create: true);
+                var kv = new KvColor { R = c.r, G = c.g, B = c.b, A = c.a };
+                if (isLabel) e.Label = kv; else e.Value = kv;
+                notify?.Invoke();
+            });
+        }
+
         private static void ColorSection(Transform body, ColorGradient grad, Action notify)
         {
             UIBuilder.Spacer(body);
@@ -328,6 +440,11 @@ namespace Bismuth.UI.Pages
                 }, showWeightRow: false);
             UIBuilder.Collapsible(body, "Count autoplay tiles", s.ComboCountAuto,
                 v => { s.ComboCountAuto = v; notify?.Invoke(); }, null);
+            // Only offered where the game actually splits Perfect; on an older build every
+            // perfect is the same value and the option could not do anything.
+            if (Margins.SplitPerfect)
+                UIBuilder.Collapsible(body, "Only XPerfect counts", s.ComboXPerfectOnly,
+                    v => { s.ComboXPerfectOnly = v; notify?.Invoke(); }, null);
             UIBuilder.Slider(body, "Gradient max", s.ComboGradientMax, 100f, 5000f,
                 v => { s.ComboGradientMax = v; notify?.Invoke(); }, "0", 50f);
             UIBuilder.Slider(body, "Y offset", s.ComboDisplayY, -200f, 200f,

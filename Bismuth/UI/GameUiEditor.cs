@@ -21,10 +21,51 @@ namespace Bismuth.UI
         // editing so it doesn't cover the HUD being positioned).
         private static bool _reopenPanel;
 
-        public static void Open()
+        /* Two modes over the same editor. HUD mode edits everything the game shows during
+           play; results mode edits only what appears once a level is cleared, plus Bismuth's
+           timing graph. GameUiLayout.ResultsKeys decides which side a target falls on. */
+        /* One on-screen editor over three layers, switched live from the pill at the top.
+           Merged from what used to be two editors and three modes: they were the same shell
+           (full-screen canvas, dim, LocHandles, Done, undo) differing only in which targets
+           they built, and having to close one to open another made cross-layer alignment
+           guesswork.
+
+             GameUi  — everything the game shows during play, plus the error meter
+             Overlay — Bismuth's own overlay and key viewer (LocationEditor's targets)
+             Results — the results screen: the game's texts, the timing graph, and either
+                       the game's single Results block or Bismuth's custom fields, whichever
+                       is actually being drawn. */
+        internal enum Layer { GameUi, Overlay, Results }
+        private static Layer _layer;
+
+        internal static Layer CurrentLayer => _layer;
+        // The overlay layer's combo-label target converts a screen delta into canvas units.
+        internal static float EditorCanvasScale => _canvas != null ? _canvas.scaleFactor : 1f;
+        public static bool IsResults => IsActive && _layer == Layer.Results;
+
+        public static void Open() => OpenMode(Layer.GameUi);
+        public static void OpenOverlay() => OpenMode(Layer.Overlay);
+        public static void OpenResults() => OpenMode(Layer.Results);
+        // Kept so the Custom-results button keeps working; same layer now.
+        public static void OpenCustomResults() => OpenMode(Layer.Results);
+
+        /* Does this game target belong to the layer that is open? Results owns the results
+           keys; GameUi owns the rest; Overlay owns no game targets at all. */
+        private static bool InMode(GameUiLayout.TargetDef t)
         {
-            if (IsActive) return;
-            LocationEditor.Close(); // one editor at a time (both at 31000)
+            if (_layer == Layer.Overlay) return false;
+            bool isResults = GameUiLayout.IsResultsKey(t.Key);
+            if (_layer != Layer.Results) return !isResults;
+            // With the custom results drawn, the game's own block is blanked — a handle on it
+            // would move something invisible.
+            if (t.Key == "results" && UICore.Settings.CustomResults) return false;
+            return true;
+        }
+
+        private static void OpenMode(Layer layer)
+        {
+            if (IsActive) { SwitchLayer(layer); return; }
+            _layer = layer;
 
             _reopenPanel = UICore.IsOpen;
             if (_reopenPanel) UICore.Close();
@@ -52,11 +93,8 @@ namespace Bismuth.UI
             var dimImg = UIBuilder.SolidImage(dim, new Color(0f, 0f, 0f, 0.35f));
             dimImg.raycastTarget = false;
 
-            ForceShowTargets();
-
-            foreach (var t in GameUiLayout.Targets)
-                MakeElementHandle(t);
-            MakeMeterHandle();
+            BuildLayer();
+            MakeLayerPicker();
             MakeDoneButton();
             _canvasGo.AddComponent<HandleSorter>();
             EditorUndo.Reset();
@@ -101,10 +139,74 @@ namespace Bismuth.UI
             }
         }
 
+        /* Rebuild the handles for the current layer. Handles are plain canvas children, so
+           clearing means destroying the ones that carry a LocHandle — the dim, pill, Done and
+           hint stay put. */
+        private static void BuildLayer()
+        {
+            var overlay = Overlay.Instance;
+            if (overlay != null)
+            {
+                overlay.EditMode = _layer == Layer.Overlay;
+                // The graph is editable in both layers: Overlay places it for play, Results
+                // for the results screen.
+                overlay.GraphPreview = _layer == Layer.Results || _layer == Layer.Overlay;
+                overlay.GraphPreviewResults = _layer == Layer.Results;
+                overlay.ResultsPreview = _layer == Layer.Results && UICore.Settings.CustomResults;
+                overlay.ApplySettings(UICore.Settings);
+            }
+
+            ForceShowTargets();
+
+            foreach (var t in GameUiLayout.Targets)
+                if (InMode(t)) MakeElementHandle(t);
+
+            if (_layer == Layer.GameUi) MakeMeterHandle();
+            else if (_layer == Layer.Overlay)
+            {
+                LocationEditor.AttachHandles(MakeHandle);
+                MakeGraphHandle(results: false);
+            }
+            else
+            {
+                MakeGraphHandle(results: UICore.Settings.TimingGraphResultsPos);
+                MakeResultsFieldHandles();
+            }
+        }
+
+        private static void SwitchLayer(Layer layer)
+        {
+            if (!IsActive || _layer == layer) return;
+            _layer = layer;
+
+            RestoreShown();   // un-force the previous layer's elements before showing the next
+            for (int i = _canvasGo.transform.childCount - 1; i >= 0; i--)
+            {
+                var child = _canvasGo.transform.GetChild(i);
+                if (child.GetComponent<LocHandle>() != null)
+                {
+                    child.SetParent(null);
+                    UnityEngine.Object.Destroy(child.gameObject);
+                }
+            }
+
+            BuildLayer();
+            RefreshLayerPicker();
+            EditorUndo.Reset();   // undo history belongs to the layer it was recorded in
+        }
+
         public static void Close()
         {
             if (!IsActive) return;
             RestoreShown();
+            if (Overlay.Instance != null) Overlay.Instance.EditMode = false;
+            if (Overlay.Instance != null)
+            {
+                Overlay.Instance.GraphPreview = false;
+                Overlay.Instance.GraphPreviewResults = false;
+                Overlay.Instance.ResultsPreview = false;
+            }
+            _layer = Layer.GameUi;
             UnityEngine.Object.Destroy(_canvasGo);
             _canvasGo = null;
             _canvas = null;
@@ -139,8 +241,10 @@ namespace Bismuth.UI
 
         private static void ForceShowTargets()
         {
+
             foreach (var t in GameUiLayout.Targets)
             {
+                if (!InMode(t)) continue;
                 var rt = t.Get?.Invoke();
                 if (rt == null) continue;
 
@@ -257,18 +361,26 @@ namespace Bismuth.UI
                 o.Scale = Mathf.Clamp(v, 0.25f, 4f);
                 GameUiLayout.ApplyOne(t.Key);
             };
+            h.GetRotation = () => GameUiLayout.GetOverride(t.Key, create: false)?.Rotation ?? 0f;
+            h.SetRotation = v =>
+            {
+                var o = GameUiLayout.GetOverride(t.Key, create: true);
+                o.Rotation = Mathf.Repeat(v, 360f);
+                GameUiLayout.ApplyOne(t.Key);
+            };
             h.ResetTarget = () => GameUiLayout.ResetToDefault(t.Key);
             h.CaptureUndo = () =>
             {
                 var o = GameUiLayout.GetOverride(t.Key, create: false);
                 bool had = o != null;
                 float ox = had ? o.OffX : 0f, oy = had ? o.OffY : 0f, scl = had ? o.Scale : 1f;
+                float rot = had ? o.Rotation : 0f;
                 int al = had ? o.Align : -1;
                 return () =>
                 {
                     if (!had) { GameUiLayout.RemoveOverride(t.Key); return; }
                     var r = GameUiLayout.GetOverride(t.Key, create: true);
-                    r.OffX = ox; r.OffY = oy; r.Scale = scl; r.Align = al;
+                    r.OffX = ox; r.OffY = oy; r.Scale = scl; r.Align = al; r.Rotation = rot;
                     GameUiLayout.ApplyOne(t.Key);
                 };
             };
@@ -333,6 +445,132 @@ namespace Bismuth.UI
             };
         }
 
+        /* Timing graph handle. Same model as the error meter — a normalized screen anchor
+           plus a scale — because the graph sits on its own full-screen canvas, where the
+           anchor fraction IS the screen fraction. */
+        /* `results` picks which of the graph's two placements this handle writes. In the
+           Results layer it only writes the results one when that placement is enabled —
+           otherwise both layers would be dragging the same play values under different names. */
+        private static void MakeGraphHandle(bool results)
+        {
+            var s = UICore.Settings;
+            Vector2 start = Vector2.zero;
+            void Apply() => Overlay.Instance?.ApplyTimingGraph(s);
+
+            float GetX() => results ? s.TimingGraphResultsX : s.TimingGraphX;
+            float GetY() => results ? s.TimingGraphResultsY : s.TimingGraphY;
+            void SetXY(float x, float y)
+            {
+                if (results) { s.TimingGraphResultsX = x; s.TimingGraphResultsY = y; }
+                else { s.TimingGraphX = x; s.TimingGraphY = y; }
+            }
+            float GetSc() => results ? s.TimingGraphResultsScale : s.TimingGraphScale;
+            void SetSc(float v)
+            {
+                if (results) s.TimingGraphResultsScale = v; else s.TimingGraphScale = v;
+            }
+            float GetRot() => results ? s.TimingGraphResultsRotation : s.TimingGraphRotation;
+            void SetRot(float v)
+            {
+                if (results) s.TimingGraphResultsRotation = v; else s.TimingGraphRotation = v;
+            }
+
+            var h = MakeHandle(results ? "Timing Graph (results)" : "Timing Graph",
+                () => Overlay.Instance?.TimingGraphRect);
+            h.ShowInactive = true;
+            h.BeginDragCapture = () => start = new Vector2(GetX(), GetY());
+            h.DragBy = d =>
+            {
+                SetXY(Mathf.Clamp01(start.x + d.x / Screen.width),
+                      Mathf.Clamp01(start.y + d.y / Screen.height));
+                Apply();
+            };
+            h.GetScale = GetSc;
+            h.SetScale = v => { SetSc(Mathf.Clamp(v, 0.25f, 4f)); Apply(); };
+            h.GetRotation = GetRot;
+            h.SetRotation = v => { SetRot(Mathf.Repeat(v, 360f)); Apply(); };
+            h.ResetTarget = () =>
+            {
+                SetXY(0.5f, 0.14f); SetSc(1f); SetRot(0f);
+                Apply();
+            };
+            h.CaptureUndo = () =>
+            {
+                float x = GetX(), y = GetY(), scl = GetSc(), rot = GetRot();
+                return () => { SetXY(x, y); SetSc(scl); SetRot(rot); Apply(); };
+            };
+        }
+
+        /* One handle per custom results field. Only built when the custom screen is on — with
+           it off the game draws its own single block, which the "results" target already
+           covers. Positions are normalized screen fractions, like the graph. */
+        private static void MakeResultsFieldHandles()
+        {
+            var s = UICore.Settings;
+            if (!s.CustomResults) return;
+            var overlay = Overlay.Instance;
+            if (overlay == null) return;
+
+            foreach (var def in ResultsFields.All)
+            {
+                var d = def;
+                if (s.ResultsFieldFor(d.Key)?.Hidden == true) continue;
+
+                Vector2 start = Vector2.zero;
+                void Apply() => Overlay.Instance?.ApplyResultsScreen(s);
+                // An unmoved field has NaN stored: fall back to its built-in default.
+                Vector2 Current()
+                {
+                    var o = s.ResultsFieldFor(d.Key);
+                    return new Vector2(o != null && !float.IsNaN(o.X) ? o.X : d.X,
+                                       o != null && !float.IsNaN(o.Y) ? o.Y : d.Y);
+                }
+
+                var h = MakeHandle(Loc.T(d.Label), () => Overlay.Instance?.ResultsFieldRect(d.Key));
+                h.ShowInactive = true;
+                h.TightBounds = true;
+                h.BeginDragCapture = () => start = Current();
+                h.DragBy = delta =>
+                {
+                    var o = s.ResultsFieldFor(d.Key, create: true);
+                    o.X = Mathf.Clamp01(start.x + delta.x / Screen.width);
+                    o.Y = Mathf.Clamp01(start.y + delta.y / Screen.height);
+                    Apply();
+                };
+                h.GetScale = () => s.ResultsFieldFor(d.Key)?.Scale ?? 1f;
+                h.SetScale = v =>
+                {
+                    s.ResultsFieldFor(d.Key, create: true).Scale = Mathf.Clamp(v, 0.25f, 4f);
+                    Apply();
+                };
+                h.GetRotation = () => s.ResultsFieldFor(d.Key)?.Rotation ?? 0f;
+                h.SetRotation = v =>
+                {
+                    s.ResultsFieldFor(d.Key, create: true).Rotation = Mathf.Repeat(v, 360f);
+                    Apply();
+                };
+                h.ResetTarget = () =>
+                {
+                    var o = s.ResultsFieldFor(d.Key, create: true);
+                    o.X = float.NaN; o.Y = float.NaN; o.Scale = 1f; o.Rotation = 0f;
+                    Apply();
+                };
+                h.CaptureUndo = () =>
+                {
+                    var o = s.ResultsFieldFor(d.Key);
+                    bool had = o != null;
+                    float x = had ? o.X : float.NaN, y = had ? o.Y : float.NaN;
+                    float sc = had ? o.Scale : 1f, rot = had ? o.Rotation : 0f;
+                    return () =>
+                    {
+                        var r = s.ResultsFieldFor(d.Key, create: true);
+                        r.X = x; r.Y = y; r.Scale = sc; r.Rotation = rot;
+                        Apply();
+                    };
+                };
+            }
+        }
+
         // Switching the override on must not move the meter: seed the normalized
         // position from where the game currently has it (the wrapper's pivot point).
         private static void EnableMeterOverride()
@@ -374,6 +612,63 @@ namespace Bismuth.UI
             return h;
         }
 
+        private static readonly (Layer L, string Label)[] LayerTabs =
+        {
+            (Layer.GameUi,  "Game UI"),
+            (Layer.Overlay, "Overlay"),
+            (Layer.Results, "Results"),
+        };
+
+        private static readonly List<(Layer L, RoundedRectGraphic Bg, TMP_Text Label)> _layerTabs =
+            new List<(Layer, RoundedRectGraphic, TMP_Text)>();
+
+        // Segmented pill under the Done button — three layers read better side by side than
+        // in a dropdown, and switching is one click instead of two.
+        private static void MakeLayerPicker()
+        {
+            _layerTabs.Clear();
+            const float w = 130f, h = 28f;
+            float total = w * LayerTabs.Length;
+
+            for (int i = 0; i < LayerTabs.Length; i++)
+            {
+                var tab = LayerTabs[i];
+                var go = UIBuilder.Rect("Layer_" + tab.L, _canvasGo.transform);
+                var rect = (RectTransform)go.transform;
+                rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 1f);
+                rect.pivot = new Vector2(0.5f, 1f);
+                rect.anchoredPosition = new Vector2(-total / 2f + w * (i + 0.5f), -78f);
+                rect.sizeDelta = new Vector2(w - 4f, h);
+
+                var bg = go.AddComponent<RoundedRectGraphic>();
+                bg.Radius = 14f;
+                bg.AAFringe = 0.5f;
+                bg.BorderWidth = 1.25f;
+                bg.raycastTarget = true;
+
+                var lbl = UIBuilder.Label(go.transform, Loc.T(tab.Label),
+                    (int)UIBuilder.LabelFontSize - 1, TextAnchor.MiddleCenter, Theme.Text);
+                var target = tab.L;
+                ClickHandler.Attach(go, () => SwitchLayer(target));
+                _layerTabs.Add((tab.L, bg, lbl));
+            }
+            RefreshLayerPicker();
+        }
+
+        private static void RefreshLayerPicker()
+        {
+            foreach (var (l, bg, lbl) in _layerTabs)
+            {
+                bool on = l == _layer;
+                if (bg != null)
+                {
+                    bg.color = on ? Theme.Accent : new Color(1f, 1f, 1f, 0.06f);
+                    bg.BorderColor = on ? Theme.Accent : new Color(1f, 1f, 1f, 0.18f);
+                }
+                if (lbl != null) lbl.color = on ? Color.black : Theme.TextMuted;
+            }
+        }
+
         private static void MakeDoneButton()
         {
             var btn = UIBuilder.Rect("Done", _canvasGo.transform);
@@ -396,12 +691,12 @@ namespace Bismuth.UI
             ClickHandler.Attach(btn, Close);
 
             var hint = UIBuilder.Label(_canvasGo.transform,
-                Loc.T("Drag to move (Shift: 1 axis)  ·  Grips / scroll to scale  ·  Right-click reset  ·  Ctrl/⌘+Z undo"),
+                Loc.T("Drag to move (Shift: 1 axis)  ·  Grips / scroll to scale  ·  Knob to rotate (Shift: 15°)  ·  Right-click reset  ·  Ctrl/⌘+Z undo"),
                 (int)UIBuilder.SmallCapsFontSize, TextAnchor.MiddleCenter, Theme.TextMuted);
             var hintRect = hint.rectTransform;
             hintRect.anchorMin = hintRect.anchorMax = new Vector2(0.5f, 1f);
             hintRect.pivot = new Vector2(0.5f, 1f);
-            hintRect.anchoredPosition = new Vector2(0f, -54f);
+            hintRect.anchoredPosition = new Vector2(0f, -112f);
             hintRect.sizeDelta = new Vector2(520f, 20f);
         }
     }

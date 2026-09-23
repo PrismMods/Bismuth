@@ -4,10 +4,16 @@ using UnityEngine;
 
 namespace Bismuth
 {
-    /* Soft read-only bridge to the XPerfect mod, which splits HitMargin.Perfect into
-       XPerfect / +Perfect / -Perfect. We read its counters rather than re-deriving the
+    /* Soft read-only bridge to the XPerfect MOD, which splits the merged Perfect margin
+       into XPerfect / +Perfect / -Perfect. We read its counters rather than re-deriving the
        split: it owns the timing thresholds, and mirroring them would drift the moment it
        retunes. Absent mod → Available is false and nothing in the overlay changes.
+
+       Legacy path. The game absorbed this feature (Margins.SplitPerfect), and on such a
+       build the real enum values carry the split and this bridge stays out of the way —
+       it exists for game versions that still have one merged Perfect. Note the two disagree
+       on sign: the mod calls the EARLY side +Perfect, the game's enum orders it
+       PerfectMinus → XPerfect → PerfectPlus, early to late.
 
        Resolved once — the loaded mod set can't change mid-session, and a failed lookup
        must not re-reflect every frame. */
@@ -22,7 +28,14 @@ namespace Bismuth
 
         internal static bool Available
         {
-            get { Probe(); return _x != null && _plus != null && _minus != null; }
+            // A game that splits Perfect itself owns the breakdown; the mod is redundant there
+            // and consulting it would graft a second split onto columns that already have one.
+            get
+            {
+                if (Margins.SplitPerfect) return false;
+                Probe();
+                return _x != null && _plus != null && _minus != null;
+            }
         }
 
         /* A NEGATIVE probe must not latch: UMM can enable XPerfect after Bismuth has already

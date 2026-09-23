@@ -35,6 +35,11 @@ namespace Bismuth
             (bestRow, bestLabel, bestValue) = MakeRow("Best", "Best | ");
             (accRow,         accLabel,         accValue)         = MakeRow("Acc",         "Accuracy | ");
             (xaccRow,        xaccLabel,        xaccValue)        = MakeRow("XAcc",        "XAccuracy | ");
+            (xScoreRow,      xScoreLabel,      xScoreValue)      = MakeRow("XScore",      "XScore | ");
+            (hitErrorRow,    hitErrorLabel,    hitErrorValue)    = MakeRow("HitError",    "Timing | ");
+            // Seeded so an enabled row never renders as a bare label before the first hit;
+            // every other row has a value the moment it appears.
+            hitErrorValue.text = "--";
             (bpmRow,         bpmLabel,         bpmValue)         = MakeRow("Bpm",         "BPM | ");
             (tileBpmRow,     tileBpmLabel,     tileBpmValue)     = MakeRow("TileBpm",     "TBPM | ");
             (kpsRow,         kpsLabel,         kpsValue)         = MakeRow("Kps",         "KPS | ");
@@ -47,6 +52,8 @@ namespace Bismuth
             judgementsRow = MakeJudgementsRow(judgementsContainer.gameObject, out judgementTexts);
             comboDisplayContainer = MakeComboDisplay(canvasGo, out comboDisplayLabel, out comboDisplayValue, out _comboLabelWrapper);
             (fpsContainer, fpsText) = MakeFpsDisplay();
+            MakeTimingGraph();
+            MakeResultsScreen();
 
             canvas.gameObject.SetActive(false);
             ShowEmpty();

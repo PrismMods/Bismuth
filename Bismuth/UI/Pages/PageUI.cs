@@ -41,7 +41,7 @@ namespace Bismuth.UI.Pages
 
             UIBuilder.SectionHeaderWithHelp(content, "Positions",
                 "Drag elements directly on screen to adjust positions.");
-            UIBuilder.Button(content, "Edit positions on screen", LocationEditor.Open);
+            UIBuilder.Button(content, "Edit positions on screen", LocationEditor.Open);  // shared editor, Overlay layer
             UIBuilder.DangerButton(content, "Reset all positions", () =>
             {
                 s.StatusLeftX  = 0.005f; s.StatusLeftY  = 0.99f;
@@ -69,6 +69,8 @@ namespace Bismuth.UI.Pages
             // their part's weight rows (stats / combo / key viewer).
             BuildFontSelector(content, "Panel font", UICore.AvailableFonts, s.UiFontName,
                 entry => UICore.ApplyFont(entry));
+            UIBuilder.NavRow(content, "Font packs", () => PageFontPacks.Open(stack),
+                "download, install, fonts, typeface, ttf, otf");
 
             UIBuilder.Spacer(content);
             UIBuilder.SectionHeader(content, "Accent");

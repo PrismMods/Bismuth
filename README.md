@@ -14,7 +14,7 @@
 - Configurable in-game stats overlays: progress, accuracy, x-accuracy, BPM, tile BPM, timing scale, judgements, combo, attempts, FPS
 - Customizable key viewer: key rain, ghost keys, hand/foot presets, and per-key & total press counts
 - Key limiter and chatter blocker
-- Custom fonts for the whole game — restyle the game's own text (menus, HUD, level titles) and the mod's own UI; drop a `.ttf`/`.otf` into `…/Bismuth/Fonts/` and pick it in the settings
+- Custom fonts for the whole game — restyle the game's own text (menus, HUD, level titles) and the mod's own UI. The download ships no fonts: install a font pack from Appearance → Font packs, or drop your own `.ttf`/`.otf` into `…/Bismuth/Fonts/` and pick it in the settings
 - Game UI editor: move, scale, hide, or re-weight individual game HUD elements (death %, congrats, countdown, hit error meter, autoplay text, …)
 - Hide-UI toggles: (HUD, hit error meter, autoplay text/icon, no-fail, difficulty selector, judgement texts, song title, alpha/beta build text)
 - Performance optimizations and QoL tools: in-game log viewer and one-click reload

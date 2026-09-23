@@ -173,7 +173,7 @@ namespace Bismuth
         /* Shells out to curl (present on macOS, Windows 10+, and almost every
            Linux). Both UnityWebRequest and Mono WebClient have hung silently
            here. WebClient stays as a fallback when curl is missing or fails. */
-        private static byte[] FetchBytes(string url)
+        internal static byte[] FetchBytes(string url)
         {
             try { return CurlFetch(url); }
             catch (Exception e)

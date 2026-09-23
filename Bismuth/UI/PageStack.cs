@@ -20,7 +20,19 @@ namespace Bismuth.UI
             public Action<Transform> Build;
             public bool RebuildOnReveal;    // re-run Build when a child view pops back to this one
             public float SavedScrollY;      // content offset captured when a child is pushed
+            public CardToggle Toggle;       // Enabled switch prepended to the body
         }
+
+        // A NavCard's on/off flag, handed over so its subpage can host the switch — the
+        // card body itself navigates. UIBuilder sets PendingCardToggle immediately before
+        // invoking the card's onOpen; the Push it triggers claims it.
+        internal class CardToggle
+        {
+            public Func<bool> Get;
+            public Action<bool> Set;
+        }
+
+        internal static CardToggle PendingCardToggle;
 
         private readonly ScrollRect _scroll;
         private readonly RectTransform _content;
@@ -42,6 +54,10 @@ namespace Bismuth.UI
 
         public void Push(string title, Action<Transform> build, bool rebuildOnReveal = false)
         {
+            // Claimed here so a nested push inside build() can't inherit it.
+            var cardToggle = PendingCardToggle;
+            PendingCardToggle = null;
+
             // Subpage titles are the same nouns as the rows that open them, so this mostly
             // reuses table entries that already exist.
             title = Loc.T(title);
@@ -50,7 +66,7 @@ namespace Bismuth.UI
             else _rootScrollY = _content.anchoredPosition.y;
             current.SetActive(false);
 
-            var view = new View { Title = title, Build = build, RebuildOnReveal = rebuildOnReveal };
+            var view = new View { Title = title, Build = build, RebuildOnReveal = rebuildOnReveal, Toggle = cardToggle };
             _views.Add(view);
 
             view.Container = UIBuilder.VGroup(_content, "View_" + title);
@@ -59,7 +75,7 @@ namespace Bismuth.UI
             // Subpage widgets stay out of the search index — their entry point is the
             // registered row/card that pushed them.
             SettingsSearch.Suspend(true);
-            try { build(view.Body); }
+            try { BuildBody(view); }
             finally { SettingsSearch.Suspend(false); }
 
             ScrollTo(0f);
@@ -125,6 +141,11 @@ namespace Bismuth.UI
 
         private void Rebuild(View view)
         {
+            // The panel can be torn down between a refresh being requested and it running —
+            // a font-pack install force-reloads the whole UI, which destroys these views
+            // while the requester still holds the stack. A destroyed body has nothing to
+            // rebuild into; the panel that replaced it built itself fresh.
+            if (view.Body == null) return;
             for (int i = view.Body.childCount - 1; i >= 0; i--)
             {
                 var c = view.Body.GetChild(i);
@@ -132,8 +153,18 @@ namespace Bismuth.UI
                 UnityEngine.Object.Destroy(c.gameObject);
             }
             SettingsSearch.Suspend(true);
-            try { view.Build(view.Body); }
+            try { BuildBody(view); }
             finally { SettingsSearch.Suspend(false); }
+        }
+
+        private static void BuildBody(View view)
+        {
+            if (view.Toggle != null)
+            {
+                UIBuilder.Toggle(view.Body, "Enabled", view.Toggle.Get(), view.Toggle.Set);
+                UIBuilder.Spacer(view.Body);
+            }
+            view.Build(view.Body);
         }
 
         // Content is top-anchored (pivot y=1), so anchoredPosition.y is the scroll offset;

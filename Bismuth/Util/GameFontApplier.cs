@@ -527,7 +527,25 @@ namespace Bismuth
 
         internal static void OnLocalizedFontSet(TMP_Text t)
         {
+            if (t != null) NoteGameFont(t.font);
             if (Enabled && _tmpFont != null) ApplyTmp(t);
+        }
+
+        /* The game's own localized TMP asset, kept so a build with no fonts installed still
+           draws readable text: TMP_Settings.defaultFontAsset is Latin-only, which tofus a
+           Korean panel. The game stamps the language's real font through SetLocalizedFont,
+           so the first one that isn't ours is exactly what the game itself renders with. */
+        private static TMP_FontAsset _gameFont;
+
+        internal static TMP_FontAsset GameFont
+        {
+            get { return _gameFont != null ? _gameFont : TMP_Settings.defaultFontAsset; }
+        }
+
+        private static void NoteGameFont(TMP_FontAsset f)
+        {
+            if (f == null || IsOurTmpFont(f)) return;
+            _gameFont = f;
         }
 
         internal static void OnLocalizedFontSet(TextMesh t)

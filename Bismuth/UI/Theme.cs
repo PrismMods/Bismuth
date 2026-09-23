@@ -26,6 +26,8 @@ namespace Bismuth.UI
         public static readonly Color DangerBg    = new Color(0.886f, 0.404f, 0.427f, 0.12f);
         public static readonly Color DangerHover = new Color(0.886f, 0.404f, 0.427f, 0.22f);
         public static readonly Color DangerArmed = new Color(0.886f, 0.404f, 0.427f, 0.45f);
+        // Same red at full alpha, for error text (not a fill).
+        public static readonly Color DangerText  = new Color(0.886f, 0.404f, 0.427f, 1f);
 
         // Accent — re-skinned at runtime via ApplyAccent. ToggleOn always tracks Accent.
         public static Color Accent   { get; private set; } = new Color(0.604f, 0.706f, 1f, 1f);

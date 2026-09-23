@@ -45,6 +45,8 @@ namespace Bismuth
             modEntry.OnUpdate = (_, __) =>
             {
                 UICore.HandleUpdate();
+                if (PrismBridge.Available) PrismBridge.SyncInputClaim(KeyLimiter.BlockingInputs);
+                FontPacks.Tick();
                 if (_forceReloadPending) { _forceReloadPending = false; DoForceReload(); }
                 // Drop the previous font assets a beat after a force reload — only once every
                 // re-apply (incl. GameFontApplier's frame-spread sweep) has re-pointed text off
@@ -108,6 +110,9 @@ namespace Bismuth
         {
             _modEntry = modEntry;
             BismuthLog.Init();
+            // Before anything claims state or blocks a key. Installs PrismLib if it isn't there;
+            // everything downstream checks PrismBridge.Available and runs standalone without it.
+            PrismBridge.Init(modEntry.Info.Version);
             harmony = new Harmony(modEntry.Info.Id);
             // Patch at the same early point as always when the master switch is on; a
             // master-off launch stays fully hands-off until the rail switch flips.
@@ -399,7 +404,19 @@ namespace Bismuth
 
         internal static void ApplySelectedFont()
         {
-            if (overlay == null || availableFonts.Count == 0) return;
+            if (overlay == null) return;
+
+            // Nothing installed: put the game's own font on our text so it stays readable
+            // (TMP's default is Latin-only), and leave the game's text alone.
+            if (availableFonts.Count == 0)
+            {
+                var gf = GameFontApplier.GameFont;
+                overlay.SetFont(gf, null, null, gf, gf);
+                overlay.SetLevelNameFont(gf);
+                keyViewer?.SetFont(gf, gf);
+                return;
+            }
+
 
             FontLoader.FontEntry master =
                 FontLoader.Find(availableFonts, Settings.FontName)
@@ -473,6 +490,7 @@ namespace Bismuth
 
         private static void StopMod(UnityModManager.ModEntry modEntry)
         {
+            if (PrismBridge.Available) PrismBridge.Shutdown();   // never leave a claim held by a mod that's gone
             SceneManager.sceneUnloaded -= OnSceneUnloaded;
             SceneManager.sceneLoaded -= OnSceneLoaded;
             _deferredApplyPending = false;

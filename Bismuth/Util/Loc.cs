@@ -37,7 +37,17 @@ namespace Bismuth
         /* Korean. Terms follow ADOFAI Korean community usage (판정 for judgements, 키 뷰어 for
            the key viewer); 기타 for Misc matches the game's own table. Grouped by where each
            string appears, for review. */
-        private static readonly Dictionary<string, string> Korean = new Dictionary<string, string>
+        /* Collection-initializer sink that OVERWRITES instead of throwing. A duplicate
+           English key is a typo, but Dictionary.Add turns that typo into a
+           TypeInitializationException inside a static field initializer — which is
+           unrecoverable (every later access rethrows) and takes the whole settings panel
+           with it, not just the one string. Shipped exactly that way once. Last entry wins. */
+        private class Table : Dictionary<string, string>
+        {
+            public new void Add(string english, string translated) => this[english] = translated;
+        }
+
+        private static readonly Table Korean = new Table
         {
             // ── Tabs ────────────────────────────────────────────────────────
             { "Overlay",                            "오버레이" },
@@ -91,10 +101,10 @@ namespace Bismuth
             { "Apply master font to all overlays",  "모든 오버레이에 기본 글꼴 적용" },
             { "Reset current level",                "현재 레벨 초기화" },
             { "Reset all levels",                   "모든 레벨 초기화" },
-            { "Click a card to show or hide that stat in game\n(highlighted = shown).\nClick the ··· button on a card for its settings:\nlabel, position, and colors.",
-              "카드를 눌러 해당 통계를 게임에 표시하거나 숨깁니다\n(강조 표시 = 표시 중).\n카드의 ··· 버튼을 누르면 라벨, 위치, 색상\n설정을 열 수 있습니다." },
-            { "Click a card to show or hide that element in game\n(highlighted = shown).\nClick the ··· button on a card for its settings.",
-              "카드를 눌러 해당 요소를 게임에 표시하거나 숨깁니다\n(강조 표시 = 표시 중).\n카드의 ··· 버튼을 누르면 설정을 열 수 있습니다." },
+            { "Click a card for its settings: Enabled, label,\nposition, and colors.\nHighlighted = shown in game.",
+              "카드를 눌러 설정을 엽니다: 사용, 라벨,\n위치, 색상.\n강조 표시 = 게임에 표시 중." },
+            { "Click a card for its settings, Enabled included.\nHighlighted = shown in game.",
+              "카드를 눌러 설정을 엽니다 (사용 스위치 포함).\n강조 표시 = 게임에 표시 중." },
 
             // ── Overlay tab › Positions ─────────────────────────────────────
             { "Positions",                          "위치" },
@@ -117,6 +127,65 @@ namespace Bismuth
             { "Ghost Keys",                         "고스트 키" },
             { "Enable",                             "사용" },
             { "Enabled",                            "사용" },
+            // Font packs (Appearance → Font packs)
+            { "Font packs",                         "폰트 팩" },
+            { "Install",                            "설치" },
+            { "Remove",                             "제거" },
+            { "Installing…",                        "설치 중…" },
+            { "Already installed",                  "이미 설치됨" },
+            { "Only XPerfect counts",                "X정확만 인정" },
+            { "X-Score",                            "X 점수" },
+            { "Timing Error",                       "타이밍 오차" },
+            { "Timing Graph",                       "타이밍 그래프" },
+            { "Rotation",                           "회전" },
+            { "Edit UI on screen",                   "화면에서 UI 편집" },
+            { "Edit results on screen",              "화면에서 결과 편집" },
+            { "Results",                             "결과" },
+            { "Edit custom results on screen",      "커스텀 결과 화면 편집" },
+            { "-Perfect",                            "정확-" },
+            { "XPerfect",                            "X정확" },
+            { "+Perfect",                            "정확+" },
+            { "Early Perfect",                       "빠름" },
+            { "Late Perfect",                        "느림" },
+            { "Field spacing",                       "항목 간격" },
+            { "Spacing (0 = default)",               "간격 (0 = 기본값)" },
+            { "Separate results position",           "결과 화면 위치 분리" },
+            { "Results X",                           "결과 X" },
+            { "Results Y",                           "결과 Y" },
+            { "Results scale",                       "결과 크기" },
+            { "Results rotation",                    "결과 회전" },
+            { "Move time",                           "이동 시간" },
+            { "Results screen",                      "결과 화면" },
+            { "Timing Graph (results)",              "타이밍 그래프 (결과)" },
+            { "Label align",                         "라벨 정렬" },
+            { "Value align",                         "값 정렬" },
+            { "Early",                               "빠름!" },
+            { "Late",                                "느림!" },
+            { "Too Early",                           "너무 빠름" },
+            { "Too Late",                            "너무 느림" },
+            { "Miss Fails",                          "놓침" },
+            { "Overload Fails",                      "과부하" },
+            { "Max Used Keys",                       "최대 사용 키" },
+            { "Checkpoints",                         "체크포인트" },
+            { "Custom detailed results",             "커스텀 상세 결과" },
+            { "Reset this field",                    "이 항목 초기화" },
+            { "Results Screen",                     "결과 화면" },
+            { "Edit results screen on screen",      "결과 화면 편집" },
+            { "Buckets",                            "막대 개수" },
+            { "Range (ms, 0 = auto)",               "범위 (ms, 0 = 자동)" },
+            { "XPerfects",                           "X정확" },
+            { "Label color",                        "라벨 색상" },
+            { "Value color",                        "값 색상" },
+            { "Loading…",                           "불러오는 중…" },
+            { "No packs listed.",                   "등록된 팩이 없습니다." },
+            { "Retry",                              "다시 시도" },
+            { "Refresh list",                       "목록 새로고침" },
+            { "Load font list",                     "폰트 목록 불러오기" },
+            { "Open Fonts folder",                  "Fonts 폴더 열기" },
+            { "Couldn't reach the font list: ",     "폰트 목록을 불러오지 못했습니다: " },
+            { "Failed: ",                           "실패: " },
+            { "Bismuth ships without fonts to keep the download small.\nInstall a pack here, or drop your own .ttf/.otf files\ninto the mod's Fonts folder.",
+              "Bismuth는 용량을 줄이기 위해 폰트를 포함하지 않습니다.\n여기서 팩을 설치하거나, .ttf/.otf 파일을\n모드의 Fonts 폴더에 직접 넣으세요." },
             { "Edit",                               "편집" },
             { "Visible",                            "표시" },
             { "Hide in level editor",               "레벨 에디터에서 숨기기" },
@@ -147,8 +216,8 @@ namespace Bismuth
             { "Persist counts",                     "카운트 유지" },
             { "Style",                              "스타일" },
             { "Slots",                              "슬롯" },
-            { "Click a card to turn that part on or off\n(highlighted = on).\nClick the ··· button on a card for its settings.",
-              "카드를 눌러 해당 요소를 켜거나 끕니다\n(강조 표시 = 켜짐).\n카드의 ··· 버튼을 누르면 설정이 열립니다." },
+            { "Click a card for its settings, Enabled included.\n(highlighted = on).",
+              "카드를 눌러 설정을 엽니다 (사용 스위치 포함).\n(강조 표시 = 켜짐)." },
             { "Reset counters for this preset",     "이 프리셋의 카운터 초기화" },
             { "+ Add Row",                          "+ 행 추가" },
             { "Delete this cell",                   "이 셀 삭제" },
@@ -176,7 +245,7 @@ namespace Bismuth
             { "E/LPerfects",                        "빠름/느림" },
             { "Early/Late",                         "빠름!/느림!" },
             { "Misses",                             "미스" },
-            { "Deaths",                             "사망" },
+            { "Deaths",                              "데스" },
             { "Hit error meter",                    "판정선 미터" },
             { "Autoplay controls",                  "자동플레이 컨트롤" },
             { "Autoplay icon",                      "자동플레이 아이콘" },
@@ -209,8 +278,8 @@ namespace Bismuth
             { "Reset layout to game defaults",      "게임 기본 레이아웃으로 초기화" },
             { "Drag and resize elements directly on screen.\nPrecise controls live in each element's page under Elements.",
               "화면에서 요소를 직접 끌어 옮기고 크기를 조정합니다.\n세부 설정은 요소 항목의 각 페이지에 있습니다." },
-            { "Click a card to show or hide that game element\n(highlighted = shown).\nClick the ··· button on a card for position, scale,\nweight and alignment.\nJudgements, Level Name and Error Meter can't be\ntoggled here — hide them from the Hide UI tab.",
-              "카드를 눌러 해당 게임 요소를 표시하거나 숨깁니다\n(강조 표시 = 표시 중).\n카드의 ··· 버튼에서 위치, 크기, 굵기, 정렬을\n설정할 수 있습니다.\n판정, 레벨 이름, 판정선는 여기서 끌 수 없습니다 —\nUI 숨기기에서 숨기세요." },
+            { "Click a card for its position, scale, weight and\nalignment, plus an Enabled switch (highlighted = shown).\nJudgements, Level Name and Error Meter can't be\ntoggled here — hide them from the Hide UI tab.",
+              "카드를 눌러 위치, 크기, 굵기, 정렬과\n사용 스위치를 설정합니다 (강조 표시 = 표시 중).\n판정, 레벨 이름, 판정선은 여기서 끌 수 없습니다 —\nUI 숨기기에서 숨기세요." },
 
             // ── Appearance tab ──────────────────────────────────────────────
             { "Scale",                              "크기" },
@@ -353,8 +422,8 @@ namespace Bismuth
             { "Visibility lives in Hide UI → ",     "표시 여부는 UI 숨기기에 있습니다 → " },
             { "Drag to move (Shift: 1 axis)  ·  Ctrl/⌘+Z undo",
               "드래그로 이동 (Shift: 한 축)  ·  Ctrl/⌘+Z 실행 취소" },
-            { "Drag to move (Shift: 1 axis)  ·  Grips / scroll to scale  ·  Right-click reset  ·  Ctrl/⌘+Z undo",
-              "드래그로 이동 (Shift: 한 축)  ·  손잡이/스크롤로 크기 조절  ·  우클릭 초기화  ·  Ctrl/⌘+Z 실행 취소" },
+            { "Drag to move (Shift: 1 axis)  ·  Grips / scroll to scale  ·  Knob to rotate (Shift: 15°)  ·  Right-click reset  ·  Ctrl/⌘+Z undo",
+              "드래그로 이동 (Shift: 1축)  ·  그립/스크롤로 크기  ·  손잡이로 회전 (Shift: 15°)  ·  우클릭 초기화  ·  Ctrl/⌘+Z 실행 취소" },
             { "Style 1: white fill along the top edge; flashes the Progress perfect color at 100%.",
               "스타일 1: 화면 상단을 흰색으로 채우고, 100%에서 진행도 퍼펙트 색상으로 번쩍입니다." },
 

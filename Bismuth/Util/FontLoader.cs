@@ -12,16 +12,14 @@ namespace Bismuth
         internal class FontEntry
         {
             public readonly string Name;
-            public readonly Font Font;        // bundled legacy Font (AssetBundle), or null
-            private readonly string _filePath; // loose .ttf/.otf path (custom font), or null
+            private readonly string _filePath; // .ttf/.otf on disk
             // Same family Bold weight, wired by LinkFamilies after scan
             internal FontEntry BoldSibling;
             private TMP_FontAsset _tmp;
 
-            public FontEntry(string name, Font font) { Name = name; Font = font; }
-            // Loose font file (user-droppable). Unity 6 TMP's CreateFontAsset(filePath) keeps
-            // the path and reloads the face on demand, so glyphs (incl. Korean) populate
-            // dynamically just like the bundled fonts — no AssetBundle needed.
+            /* Every font is a file on disk now — shipped none, installed as font packs, or
+               dropped in by hand. Unity 6 TMP's CreateFontAsset(filePath) keeps the path and
+               reloads the face on demand, so glyphs (incl. CJK) populate dynamically. */
             public FontEntry(string name, string filePath) { Name = name; _filePath = filePath; }
 
             /* Created on first use: dynamic SDF atlas, with family real Bold in weight
@@ -32,10 +30,8 @@ namespace Bismuth
                 {
                     if (_tmp == null)
                     {
-                        if (Font != null)
-                            _tmp = TMP_FontAsset.CreateFontAsset(Font);
-                        else if (!string.IsNullOrEmpty(_filePath))
-                            // Match CreateFontAsset(Font)'s defaults: 90pt, 9 padding, SDFAA, 1024².
+                        if (!string.IsNullOrEmpty(_filePath))
+                            // 90pt, 9 padding, SDFAA, 1024² — the defaults TMP builds an asset with.
                             _tmp = TMP_FontAsset.CreateFontAsset(_filePath, 0, 90, 9, GlyphRenderMode.SDFAA, 1024, 1024);
                         if (_tmp != null)
                         {
@@ -172,52 +168,43 @@ namespace Bismuth
             return null;
         }
 
-        private static string PlatformBundleSuffix()
-        {
-            switch (Application.platform)
-            {
-                case RuntimePlatform.WindowsPlayer: return "-win";
-                case RuntimePlatform.LinuxPlayer:   return "-linux";
-                default:                            return "-mac";
-            }
-        }
-
+        /* The build ships no fonts. Fonts arrive as installed font packs (FontPacks, one
+           subfolder per pack) or dropped in by hand, so both roots are scanned recursively.
+           An empty result is normal and handled: the panel and overlay fall back to the
+           game's own font (GameFontApplier.GameFont). */
         public static List<FontEntry> ScanFonts(string modPath)
         {
+            DropStaleBundle(modPath);
             var result = new List<FontEntry>();
-            string resourcesDir = Path.Combine(modPath, "Resources");
-            string suffix = PlatformBundleSuffix();
-
-            if (Directory.Exists(resourcesDir))
-            {
-                foreach (string filePath in Directory.GetFiles(resourcesDir))
-                {
-                    string name = Path.GetFileName(filePath);
-                    string ext = Path.GetExtension(filePath).ToLowerInvariant();
-                    if (ext == ".meta" || ext == ".ttf" || ext == ".otf") continue; // fonts handled below
-                    // Skip bundles belonging to a different platform
-                    bool wrongPlatform = false;
-                    foreach (string s in new[] { "-mac", "-win", "-linux" })
-                        if (s != suffix && name.EndsWith(s, StringComparison.OrdinalIgnoreCase)) wrongPlatform = true;
-                    if (!wrongPlatform) TryLoadBundle(filePath, result);
-                }
-            }
-
-            // Loose custom fonts (user-droppable .ttf/.otf) from <mod>/Fonts and <mod>/Resources.
             ScanLooseFonts(Path.Combine(modPath, "Fonts"), result);
-            ScanLooseFonts(resourcesDir, result);
-
+            ScanLooseFonts(Path.Combine(modPath, "Resources"), result);
             LinkFamilies(result);
             return result;
         }
 
-        // Register loose .ttf/.otf files as custom fonts. The file name (minus extension) is the
-        // entry name, so "Foo-Bold.ttf" splits into family Foo / weight Bold and bold-links like
-        // a bundled weight. Skips names already present (a bundled font wins).
+        /* Up to 1.3.x the fonts shipped as a 5.6 MB AssetBundle in Resources/. Updates extract
+           over the install and never delete, so without this the orphan sits there forever on
+           every existing install, doing nothing. Our own file, by exact name. */
+        private static void DropStaleBundle(string modPath)
+        {
+            try
+            {
+                string old = Path.Combine(Path.Combine(modPath, "Resources"), "bismuth-fonts");
+                if (!File.Exists(old)) return;
+                File.Delete(old);
+                MainClass.Logger.Log("[Bismuth] Removed the old font bundle — fonts are packs now");
+            }
+            catch { /* read-only install, locked file: harmless, it just stays */ }
+        }
+
+        // Register .ttf/.otf files. The file name (minus extension) is the entry name, so
+        // "Foo-Bold.ttf" splits into family Foo / weight Bold and bold-links to its siblings.
+        // Recursive: font packs install into Fonts/<PackId>/, and it lets a hand-managed
+        // Fonts/ folder be organised. First name seen wins.
         private static void ScanLooseFonts(string dir, List<FontEntry> result)
         {
             if (!Directory.Exists(dir)) return;
-            foreach (string filePath in Directory.GetFiles(dir))
+            foreach (string filePath in Directory.GetFiles(dir, "*", SearchOption.AllDirectories))
             {
                 string ext = Path.GetExtension(filePath).ToLowerInvariant();
                 if (ext != ".ttf" && ext != ".otf") continue;
@@ -285,33 +272,5 @@ namespace Bismuth
             _symbolFont = null;
         }
 
-        private static void TryLoadBundle(string path, List<FontEntry> result)
-        {
-            AssetBundle bundle = null;
-            try
-            {
-                bundle = AssetBundle.LoadFromFile(path);
-                if (bundle == null) return;
-
-                Font[] fonts = bundle.LoadAllAssets<Font>();
-                if (fonts == null) return;
-
-                foreach (Font font in fonts)
-                {
-                    if (font == null) continue;
-                    MainClass.Logger.Log($"[Bismuth] Loaded font '{font.name}' from bundle");
-                    result.Add(new FontEntry(font.name, font));
-                }
-            }
-            catch (Exception e)
-            {
-                MainClass.Logger.Warning($"[Bismuth] Bundle '{Path.GetFileName(path)}': {e.Message}");
-            }
-            finally
-            {
-                // Unload bundle structure but keep assets alive in memory
-                bundle?.Unload(false);
-            }
-        }
     }
 }

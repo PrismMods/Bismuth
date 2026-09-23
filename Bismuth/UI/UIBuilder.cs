@@ -604,8 +604,10 @@ namespace Bismuth.UI
         public static GameObject ToggleCard(Transform parent, string label, bool initial, Action<bool> onChange)
             => CardInternal(parent, label, true, initial, onChange, null);
 
-        // Card with a ⚙ corner button that drills into a subpage. With a toggle, the card
-        // body toggles and only the gear navigates; without one, the whole card navigates.
+        // Card that drills into a subpage — the whole card navigates. With a toggle, its
+        // on/off flag rides along to the subpage as an "Enabled" switch (see
+        // PageStack.PendingCardToggle), and the card keeps showing the state as its
+        // accent tint.
         // `keywords` = comma-separated subpage contents, for settings search.
         public static GameObject NavCard(Transform parent, string label, Action onOpen, string keywords = null)
             => CardInternal(parent, label, false, false, null, onOpen, keywords);
@@ -616,7 +618,10 @@ namespace Bismuth.UI
         private static GameObject CardInternal(Transform parent, string label,
             bool hasToggle, bool initial, Action<bool> onToggle, Action onOpen, string keywords = null)
         {
-            SettingsSearch.Register(label, onOpen, keywords);
+            // Search navigates through the wrapper, not the raw onOpen, so a card reached
+            // from search still gets its Enabled switch. Assigned below.
+            Action open = null;
+            SettingsSearch.Register(label, onOpen == null ? null : new Action(() => open()), keywords);
             var card = Rect("Card_" + label, parent);
             label = Loc.T(label);
             bool value = initial;
@@ -673,57 +678,27 @@ namespace Bismuth.UI
             var h = card.AddComponent<HoverHandler>();
             h.OnEnter = () => { hover = true; Apply(); };
             h.OnExit = () => { hover = false; Apply(); };
-            ClickHandler.Attach(card, hasToggle
-                ? () => { value = !value; Apply(); onToggle?.Invoke(value); }
-                : onOpen);
 
             if (onOpen != null)
-            {
-                // Settings corner button — its own raycast target, so clicking it never
-                // toggles. Icon is a ··· drawn from circles: user-supplied panel fonts
-                // often lack glyphs like ⚙, which rendered as nothing.
-                var gearGo = Rect("Gear", card.transform);
-                var gearRect = (RectTransform)gearGo.transform;
-                gearRect.anchorMin = gearRect.anchorMax = new Vector2(1, 1);
-                gearRect.pivot = new Vector2(1, 1);
-                gearRect.anchoredPosition = new Vector2(-2f, -2f);
-                gearRect.sizeDelta = new Vector2(20f, 16f);
-                var gearBg = gearGo.AddComponent<RoundedRectGraphic>();
-                gearBg.Radius = 4f;
-                gearBg.AAFringe = 0.5f;
-                gearBg.color = new Color(0, 0, 0, 0);
-                gearBg.raycastTarget = true;
+                open = hasToggle
+                    // The card's flag becomes the subpage's Enabled switch; writing back
+                    // through here keeps the card tint in sync when the subpage pops.
+                    ? () =>
+                    {
+                        PageStack.PendingCardToggle = new PageStack.CardToggle
+                        {
+                            Get = () => value,
+                            Set = v => { value = v; Apply(); onToggle?.Invoke(v); },
+                        };
+                        try { onOpen(); }
+                        finally { PageStack.PendingCardToggle = null; }
+                    }
+                    : onOpen;
 
-                var dots = new RoundedRectGraphic[3];
-                for (int d = 0; d < 3; d++)
-                {
-                    var dotGo = Rect("D" + d, gearGo.transform);
-                    var dRect = (RectTransform)dotGo.transform;
-                    dRect.anchorMin = dRect.anchorMax = new Vector2(0.5f, 0.5f);
-                    dRect.pivot = new Vector2(0.5f, 0.5f);
-                    dRect.sizeDelta = new Vector2(2.5f, 2.5f);
-                    dRect.anchoredPosition = new Vector2((d - 1) * 4.5f, 0f);
-                    var dg = dotGo.AddComponent<RoundedRectGraphic>();
-                    dg.Radius = 1.25f;
-                    dg.AAFringe = 0.5f;
-                    dg.color = Theme.TextMuted;
-                    dg.raycastTarget = false;
-                    dots[d] = dg;
-                }
+            ClickHandler.Attach(card, onOpen != null
+                ? open
+                : () => { value = !value; Apply(); onToggle?.Invoke(value); });
 
-                var gh = gearGo.AddComponent<HoverHandler>();
-                gh.OnEnter = () =>
-                {
-                    gearBg.color = new Color(1f, 1f, 1f, 0.12f);
-                    foreach (var dg in dots) dg.color = Theme.Text;
-                };
-                gh.OnExit = () =>
-                {
-                    gearBg.color = new Color(0, 0, 0, 0);
-                    foreach (var dg in dots) dg.color = Theme.TextMuted;
-                };
-                ClickHandler.Attach(gearGo, onOpen);
-            }
             return card;
         }
 

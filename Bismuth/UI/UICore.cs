@@ -180,11 +180,13 @@ namespace Bismuth.UI
             catch (Exception ex) { BismuthLog.Log("[UI] prewarm skipped: " + ex.Message); }
         }
 
+        // No fonts installed (the default — they ship as font packs) falls back to the game's
+        // own localized asset rather than TMP's Latin-only default, which tofus a Korean panel.
         private static TMP_FontAsset ResolveSavedFont()
         {
             var entry = FontLoader.Find(_availableFonts, _settings.UiFontName)
                         ?? (_availableFonts.Count > 0 ? _availableFonts[0] : null);
-            return entry?.TmpFont;
+            return entry?.TmpFont ?? GameFontApplier.GameFont;
         }
 
         // Tracks the scale at which the panel's sizeDelta + anchoredPosition currently make sense.

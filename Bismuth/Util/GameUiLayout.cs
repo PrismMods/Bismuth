@@ -24,6 +24,14 @@ namespace Bismuth
 
         /* txtLevelName is deliberately absent. Bismuth already owns its transform
            (LevelNameScale/LevelNameY via ApplyLevelNameTransform). */
+        /* Targets that live on the results screen. They are edited from their own menu
+           (GameUiEditor.OpenResults) instead of the HUD editor. Overrides are stored under the
+           same keys either way, so moving them between editors lost nobody's positions. */
+        internal static readonly HashSet<string> ResultsKeys =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "congrats", "strictclear", "results" };
+
+        internal static bool IsResultsKey(string key) => key != null && ResultsKeys.Contains(key);
+
         internal static readonly TargetDef[] Targets =
         {
             new TargetDef { Key = "percent",      Label = "Death %",        Get = () => Rect(Uic?.txtPercent) },
@@ -108,6 +116,16 @@ namespace Bismuth
             return null;
         }
 
+        /* The game's own results text. Bismuth's custom results screen mirrors its active
+           state (so it inherits the game's showDetailedResults setting for free) and hides it
+           by alpha rather than deactivating it — killing it would destroy that signal. */
+        internal static UnityEngine.UI.Text ResultsText()
+        {
+            // txtResults is the DetailedResults component; the drawn text is its textComponent.
+            try { return Uic?.txtResults?.textComponent; }
+            catch { return null; }
+        }
+
         private static scrUIController Uic
         {
             get { try { return scrUIController.instance; } catch { return null; } }
@@ -155,6 +173,7 @@ namespace Bismuth
             o.OffX = d.OffX;
             o.OffY = d.OffY;
             o.Scale = d.Scale;
+            o.Rotation = d.Rotation;
             o.Align = d.Align; // reset alignment too (autoplay default is Center, not inherit)
             o.Hidden = false; // reset un-hides
             ApplyOne(key);
@@ -302,7 +321,10 @@ namespace Bismuth
                wrapper there so scale grows the element in place. With wrapper rect ==
                parent rect, anchoredPosition equals the on-screen shift regardless of
                pivot. */
+            // Rotation is cleared too: a rotated wrapper skews InverseTransformPoint and the
+            // measured centre comes out wrong.
             w.localScale = Vector3.one;
+            w.localRotation = Quaternion.identity;
             w.anchoredPosition = Vector2.zero;
             Vector2 c = (Vector2)w.InverseTransformPoint(WorldCenter(rt));
             var r = w.rect;
@@ -312,6 +334,9 @@ namespace Bismuth
             w.anchoredPosition = new Vector2(o.OffX, o.OffY);
             float sc = Mathf.Clamp(o.Scale, 0.1f, 5f);
             w.localScale = new Vector3(sc, sc, 1f);
+            // Shares the centre pivot set above, so an element spins in place rather than
+            // swinging around its parent's origin.
+            w.localRotation = Quaternion.Euler(0f, 0f, o.Rotation);
 
             ApplyVisibility(w, o.Hidden);
 

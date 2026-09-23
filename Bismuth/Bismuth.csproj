@@ -45,6 +45,12 @@
         <Reference Include="netstandard"><HintPath>$(AdofaiManaged)/netstandard.dll</HintPath><Private>False</Private></Reference>
         <Reference Include="Newtonsoft.Json"><HintPath>$(AdofaiManaged)/Newtonsoft.Json.dll</HintPath><Private>False</Private></Reference>
         <Reference Include="System" />
+        <!-- Compile-time only: the running copy is installed and loaded by PrismBootstrap, which
+             is why Private is False. Refresh with lib/update-prismlib.sh. -->
+        <Reference Include="PrismLib">
+            <HintPath>$(MSBuildProjectDirectory)/../lib/PrismLib.dll</HintPath>
+            <Private>False</Private>
+        </Reference>
         <Reference Include="System.Core" />
         <Reference Include="System.Xml.Linq" />
         <Reference Include="System.Data.DataSetExtensions" />
@@ -88,6 +94,8 @@
         <Compile Include="Overlay\Overlay.cs" />
         <Compile Include="Overlay\Overlay.Build.cs" />
         <Compile Include="Overlay\Overlay.Update.cs" />
+        <Compile Include="Overlay\Overlay.TimingGraph.cs" />
+        <Compile Include="Overlay\Overlay.Results.cs" />
         <Compile Include="Overlay\Overlay.Game.cs" />
         <Compile Include="Overlay\Overlay.Apply.cs" />
         <Compile Include="Overlay\ColorGradient.cs" />
@@ -102,6 +110,12 @@
         <Compile Include="Util\FontLoader.cs" />
         <Compile Include="Util\TmpShadow.cs" />
         <Compile Include="Util\UpdateChecker.cs" />
+        <Compile Include="Util\PrismBootstrap.cs" />
+        <Compile Include="Util\PrismBridge.cs" />
+        <Compile Include="Util\FontPacks.cs" />
+        <Compile Include="Util\Margins.cs" />
+        <Compile Include="Util\HitOffsets.cs" />
+        <Compile Include="Util\ResultsFields.cs" />
         <Compile Include="Util\LoadProfiler.cs" />
         <Compile Include="Util\SemVer.cs" />
         <Compile Include="Util\OsShell.cs" />
@@ -136,6 +150,7 @@
         <Compile Include="UI\Pages\PageInput.cs" />
         <Compile Include="UI\Pages\PageHideUi.cs" />
         <Compile Include="UI\Pages\PageUI.cs" />
+        <Compile Include="UI\Pages\PageFontPacks.cs" />
         <Compile Include="UI\Pages\PageMisc.cs" />
         <Compile Include="UI\Pages\PageGameUi.cs" />
         <Compile Include="UI\Pages\PageTweaks.cs" />

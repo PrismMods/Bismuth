@@ -12,6 +12,36 @@ namespace Bismuth
         public UnityEngine.Color ToColor() => new UnityEngine.Color(R, G, B, A);
     }
 
+    /* One results field's overrides. X/Y are NaN until moved, which means "use the built-in
+       default position" — a sentinel rather than 0,0, since 0,0 is a legitimate corner. */
+    public class ResultsField
+    {
+        public string Key;
+        public float X = float.NaN;
+        public float Y = float.NaN;
+        public float Scale = 1f;
+        public float Rotation;      // degrees, clockwise
+        /* 0 Left, 1 Center, 2 Right — within the field's own half of the row. The defaults
+           push the pair apart (label out to the left, number out to the right), which reads
+           as a table; centring both instead makes them hug the middle. Entries saved before
+           these existed take the defaults, since absent XML elements leave the initializer. */
+        public int LabelAlign = 0;
+        public int ValueAlign = 2;
+        public float Width;         // 0 = follow Settings.ResultsFieldWidth
+        public bool Hidden;
+        public string Label;        // null/empty = the built-in label
+        public KvColor LabelColor;
+        public KvColor ValueColor;
+    }
+
+    // One stat row's colour overrides. Null member = use the default.
+    public class StatColor
+    {
+        public string Key;
+        public KvColor Label;
+        public KvColor Value;
+    }
+
     public class KeyViewerCell
     {
         public string Token = "";    // "Tab" / "KPS" / "Total" / "A" / "[" / etc.
@@ -127,6 +157,7 @@ namespace Bismuth
         public string Key;
         public float OffX;
         public float OffY;
+        public float Rotation;   // degrees, clockwise; pivots on the element's own centre
         public float Scale = 1f;
         // Horizontal text alignment for text-bearing elements (currently the autoplay
         // label). -1 = inherit the game's alignment; 0/1/2 = Left/Center/Right.
@@ -147,6 +178,80 @@ namespace Bismuth
         public bool ShowProgress = true;
         public bool ShowAcc = false;
         public bool ShowXAcc = true;
+        public bool ShowXScore = false;
+        public bool ShowHitError = false;
+        // Timing graph: a histogram of this attempt's hit offsets. Position is a normalized
+        // screen anchor like the combo display; size in canvas units. RangeMs 0 = auto-fit.
+        public bool ShowTimingGraph = false;
+        public float TimingGraphX = 0.5f;
+        public float TimingGraphY = 0.14f;
+        public float TimingGraphWidth = 360f;
+        public float TimingGraphHeight = 80f;
+        public float TimingGraphScale = 1f;   // multiplies Width/Height; set by scroll in the results editor
+        public float TimingGraphRotation = 0f;   // degrees, from the editor's rotation knob
+
+        /* A second placement used once the results screen is up. Off by default, and the
+           results values start equal to the play ones, so switching it on changes nothing
+           until you actually move it. With it on, the graph slides between the two on level
+           complete rather than teleporting. */
+        public bool TimingGraphResultsPos = false;
+        public float TimingGraphResultsX = 0.5f;
+        public float TimingGraphResultsY = 0.14f;
+        public float TimingGraphResultsScale = 1f;
+        public float TimingGraphResultsRotation = 0f;
+        public float TimingGraphMoveTime = 0.45f;   // seconds for that slide
+        public bool TimingGraphBackground = true;
+
+        /* Custom detailed results: Bismuth draws each results field as its own placeable
+           element instead of the game's single text block. Entries are created lazily, so an
+           untouched field stores nothing and old save files stay valid. */
+        public bool CustomResults = false;
+        /* How far apart a label and its value sit: the row spans this width and the two hug
+           its edges. Global, with a per-field override for the odd row that needs to be
+           wider or tighter than the rest. */
+        public float ResultsFieldWidth = 240f;
+        public List<ResultsField> ResultsFields = new List<ResultsField>();
+
+        public ResultsField ResultsFieldFor(string key, bool create = false)
+        {
+            if (string.IsNullOrEmpty(key)) return null;
+            if (ResultsFields == null) ResultsFields = new List<ResultsField>();
+            foreach (var f in ResultsFields)
+                if (string.Equals(f.Key, key, System.StringComparison.OrdinalIgnoreCase)) return f;
+            if (!create) return null;
+            var made = new ResultsField { Key = key };
+            ResultsFields.Add(made);
+            return made;
+        }
+        public float TimingGraphRangeMs = 0f;
+        // Fixed column count, always all drawn (empty ones as a stub). Even is fine: zero then
+        // falls on a column boundary, giving an equal number of early and late columns.
+        public int TimingGraphBuckets = 60;
+
+        /* Per-stat colour overrides, keyed rather than two fields per stat — eleven stats
+           would otherwise mean twenty-two settings. Null entry or null member = default
+           (white for a label; for a value, white or whatever its gradient says). Same shape
+           as GameUiTextWeights. */
+        public List<StatColor> StatColors = new List<StatColor>();
+
+        public StatColor StatColorFor(string key, bool create = false)
+        {
+            if (string.IsNullOrEmpty(key)) return null;
+            if (StatColors == null) StatColors = new List<StatColor>();
+            foreach (var c in StatColors)
+                if (string.Equals(c.Key, key, System.StringComparison.OrdinalIgnoreCase)) return c;
+            if (!create) return null;
+            var made = new StatColor { Key = key };
+            StatColors.Add(made);
+            return made;
+        }
+
+        public UnityEngine.Color StatLabelColor(string key)
+            => StatColorFor(key)?.Label?.ToColor() ?? UnityEngine.Color.white;
+
+        // Gradient-less rows only; a row with a gradient keeps taking its value colour there.
+        public UnityEngine.Color StatValueColor(string key)
+            => StatColorFor(key)?.Value?.ToColor() ?? UnityEngine.Color.white;
         public bool ShowBpm = true;
         public bool ShowTileBpm = true;
         // KPS / Best % / Progress Bar ship enabled (Default profile); Azure disables them.
@@ -305,6 +410,11 @@ namespace Bismuth
         public float ComboLabelShadowOffsetY = -2.5f;
         public KvColor ComboLabelShadowColor = new KvColor { R = 0f, G = 0f, B = 0f, A = 0.5f };
         public bool ComboCountAuto = false;
+        /* Strict combo: only an exact XPerfect extends it, so a +/-Perfect breaks the chain
+           like any other margin. Meaningless on a game build with one merged Perfect
+           (Margins.SplitPerfect false) — the UI hides it there and the check falls back to
+           the whole perfect band. */
+        public bool ComboXPerfectOnly = false;
 
         public bool BlockInputsWhileMenuOpen = true;
 
@@ -342,7 +452,10 @@ namespace Bismuth
         // hides every popup; otherwise the per-category flags apply (see ShouldHideJudgement).
         public bool HideJudgementsEnabled = false;
         public bool HideJudgementsAll = false;
-        public bool HideJudgementsPerfect = false;    // Perfect
+        public bool HideJudgementsPerfect = false;    // Perfect (the signed ones where split)
+        // Only meaningful on a game build that splits Perfect; independent of the above, so
+        // "Perfects" and "XPerfects" each mean exactly what they say.
+        public bool HideJudgementsXPerfect = false;   // XPerfect
         public bool HideJudgementsELPerfect = false;  // EarlyPerfect, LatePerfect
         public bool HideJudgementsEarlyLate = false;  // VeryEarly, VeryLate
         public bool HideJudgementsMiss = false;       // TooEarly, TooLate
@@ -366,18 +479,24 @@ namespace Bismuth
            Static: runtime-only, never serialized, no instance needed from another mod. */
         public static bool ExternalEditorSuppress;
 
+        /* The same question, asked of PrismLib too: Sapphire claims StateKey.GameHud in Editor
+           Mode. The field above stays for Sapphire builds that predate PrismLib, and is what
+           older Sapphire still poke by reflection. */
+        internal static bool EditorSuppressed
+            => ExternalEditorSuppress || (PrismBridge.Available && PrismBridge.HudHeldElsewhere());
+
         // Effective Hide* — each Hide flag is gated by the section's master toggle so consumers
         // never need to repeat the && HideUiEnabled check. Sapphire's Editor Mode ORs into
         // the flags it covers, so every existing consumer picks it up for free.
         [System.Xml.Serialization.XmlIgnore] public bool ActiveHideAllUI             => HideUiEnabled && HideAllUI;
-        [System.Xml.Serialization.XmlIgnore] public bool ActiveHideHitmeter          => (HideUiEnabled && HideHitmeter) || ExternalEditorSuppress;
-        [System.Xml.Serialization.XmlIgnore] public bool ActiveHideAutoplayText      => (HideUiEnabled && HideAutoplayText) || ExternalEditorSuppress;
-        [System.Xml.Serialization.XmlIgnore] public bool ActiveHideAutoplayIcon      => (HideUiEnabled && HideAutoplayIcon) || ExternalEditorSuppress;
-        [System.Xml.Serialization.XmlIgnore] public bool ActiveHideNoFail            => (HideUiEnabled && HideNoFail) || ExternalEditorSuppress;
-        [System.Xml.Serialization.XmlIgnore] public bool ActiveHideDifficulty        => (HideUiEnabled && HideDifficulty) || ExternalEditorSuppress;
+        [System.Xml.Serialization.XmlIgnore] public bool ActiveHideHitmeter          => (HideUiEnabled && HideHitmeter) || EditorSuppressed;
+        [System.Xml.Serialization.XmlIgnore] public bool ActiveHideAutoplayText      => (HideUiEnabled && HideAutoplayText) || EditorSuppressed;
+        [System.Xml.Serialization.XmlIgnore] public bool ActiveHideAutoplayIcon      => (HideUiEnabled && HideAutoplayIcon) || EditorSuppressed;
+        [System.Xml.Serialization.XmlIgnore] public bool ActiveHideNoFail            => (HideUiEnabled && HideNoFail) || EditorSuppressed;
+        [System.Xml.Serialization.XmlIgnore] public bool ActiveHideDifficulty        => (HideUiEnabled && HideDifficulty) || EditorSuppressed;
         [System.Xml.Serialization.XmlIgnore] public bool ActiveHideLevelName         => HideUiEnabled && HideLevelName;
         [System.Xml.Serialization.XmlIgnore] public bool ActiveHideBetaBuild         => HideUiEnabled && HideBetaBuild;
-        [System.Xml.Serialization.XmlIgnore] public bool ActiveHideControlsTip       => (HideUiEnabled && HideControlsTip) || ExternalEditorSuppress;
+        [System.Xml.Serialization.XmlIgnore] public bool ActiveHideControlsTip       => (HideUiEnabled && HideControlsTip) || EditorSuppressed;
 
         /* Whether a judgement hit-text popup of margin m should be suppressed. Gated by
            the section master (HideUiEnabled) like the Active* flags; HideJudgements hides
@@ -386,21 +505,23 @@ namespace Bismuth
         {
             if (!HideUiEnabled || !HideJudgementsEnabled) return false;
             if (HideJudgementsAll) return true;
-            switch (m)
-            {
-                case HitMargin.Perfect:                            return HideJudgementsPerfect;
-                case HitMargin.EarlyPerfect: case HitMargin.LatePerfect: return HideJudgementsELPerfect;
-                case HitMargin.VeryEarly:    case HitMargin.VeryLate:    return HideJudgementsEarlyLate;
-                case HitMargin.TooEarly:     case HitMargin.TooLate:     return HideJudgementsMiss;
-                case HitMargin.FailMiss: case HitMargin.FailOverload:
-                case HitMargin.Multipress: case HitMargin.OverPress:     return HideJudgementsDeath;
-                default:                                           return false;  // Auto, etc.
-            }
+            // if/else, not switch: Margins values are resolved at runtime (see Margins) and
+            // a case label needs a compile-time constant.
+            if (Margins.SplitPerfect && m == Margins.XPerfect)          return HideJudgementsXPerfect;
+            if (Margins.IsPerfect(m))                                   return HideJudgementsPerfect;
+            if (m == Margins.EarlyPerfect || m == Margins.LatePerfect)  return HideJudgementsELPerfect;
+            if (m == Margins.VeryEarly    || m == Margins.VeryLate)     return HideJudgementsEarlyLate;
+            if (m == Margins.TooEarly     || m == Margins.TooLate)      return HideJudgementsMiss;
+            if (m == Margins.FailMiss     || m == Margins.FailOverload
+             || m == Margins.Multipress   || m == Margins.OverPress)    return HideJudgementsDeath;
+            return false;  // Auto, etc.
         }
 
         public OverlayPosition ProgressPosition  = OverlayPosition.Left;
         public OverlayPosition AccPosition       = OverlayPosition.Left;
         public OverlayPosition XAccPosition      = OverlayPosition.Left;
+        public OverlayPosition XScorePosition    = OverlayPosition.Left;
+        public OverlayPosition HitErrorPosition  = OverlayPosition.Left;
         public OverlayPosition BpmPosition       = OverlayPosition.Right;
         public OverlayPosition TileBpmPosition   = OverlayPosition.Right;
         public OverlayPosition KpsPosition       = OverlayPosition.Right;
@@ -416,6 +537,8 @@ namespace Bismuth
         public string ProgressLabel = "";
         public string AccLabel = "";
         public string XAccLabel = "";
+        public string XScoreLabel = "";
+        public string HitErrorLabel = "";
         public string BpmLabel = "";
         public string TileBpmLabel = "";
         public string KpsLabel = "";

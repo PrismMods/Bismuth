@@ -48,6 +48,55 @@ namespace Bismuth
             }
         }
 
+        /* Per-hit timing offset. A PREFIX on UpdateHitErrorMeter, not a hook on the meter:
+           scrPlayer.Hit calls this every hit unconditionally, but it returns before touching
+           the meter when the player has the meter switched off — so hooking the meter meant
+           no data at all for anyone who hides it. The prefix runs before that early-out.
+           Param names match the IL signature. */
+        [HarmonyPatch(typeof(scrController), "UpdateHitErrorMeter")]
+        private static class HitTimingPatch
+        {
+            public static void Prefix(scrController __instance, scrFloor hitFloor, scrPlayer player,
+                scrPlanet priorChosenPlanet)
+            {
+                var overlay = Overlay.Instance;
+                if (overlay == null || __instance == null || !__instance.gameworld) return;
+
+                // By the time this runs the hit has been judged — SwitchChosen came first.
+                var tracker = player != null ? player.marginTracker : null;
+                var last = tracker != null ? tracker.lastAddedHitMargin : null;
+                if (!last.HasValue || !Margins.IsTimed(last.Value)) return;
+
+                if (HitOffsets.TryAngle(hitFloor, priorChosenPlanet, out float angle)
+                    && HitOffsets.TryToMs(angle, priorChosenPlanet, out float ms))
+                    overlay.OnHitOffset(ms, last.Value);
+            }
+        }
+
+        /* Results screen appeared. DetailedResults never deactivates its GameObject — Show()
+           just fills the strings and flips `enabled` — so "is it on screen" cannot be read
+           from the hierarchy. This call is the signal. */
+        [HarmonyPatch(typeof(DetailedResults), "Show")]
+        private static class DetailedResultsShowPatch
+        {
+            public static void Postfix() => Overlay.Instance?.OnResultsShown();
+        }
+
+        /* Suppress the game's readout by blanking its text, not by fading it. GameFontApplier
+           hides the legacy Text and draws a TMP shadow that MIRRORS its string, so alpha on
+           the original changes nothing visible — an empty string blanks both. ShowForPlayer is
+           where the text is written, including per-player in coop. */
+        [HarmonyPatch(typeof(DetailedResults), "ShowForPlayer")]
+        private static class DetailedResultsTextPatch
+        {
+            public static void Postfix(DetailedResults __instance)
+            {
+                if (MainClass.Settings == null || !MainClass.Settings.CustomResults) return;
+                if (__instance != null && __instance.textComponent != null)
+                    __instance.textComponent.text = "";
+            }
+        }
+
         // An in-game retry reloads the scene via scrController.Restart, which re-enters
         // scnGame.Play fresh — so flag the restart here and consume it in the Play postfix.
         // (ADOFAI v3.2 dropped Play's old isRestart parameter, breaking the by-name bind.)

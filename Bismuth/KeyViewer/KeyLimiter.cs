@@ -739,6 +739,10 @@ namespace Bismuth
         // starved the hit tracker (empty counts / NaN accuracy).
         private static bool BlockInputs => _blockWhileOpen && UICore.IsOpen && !Autoplaying;
 
+        /// Same question for PrismLib: while this is true, every other mod's hotkeys are dead and
+        /// they have no way to know it from their own side. MainClass turns it into a claim.
+        internal static bool BlockingInputs => BlockInputs;
+
         private static bool Autoplaying
         {
             get { try { return RDC.auto; } catch { return false; } }
