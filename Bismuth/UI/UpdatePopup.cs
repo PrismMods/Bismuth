@@ -13,6 +13,11 @@ namespace Bismuth.UI
         private static TextMeshProUGUI _status;
         private static GameObject _updateBtn;
 
+        /* The two versions reach here in different shapes: the installed one comes from
+           SemVer.ToString() ("1.3.5-b1"), the other is the raw git tag ("v1.3.5"). Prefixing
+           both blindly produced "vv1.3.5", so strip any leading v and add exactly one. */
+        private static string V(string s) => "v" + (s ?? "").TrimStart('v', 'V');
+
         public static void Show(string current, string latest, string releasesUrl, Action updateNow)
         {
             Close();
@@ -42,7 +47,7 @@ namespace Bismuth.UI
 
             MakeText(panel.transform, "Title", "Bismuth — update available",
                 17, FontStyle.Bold, Theme.Text, -8f, 30f);
-            MakeText(panel.transform, "Body", $"v{current}  →  v{latest}",
+            MakeText(panel.transform, "Body", $"{V(current)}  →  {V(latest)}",
                 15, FontStyle.Normal, Theme.Text, -42f, 24f);
             _status = MakeText(panel.transform, "Status", "",
                 13, FontStyle.Normal, Theme.TextMuted, -68f, 22f);
