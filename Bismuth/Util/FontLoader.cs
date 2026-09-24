@@ -22,6 +22,18 @@ namespace Bismuth
                reloads the face on demand, so glyphs (incl. CJK) populate dynamically. */
             public FontEntry(string name, string filePath) { Name = name; _filePath = filePath; }
 
+            /* A .ttc holds several faces in one file, which is most of what macOS ships as
+               system fonts. TMP's CreateFontAsset takes a face index, so a collection is
+               loadable — face 0 unless told otherwise. */
+            public FontEntry(string name, string filePath, int faceIndex, bool system)
+            {
+                Name = name; _filePath = filePath; _faceIndex = faceIndex; IsSystem = system;
+            }
+
+            private readonly int _faceIndex;
+            // Installed on the machine rather than shipped or dropped in by the player.
+            public readonly bool IsSystem;
+
             /* Created on first use: dynamic SDF atlas, with family real Bold in weight
                table so <b>/FontStyles.Bold doesn't fall back to synthetic bold */
             public TMP_FontAsset TmpFont
@@ -32,7 +44,7 @@ namespace Bismuth
                     {
                         if (!string.IsNullOrEmpty(_filePath))
                             // 90pt, 9 padding, SDFAA, 1024² — the defaults TMP builds an asset with.
-                            _tmp = TMP_FontAsset.CreateFontAsset(_filePath, 0, 90, 9, GlyphRenderMode.SDFAA, 1024, 1024);
+                            _tmp = TMP_FontAsset.CreateFontAsset(_filePath, _faceIndex, 90, 9, GlyphRenderMode.SDFAA, 1024, 1024);
                         if (_tmp != null)
                         {
                             _tmp.name = Name + " (TMP)";
@@ -178,8 +190,43 @@ namespace Bismuth
             var result = new List<FontEntry>();
             ScanLooseFonts(Path.Combine(modPath, "Fonts"), result);
             ScanLooseFonts(Path.Combine(modPath, "Resources"), result);
+            // Last, so a pack or a hand-dropped file always wins a name clash.
+            if (MainClass.Settings != null && MainClass.Settings.IncludeSystemFonts)
+                ScanSystemFonts(result);
             LinkFamilies(result);
             return result;
+        }
+
+        /* Fonts installed on the machine. Off by default: a desktop can carry hundreds, and
+           they'd swamp every font dropdown for someone who only wants the packs.
+
+           Only paths are taken, never Font.CreateDynamicFontFromOSFont — a TMP_FontAsset is
+           built from the file exactly like a pack font, so system fonts get the same dynamic
+           SDF atlas and CJK glyph population as everything else. */
+        private static void ScanSystemFonts(List<FontEntry> result)
+        {
+            string[] paths;
+            try { paths = Font.GetPathsToOSFonts(); }
+            catch (Exception e)
+            {
+                MainClass.Logger.Warning("[Bismuth] System fonts unavailable: " + e.Message);
+                return;
+            }
+            if (paths == null) return;
+
+            int added = 0, skipped = 0;
+            Array.Sort(paths, StringComparer.OrdinalIgnoreCase);
+            foreach (string filePath in paths)
+            {
+                string ext = Path.GetExtension(filePath).ToLowerInvariant();
+                // .ttc/.otc are collections; face 0 is the family's regular in practice.
+                if (ext != ".ttf" && ext != ".otf" && ext != ".ttc" && ext != ".otc") { skipped++; continue; }
+                string name = Path.GetFileNameWithoutExtension(filePath);
+                if (string.IsNullOrEmpty(name) || Find(result, name) != null) { skipped++; continue; }
+                result.Add(new FontEntry(name, filePath, 0, system: true));
+                added++;
+            }
+            MainClass.Logger.Log($"[Bismuth] System fonts: {added} added, {skipped} skipped");
         }
 
         /* Up to 1.3.x the fonts shipped as a 5.6 MB AssetBundle in Resources/. Updates extract

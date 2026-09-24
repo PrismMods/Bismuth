@@ -435,3 +435,4 @@ RELEASE_NOTES_kr.md
 
 # Fetched by lib/update-prismlib.sh; never edited here
 lib/PrismLib.dll
+lib/PrismLib.UI.dll

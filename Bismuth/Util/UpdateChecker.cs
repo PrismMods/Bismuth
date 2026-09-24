@@ -361,8 +361,9 @@ namespace Bismuth
             }
 
             BismuthLog.Log($"Update available: v{_current} → {bestTag} ({channel} channel)");
-            UpdatePopup.Show(_currentKnown ? _current.ToString() : "?", bestTag, ReleasesPage,
-                () => StartDownload());
+            // UI.UpdateToast picks this up from Status/LatestTag on its next tick. The modal
+            // used to open here; a corner card that can be dismissed beats one that blocks the
+            // screen on every launch until it is answered.
         }
 
         // ── Install ────────────────────────────────────────────────────────

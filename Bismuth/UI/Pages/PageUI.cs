@@ -71,6 +71,15 @@ namespace Bismuth.UI.Pages
                 entry => UICore.ApplyFont(entry));
             UIBuilder.NavRow(content, "Font packs", () => PageFontPacks.Open(stack),
                 "download, install, fonts, typeface, ttf, otf");
+            /* Re-scan on change: the font list is built once and every picker holds it, so
+               flipping this has to go through the same reload path a pack install uses. */
+            UIBuilder.Collapsible(content, "Include system fonts", s.IncludeSystemFonts,
+                v =>
+                {
+                    s.IncludeSystemFonts = v;
+                    UICore.OnSettingsChanged?.Invoke();
+                    MainClass.RequestForceReload();
+                }, null);
 
             UIBuilder.Spacer(content);
             UIBuilder.SectionHeader(content, "Accent");

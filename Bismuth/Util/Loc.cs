@@ -129,6 +129,7 @@ namespace Bismuth
             { "Enabled",                            "사용" },
             // Font packs (Appearance → Font packs)
             { "Font packs",                         "폰트 팩" },
+            { "Include system fonts",               "시스템 폰트 포함" },
             { "Install",                            "설치" },
             { "Remove",                             "제거" },
             { "Installing…",                        "설치 중…" },

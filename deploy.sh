@@ -6,11 +6,13 @@ MODS_DIR="$HOME/Library/Application Support/Steam/steamapps/common/A Dance of Fi
 # Compile-time reference only — the copy the game runs is installed by PrismBootstrap. Fetched
 # rather than committed so the checked-in tree never disagrees with the published release.
 [ -f "$(dirname "$0")/lib/PrismLib.dll" ] || "$(dirname "$0")/lib/update-prismlib.sh"
+[ -f "$(dirname "$0")/lib/PrismLib.UI.dll" ] || "$(dirname "$0")/lib/update-prismlib.sh"
 
 xbuild Bismuth.sln > /dev/null
 
 mkdir -p "$MODS_DIR/Resources"
 cp Bismuth/bin/Debug/Bismuth.dll "$MODS_DIR/"
+cp lib/PrismLib.UI.dll "$MODS_DIR/"
 # UMM's ParseVersion strips non-digits from each dotted piece and Int32.Parses it, so
 # "1.3.5-b1" is fine (-> 1.3.51) but a piece with NO digit ("dev") throws and the mod is
 # silently skipped at startup. Deploy the last release tag instead; the repo file stays as-is.

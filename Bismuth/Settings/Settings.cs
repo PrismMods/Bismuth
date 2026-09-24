@@ -205,6 +205,10 @@ namespace Bismuth
         /* Custom detailed results: Bismuth draws each results field as its own placeable
            element instead of the game's single text block. Entries are created lazily, so an
            untouched field stores nothing and old save files stay valid. */
+        /* Offer the machine's installed fonts alongside the packs. Off by default — a desktop
+           can carry hundreds and they'd swamp every font dropdown. Changing it re-scans. */
+        public bool IncludeSystemFonts = false;
+
         public bool CustomResults = false;
         /* How far apart a label and its value sit: the row spans this width and the two hug
            its edges. Global, with a per-field override for the odd row that needs to be

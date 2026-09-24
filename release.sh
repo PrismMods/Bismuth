@@ -35,6 +35,9 @@ STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/Bismuth/Resources"
 cp Bismuth/bin/Debug/Bismuth.dll "$STAGE/Bismuth/"
+# Ships with the mod: PrismLib.UI is an ordinary dependency (the UI half needs no shared
+# instance). Leaving it out makes the released build fail to load its update toast.
+cp lib/PrismLib.UI.dll "$STAGE/Bismuth/"
 cp Info.json "$STAGE/Bismuth/"
 cp Bismuth/Resources/BismuthSymbols.ttf Bismuth/Resources/BismuthSymbols-LICENSE.txt "$STAGE/Bismuth/Resources/"
 

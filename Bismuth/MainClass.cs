@@ -45,6 +45,7 @@ namespace Bismuth
             modEntry.OnUpdate = (_, __) =>
             {
                 UICore.HandleUpdate();
+                UI.UpdateToast.Tick();
                 if (PrismBridge.Available) PrismBridge.SyncInputClaim(KeyLimiter.BlockingInputs);
                 FontPacks.Tick();
                 if (_forceReloadPending) { _forceReloadPending = false; DoForceReload(); }
@@ -500,6 +501,7 @@ namespace Bismuth
             FontLoader.DestroyTmpAssets(availableFonts);
             UpdateChecker.Dispose();
             UpdatePopup.Close();
+            UI.UpdateToast.Dispose();
             DuplicateInstallPopup.Close();
             LogViewer.Close();
             UICore.Dispose();
