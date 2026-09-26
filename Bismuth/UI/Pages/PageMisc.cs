@@ -22,7 +22,11 @@ namespace Bismuth.UI.Pages
             _savingsText = UIBuilder.Label(savingsRow.transform, SavingsLabel(), (int)UIBuilder.LabelFontSize, TextAnchor.MiddleLeft, Theme.TextMuted);
             _savingsText.rectTransform.offsetMin = new Vector2(8f, 0f);
 
-            UIBuilder.Button(content, "View log", LogViewer.Show);
+            // The log lives in the shared Prism window now (Ctrl+Shift+D), alongside every
+            // other mod's. Opens the owner's window when another Prism mod holds it.
+            UIBuilder.Button(content, "View log", PrismBridge.ToggleDebug);
+            // The rebuilt menu, while it and this panel coexist.
+            UIBuilder.Button(content, "New menu (preview)", PrismBridge.ToggleMenu);
             BuildUpdates(stack, content, s, notify);
 
             UIBuilder.Spacer(content);

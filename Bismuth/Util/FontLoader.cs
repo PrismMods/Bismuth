@@ -190,6 +190,13 @@ namespace Bismuth
             var result = new List<FontEntry>();
             ScanLooseFonts(Path.Combine(modPath, "Fonts"), result);
             ScanLooseFonts(Path.Combine(modPath, "Resources"), result);
+            /* Shared packs, installed once under PrismLib and seen by every Prism mod. After the
+               mod's own folders, so a font dropped in here still wins its name. */
+            if (PrismBridge.Available)
+            {
+                string shared = PrismBridge.FontDir();
+                if (!string.IsNullOrEmpty(shared)) ScanLooseFonts(shared, result);
+            }
             // Last, so a pack or a hand-dropped file always wins a name clash.
             if (MainClass.Settings != null && MainClass.Settings.IncludeSystemFonts)
                 ScanSystemFonts(result);

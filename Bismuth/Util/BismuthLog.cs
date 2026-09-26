@@ -37,8 +37,12 @@ namespace Bismuth
            toggle on */
         internal static void Debug(string message) => Log("[dbg] " + message);
 
-        /* Tail of current log for in-game viewer. Capped well below uGUI Text
-           65k-vertex limit, ~4 verts per glyph */
+        /// Where the file lives, for the debug window's "open folder" button. Null if init failed.
+        internal static string LogPath => _path;
+
+        /* Tail of the current log for an in-game viewer. The default cap is a uGUI vertex budget
+           (~4 verts per glyph, 65k limit) from the old uGUI viewer; PrismLib.UI's list virtualises,
+           so the shared debug window asks for far more. */
         internal static string ReadTail(int maxChars = 12000)
         {
             if (_path == null) return "(log not initialized)";

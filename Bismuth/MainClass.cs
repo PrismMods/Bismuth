@@ -46,6 +46,7 @@ namespace Bismuth
             {
                 UICore.HandleUpdate();
                 UI.UpdateToast.Tick();
+                PrismBridge.TickDebug();
                 if (PrismBridge.Available) PrismBridge.SyncInputClaim(KeyLimiter.BlockingInputs);
                 FontPacks.Tick();
                 if (_forceReloadPending) { _forceReloadPending = false; DoForceReload(); }
@@ -491,7 +492,7 @@ namespace Bismuth
 
         private static void StopMod(UnityModManager.ModEntry modEntry)
         {
-            if (PrismBridge.Available) PrismBridge.Shutdown();   // never leave a claim held by a mod that's gone
+            PrismBridge.Shutdown();          // drops claims and the debug window; safe with PrismLib absent
             SceneManager.sceneUnloaded -= OnSceneUnloaded;
             SceneManager.sceneLoaded -= OnSceneLoaded;
             _deferredApplyPending = false;
@@ -503,7 +504,6 @@ namespace Bismuth
             UpdatePopup.Close();
             UI.UpdateToast.Dispose();
             DuplicateInstallPopup.Close();
-            LogViewer.Close();
             UICore.Dispose();
         }
     }

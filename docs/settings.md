@@ -222,6 +222,7 @@ The `0xE1`/`0xE5` codes were confirmed via diagnostic logging. Earlier guesses b
 | `LevelNameScale` | `0.3` | `localScale` applied to `txtLevelName.rectTransform` |
 | `LevelNameY` | `30` | Additive Y offset from `_levelNameOrigPos` (px) |
 | `LevelNameUseOverlayFont` | `true` | Repaint the song title with the Bismuth font via an owned `GameTextShadow` (TMP) + explicit drop shadow; off → the vanilla original shows. `_levelNameFont` resolves from the **game** font family (see Song title in [fonts.md](fonts.md)) |
+| `HidePlanetRings` | `false` | **Tweaks tab.** Hides the dotted circle `scrRing` draws around each planet (everywhere rings render: gameplay, editor play-test, level-select previews) |
 | `AutoplayPauseEnabled` | `false` | **Tweaks tab.** Whether the editor's play-mode autoplay pause fires at all. When off, `Tweaks.AutoPauseKeyCode()` returns `KeyCode.None` (never matches) |
 | `AutoplayPauseKey` | `Space` | **Tweaks tab.** Key that pauses/resumes autoplay while play-testing in the editor. Injected into `scnEditor.Update` by a transpiler (see below), so it's rebindable — the game otherwise hardcodes Space |
 

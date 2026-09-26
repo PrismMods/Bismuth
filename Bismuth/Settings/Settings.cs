@@ -268,6 +268,8 @@ namespace Bismuth
         // Tweaks tab → Custom levels: CLS song-preview volume (0..1; the game plays
         // previews at full volume).
         public float ClsPreviewVolume = 0.7f;
+        // Tweaks tab → Gameplay: hide the dotted circle scrRing draws around each planet.
+        public bool HidePlanetRings = false;
         // Progress bar: thin top-edge bar filled by percentComplete. Style 1 (default):
         // white fill, progress-gradient perfect color at 100%; in theme mode the fill is
         // the theme's 100% color as a solid. Styles 2/3 planned.

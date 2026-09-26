@@ -487,5 +487,18 @@ namespace Bismuth
             }
         }
 
+        // Tweaks tab: hide the dotted orbit ring. Nothing in the game writes line.enabled,
+        // so one write per frame owns it — and it re-applies itself across level reloads,
+        // retries and live toggling without any apply hook.
+        [HarmonyPatch(typeof(scrRing), "Update")]
+        private static class RingUpdatePatch
+        {
+            public static void Postfix(scrRing __instance)
+            {
+                if (__instance.line != null)
+                    __instance.line.enabled = !MainClass.Settings.HidePlanetRings;
+            }
+        }
+
     }
 }

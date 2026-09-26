@@ -51,6 +51,7 @@ namespace Bismuth.UI
             color.a = 1f;
             Accent = color;
             ToggleOn = color;
+            PushTokens();
 
             if (canvasRoot == null) return;
             // Only touch graphics that explicitly declare themselves accent-tinted via a marker.
@@ -152,6 +153,22 @@ namespace Bismuth.UI
             t.wrapMode = TextureWrapMode.Clamp;
             t.filterMode = FilterMode.Bilinear;
             return Sprite.Create(t, new Rect(0, 0, w, h), new Vector2(0.5f, 0.5f));
+        }
+
+        /* Feed PrismLib.UI's tokens from this mod's palette. Shared windows are drawn by the
+           library but should look like the mod that opened them, not like a third product — and
+           the accent is re-skinnable at runtime, so this runs on every change rather than once. */
+        internal static void PushTokens()
+        {
+            PrismLib.UI.Toolkit.Tokens.Accent      = Accent;
+            PrismLib.UI.Toolkit.Tokens.Text        = Text;
+            PrismLib.UI.Toolkit.Tokens.TextMuted   = TextMuted;
+            PrismLib.UI.Toolkit.Tokens.Panel       = Panel;
+            PrismLib.UI.Toolkit.Tokens.PanelBorder = PanelBorder;
+            PrismLib.UI.Toolkit.Tokens.TitleBar    = TitleBar;
+            PrismLib.UI.Toolkit.Tokens.RowAlt      = ButtonBg;
+            PrismLib.UI.Toolkit.Tokens.RowHover    = ButtonHover;
+            PrismLib.UI.Toolkit.Tokens.Danger      = DangerText;
         }
     }
 }

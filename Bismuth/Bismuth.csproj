@@ -138,7 +138,7 @@
         <Compile Include="Util\DmNotePreset.cs" />
         <Compile Include="UI\UpdatePopup.cs" />
         <Compile Include="UI\UpdateToast.cs" />
-        <Compile Include="UI\LogViewer.cs" />
+        <Compile Include="UI\Prism\PrismMenu.cs" />
         <Compile Include="UI\Theme.cs" />
         <Compile Include="UI\UIBuilder.cs" />
         <Compile Include="UI\UIBuilder.Handlers.cs" />

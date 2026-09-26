@@ -29,6 +29,7 @@
 | `scnEditor.SwitchToEditMode` | Postfix | `ShowOrHideElements()` |
 | `scnEditor.LateUpdate` | Postfix | `EditorLateUpdateShowHudPatch` — re-enables the HUD canvas while `GameUiEditor.IsActive` (the editor force-disables it outside play mode) |
 | `OttoButtonController.Update` | Postfix | Hides Otto debug button (`HideAllUI`) |
+| `scrRing.Update` | Postfix | `line.enabled = !HidePlanetRings` — hides the dotted orbit ring. The game never writes `line.enabled`, so this one write owns it and re-applies across reloads/retries with no apply hook |
 | `PreviewSongPlayer.<FadePreview>b__13_1` | Postfix | CLS preview-volume — rescales the fade envelope's volume writes toward `ClsPreviewVolume` (resolved via `TargetMethod`) |
 | `RDInput.GetMain(ButtonState)` | Postfix | Key Limiter — clamps press count to allowed-key count when state=WentDown; zeroes it entirely while the Bismuth menu is open |
 | `RDInput.WentDown(KeyCode)` / `RDInput.IsDown(KeyCode)` | Postfix | Menu input block — raw shortcut-key reads return false while the menu is open |

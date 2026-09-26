@@ -17,6 +17,11 @@ namespace Bismuth.UI.Pages
                     Tweaks.ApplyClsPreviewVolume();
                     notify?.Invoke();
                 }, "0", 1f);
+
+            UIBuilder.Spacer(content);
+            UIBuilder.SectionHeader(content, "Gameplay");
+            UIBuilder.Toggle(content, "Hide planet orbit rings", s.HidePlanetRings,
+                v => { s.HidePlanetRings = v; notify?.Invoke(); });
         }
     }
 }

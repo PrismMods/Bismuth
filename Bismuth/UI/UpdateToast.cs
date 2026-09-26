@@ -8,7 +8,7 @@ namespace Bismuth.UI
 
        It replaces the centre-screen UpdatePopup as the "there's an update" notifier. The popup
        type stays: UpdateChecker still pushes status into it, harmlessly when it isn't open, and
-       LogViewer and the duplicate-install prompt are built from its widget factories.
+       the duplicate-install prompt is still built from its widget factories.
 
        PrismLib.UI ships in the mod folder rather than installing itself, because the UI half needs
        no shared instance across mods: each mod draws its own card and ToastStack keeps the two

@@ -842,10 +842,17 @@ namespace Bismuth
         // Unity's main loop is single-threaded, so a plain flag is safe.
         internal static bool RawReadExempt;
 
+        /* Alt is the Prism modifier and the game does not use it, so an Alt chord reads through
+           the block. Without this the shared debug and settings windows are unreachable from the
+           moment Bismuth's own panel is open — including for Bismuth's own poll, since the postfix
+           does not care who is asking. That is what made Alt+D look like a broken keybind. */
+        private static bool PrismChordHeld =>
+            Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt) || Input.GetKey(KeyCode.AltGr);
+
         // KeyCode.B stays readable so Ctrl+B still closes the panel.
         private static void GetKeyDownPostfix(KeyCode key, ref bool __result)
         {
-            if (__result && !RawReadExempt && key != KeyCode.B && BlockInputs) __result = false;
+            if (__result && !RawReadExempt && key != KeyCode.B && !PrismChordHeld && BlockInputs) __result = false;
         }
 
         // Fallback: block accuracy recording for non-allowed key presses
