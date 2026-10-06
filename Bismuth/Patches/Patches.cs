@@ -369,6 +369,23 @@ namespace Bismuth
                 errorMeter.gameObject.SetActive(false);
         }
 
+        /* Hiding the meter with SetActive in the same frame the game shows it means its ticks
+           never run Start — the only place they get their colour scheme — and every later hit
+           NREs in ErrorMeterTick.Show, inside scrPlayer.Hit. That kills the rest of Hit, which
+           froze the follow camera under autoplay. Assign what Start would have. */
+        [HarmonyPatch(typeof(ADOFAI.ErrorMeterTick), "Show")]
+        private static class ErrorMeterTickColoursPatch
+        {
+            private static readonly AccessTools.FieldRef<ADOFAI.ErrorMeterTick, ColourSchemeHitMargin> _colours =
+                AccessTools.FieldRefAccess<ADOFAI.ErrorMeterTick, ColourSchemeHitMargin>("_hitMarginColors");
+
+            private static void Prefix(ADOFAI.ErrorMeterTick __instance)
+            {
+                try { if (_colours(__instance) == null) _colours(__instance) = RDConstants.data.hitMarginColoursUI; }
+                catch { }
+            }
+        }
+
         [HarmonyPatch(typeof(scrPlanet), "MoveToNextFloor")]
         private static class MoveToNextFloorHideErrorMeterPatch
         {
