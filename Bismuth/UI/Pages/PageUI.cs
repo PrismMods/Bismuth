@@ -173,9 +173,12 @@ namespace Bismuth.UI.Pages
                 ? 0
                 : offset + Mathf.Max(0, familyNames.IndexOf(curFamily));
 
-            // Preview each family name in its own font (Regular weight, else lightest).
-            var familyFonts = new List<TMPro.TMP_FontAsset>(familyOptions.Count);
-            if (offset == 1) familyFonts.Add(null); // default option keeps the panel font
+            /* Preview each family name in its own font (Regular weight, else lightest) — but
+               resolved on demand. Asking for .TmpFont here built an SDF atlas for every
+               installed family every time a selector was constructed, which with system fonts
+               on is hundreds of them, none of which anyone had asked to look at. */
+            var familyReps = new List<FontLoader.FontEntry>(familyOptions.Count);
+            if (offset == 1) familyReps.Add(null); // default option keeps the panel font
             foreach (var fam in familyNames)
             {
                 var list = byFamily[fam];
@@ -185,8 +188,10 @@ namespace Bismuth.UI.Pages
                     SplitWeight(e.Name, out _, out string w);
                     if (string.Equals(w, "Regular", StringComparison.OrdinalIgnoreCase)) { rep = e; break; }
                 }
-                familyFonts.Add(rep.TmpFont);
+                familyReps.Add(rep);
             }
+            Func<int, TMPro.TMP_FontAsset> familyFonts = i =>
+                i >= 0 && i < familyReps.Count ? familyReps[i]?.TmpFont : null;
 
             // Weight row container — sized by its own layout group so the page VLG picks
             // up the row when present and collapses it when empty.
@@ -207,15 +212,16 @@ namespace Bismuth.UI.Pages
                 if (entries.Count <= 1) return;
 
                 var weightNames = new List<string>(entries.Count);
-                var weightFonts = new List<TMPro.TMP_FontAsset>(entries.Count);
                 int weightIdx = 0;
                 for (int i = 0; i < entries.Count; i++)
                 {
                     SplitWeight(entries[i].Name, out _, out string w);
                     weightNames.Add(w);
-                    weightFonts.Add(entries[i].TmpFont); // each weight shown in that weight
                     if (string.Equals(w, preferredWeight, StringComparison.OrdinalIgnoreCase)) weightIdx = i;
                 }
+                // Each weight shown in that weight, built when the row is drawn.
+                Func<int, TMPro.TMP_FontAsset> weightFonts = i =>
+                    i >= 0 && i < entries.Count ? entries[i].TmpFont : null;
 
                 UIBuilder.Dropdown(weightHost.transform, "  Weight", weightNames, weightIdx,
                     idx =>

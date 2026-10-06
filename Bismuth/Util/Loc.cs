@@ -129,6 +129,10 @@ namespace Bismuth
             { "Enabled",                            "사용" },
             // Font packs (Appearance → Font packs)
             { "Font packs",                         "폰트 팩" },
+            { "Custom countdown",                    "커스텀 카운트다운" },
+            { "Slow the countdown",                  "카운트다운 느리게" },
+            { "Minimum tempo",                       "최소 템포" },
+            { "Maximum tempo",                       "최대 템포" },
             { "Include system fonts",               "시스템 폰트 포함" },
             { "Install",                            "설치" },
             { "Remove",                             "제거" },

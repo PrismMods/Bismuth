@@ -42,6 +42,10 @@ namespace Bismuth
                 {
                     if (_tmp == null)
                     {
+                        /* Timed because this is the expensive step — a 1024² SDF atlas per font —
+                           and the cost only shows up as "the panel is slow to open". The log says
+                           which font and how long, so a regression has a name. */
+                        var watch = System.Diagnostics.Stopwatch.StartNew();
                         if (!string.IsNullOrEmpty(_filePath))
                             // 90pt, 9 padding, SDFAA, 1024² — the defaults TMP builds an asset with.
                             _tmp = TMP_FontAsset.CreateFontAsset(_filePath, _faceIndex, 90, 9, GlyphRenderMode.SDFAA, 1024, 1024);
@@ -49,9 +53,13 @@ namespace Bismuth
                         {
                             _tmp.name = Name + " (TMP)";
                             EnsureSymbolFallback(_tmp);
+                            EnsureCjkFallback(_tmp);
                             if (BoldSibling != null && BoldSibling != this)
                                 _tmp.fontWeightTable[7].regularTypeface = BoldSibling.TmpFont;
                         }
+                        watch.Stop();
+                        BismuthLog.Debug($"[font] built '{Name}' in {watch.ElapsedMilliseconds}ms"
+                            + (_tmp == null ? " (FAILED)" : ""));
                     }
                     return _tmp;
                 }
@@ -108,6 +116,49 @@ namespace Bismuth
                 }
                 return _symbolFont;
             }
+        }
+
+        /* One shared CJK fallback for every font we build, the way Quartz does it.
+
+           Without it each font rasterises Korean/Japanese glyphs into its OWN atlas, so a
+           panel font, an overlay font and a game font each pay for the same several hundred
+           glyphs. Pointed at a font the GAME already loaded and already populated, so the
+           glyphs are rasterised once for the process rather than once per font.
+
+           Appended AFTER the symbol fallback: keycap glyphs must still win, which is the whole
+           reason BismuthSymbols exists. */
+        private static TMP_FontAsset _cjkFallback;
+        private static bool _cjkProbed;
+
+        private static readonly int[] CjkProbe = { 0xAC00, 0x3042, 0x4E00 };   // 가 あ 一
+
+        internal static void EnsureCjkFallback(TMP_FontAsset target)
+        {
+            if (target == null) return;
+            if (!_cjkProbed)
+            {
+                _cjkProbed = true;
+                try
+                {
+                    foreach (var f in Resources.FindObjectsOfTypeAll<TMP_FontAsset>())
+                    {
+                        if (f == null || f == target) continue;
+                        int hit = 0;
+                        foreach (int cp in CjkProbe)
+                            if (f.HasCharacter((char)cp, false, false)) hit++;
+                        // Two of three: a Korean-only face should still qualify.
+                        if (hit >= 2) { _cjkFallback = f; break; }
+                    }
+                }
+                catch { }
+                BismuthLog.Log(_cjkFallback != null
+                    ? "[font] CJK fallback: " + _cjkFallback.name
+                    : "[font] no CJK fallback found — each font rasterises its own CJK glyphs");
+            }
+            if (_cjkFallback == null || _cjkFallback == target) return;
+            var fb = target.fallbackFontAssetTable;
+            if (fb == null) target.fallbackFontAssetTable = fb = new List<TMP_FontAsset>();
+            if (!fb.Contains(_cjkFallback)) fb.Add(_cjkFallback);
         }
 
         // First in the table: GameFontApplier appends the game's own asset here, and that

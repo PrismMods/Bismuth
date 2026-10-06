@@ -121,6 +121,7 @@
         <Compile Include="Util\Margins.cs" />
         <Compile Include="Util\HitOffsets.cs" />
         <Compile Include="Util\ResultsFields.cs" />
+        <Compile Include="Util\Countdown.cs" />
         <Compile Include="Util\LoadProfiler.cs" />
         <Compile Include="Util\SemVer.cs" />
         <Compile Include="Util\OsShell.cs" />

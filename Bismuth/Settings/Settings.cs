@@ -207,6 +207,12 @@ namespace Bismuth
            untouched field stores nothing and old save files stay valid. */
         /* Offer the machine's installed fonts alongside the packs. Off by default — a desktop
            can carry hundreds and they'd swamp every font dropdown. Changing it re-scans. */
+        /* Checkpoint countdown slowdown, ported from the BetterCountdown mod. Off by default:
+           it rewrites tile speeds, which is not something to do to someone who did not ask. */
+        public bool CountdownSlowdown = false;
+        public float CountdownMinBpm = 400f;
+        public float CountdownMaxBpm = 600f;
+
         public bool IncludeSystemFonts = false;
 
         public bool CustomResults = false;

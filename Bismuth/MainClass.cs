@@ -256,6 +256,8 @@ namespace Bismuth
             // (hot reloads would otherwise stack stale wrappers from dead assemblies).
             GameUiLayout.RestoreAll();
             GameFontApplier.RestoreAll();
+            // A stretched lead-in would otherwise stay stretched after the features go away.
+            Countdown.RestoreSpeeds();
         }
 
         // Rail master switch: same effect as the UMM checkbox, but reachable in-game and

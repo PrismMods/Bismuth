@@ -1006,7 +1006,11 @@ namespace Bismuth.UI
             IList<string> options,
             int currentIndex,
             Action<int> onChange,
-            IList<TMP_FontAsset> optionFonts = null)
+            /* A PROVIDER, not a list: building a TMP_FontAsset is a 1024² SDF atlas, and a
+               prebuilt list meant every font in the dropdown was rasterised when the panel was
+               built — six selectors' worth, before anyone opened one. Now only the selected
+               row costs anything, and the rest are built as the list is drawn. */
+            Func<int, TMP_FontAsset> optionFont = null)
         {
             label = Loc.T(label);
             SettingsSearch.Register(label);
@@ -1031,13 +1035,12 @@ namespace Bismuth.UI
             void SetVal()
             {
                 val.text = (options.Count > 0 && idx >= 0 ? options[idx] : "") + "  ▾";
-                val.font = optionFonts != null && idx >= 0 && idx < optionFonts.Count && optionFonts[idx] != null
-                    ? optionFonts[idx] : Theme.TmpFont;
+                val.font = (idx >= 0 ? optionFont?.Invoke(idx) : null) ?? Theme.TmpFont;
             }
             SetVal();
 
             ClickHandler.Attach(row, () =>
-                OpenDropdownList((RectTransform)row.transform, options, idx, optionFonts, i =>
+                OpenDropdownList((RectTransform)row.transform, options, idx, optionFont, i =>
                 {
                     if (i == idx) return;
                     idx = i;
@@ -1052,7 +1055,7 @@ namespace Bismuth.UI
         // closes, swallows stray wheel events) + a bordered panel right-aligned under the
         // trigger row (flips above it when there's no room), scrollable past ~8 options.
         private static void OpenDropdownList(RectTransform trigger, IList<string> options,
-            int selectedIdx, IList<TMP_FontAsset> optionFonts, Action<int> onPick)
+            int selectedIdx, Func<int, TMP_FontAsset> optionFont, Action<int> onPick)
         {
             var root = UICore.CanvasRoot;
             if (root == null || options == null || options.Count == 0) return;
@@ -1163,8 +1166,8 @@ namespace Bismuth.UI
                     TextAnchor.MiddleLeft, sel ? Theme.Text : Theme.TextMuted);
                 t.rectTransform.offsetMin = new Vector2(24f, 0);
                 t.rectTransform.offsetMax = new Vector2(-8f, 0);
-                if (optionFonts != null && oi < optionFonts.Count && optionFonts[oi] != null)
-                    t.font = optionFonts[oi];
+                var of = optionFont?.Invoke(oi);
+                if (of != null) t.font = of;
 
                 ClickHandler.Attach(opt, () => { onPick(oi); close(); });
             }
