@@ -109,6 +109,7 @@
         <Compile Include="Patches\Optimizations.cs" />
         <Compile Include="Patches\LeakGuard.cs" />
         <Compile Include="Patches\HitSoundRenderer.cs" />
+        <Compile Include="Patches\SkyHookEvdev.cs" />
         <Compile Include="Util\AttemptsStore.cs" />
         <Compile Include="Util\LevelKey.cs" />
         <Compile Include="Util\BismuthLog.cs" />

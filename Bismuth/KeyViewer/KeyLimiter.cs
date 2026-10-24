@@ -296,9 +296,9 @@ namespace Bismuth
             _ghosts.Clear();
 
             if (_chatterActive) EnsureReflection();
-            // Before the early-out: the limiter going off is exactly when the player's own
-            // key list has to come back.
-            if (!_active) { SyncGameLimiter(false, null); return; }
+            // A list an older build wrote into the game's limiter goes back to the player.
+            ReleaseGameLimiter();
+            if (!_active) return;
 
             EnsureReflection();
 
@@ -335,28 +335,9 @@ namespace Bismuth
                 }
             }
 
-            /* One limiter or the other, never both. A key SkyHook has no label for (Menu) maps
-               to Unknown in the game's limiter and its native code never matches the press, so
-               the game would block a key the player allowed. Delegate only when every key
-               survives the mapping; otherwise filter here. Availability is re-read every Apply
-               (EnsureGameRefl runs once). */
-            _localFilter = !GameLimiterAvailable;
-            if (!_localFilter)
-            {
-                foreach (var k in _allowed)
-                {
-                    if (CanDelegate(k)) continue;
-                    _localFilter = true;
-                    BismuthLog.Log($"KeyLimiter: SkyHook has no native key code for '{k}' on this platform, " +
-                        "so the game's limiter cannot represent it — filtering in Bismuth instead");
-                    break;
-                }
-            }
-            SyncGameLimiter(_active && !_localFilter, _allowed);
-
             // Apply fires on every settings notify (incl. per-tick slider drags) — only
             // log when the effective state actually changed.
-            string state = $"KeyLimiter.Apply: enabled={_active} local={_localFilter} useKv={settings.KeyLimiterUseKvKeys} hand={(settings.Hand?.Name ?? "<null>")} foot={(settings.Foot?.Name ?? "<null>")} allowed=[{string.Join(",", _allowed)}] labels={_allowedLabels.Count} ghosts=[{string.Join(",", _ghosts)}]";
+            string state = $"KeyLimiter.Apply: enabled={_active} useKv={settings.KeyLimiterUseKvKeys} hand={(settings.Hand?.Name ?? "<null>")} foot={(settings.Foot?.Name ?? "<null>")} allowed=[{string.Join(",", _allowed)}] labels={_allowedLabels.Count} ghosts=[{string.Join(",", _ghosts)}]";
             if (state != _lastApplyLog)
             {
                 _lastApplyLog = state;
@@ -366,20 +347,15 @@ namespace Bismuth
 
         private static string _lastApplyLog;
 
-        /* The game's own limiter: Persistence.keyLimiterKeys, filtered upstream of
-           RDInput.GetMain. Bismuth writes the list and lets the game block — two filters over
-           two lists is what blocked keys the player had allowed. The setting is persisted and
-           shared with the player's own menu, so snapshot it first and restore it when the
-           limiter goes off or the mod unloads. */
-        // True when the key set can't be handed to the game (see Apply) and Bismuth filters itself.
-        private static bool _localFilter;
-
-        private static bool _gameRefl, _matchLogged;
+        /* The game's own limiter: Persistence.keyLimiterKeys, filtered inside the RDInput
+           keyboard types' Main. Older builds delegated to it by writing our keys there, but
+           two limiters over two lists blocked keys the player had allowed, and SkyHook can't
+           name many keys on some platforms (none at all on Linux). Bismuth now always filters
+           itself, and UseKeyLimiterPatch holds the game's limiter off while ours is on. What
+           remains here hands back a list an older build took over (GameLimiterOwned). */
+        private static bool _gameRefl;
         private static object _keysSetting;                 // Persistence.keyLimiterKeys
-        private static MethodInfo _ksClear, _ksAddKey, _ksAddKeyRaw, _ksGetUnityKeys;
-        private static HashSet<KeyCode> _gameKeysSnapshot;  // null = we haven't written yet
-
-        internal static bool GameLimiterAvailable { get { EnsureGameRefl(); return _keysSetting != null; } }
+        private static MethodInfo _ksClear, _ksAddKey, _ksAddKeyRaw;
 
         private static void EnsureGameRefl()
         {
@@ -390,20 +366,12 @@ namespace Bismuth
                 var persistence = AccessTools.TypeByName("Persistence");
                 var field = persistence != null ? AccessTools.Field(persistence, "keyLimiterKeys") : null;
                 _keysSetting = field?.GetValue(null);
-                if (_keysSetting == null)
-                {
-                    // Older game build, or the field moved — say so, since the alternative
-                    // reading of a silent log is "the sync ran and did nothing".
-                    BismuthLog.Log("KeyLimiter: this game build has no Persistence.keyLimiterKeys — " +
-                        "filtering in Bismuth instead");
-                    return;
-                }
+                if (_keysSetting == null) return;
                 var t = _keysSetting.GetType();
                 _ksClear = AccessTools.Method(t, "Clear");
                 _ksAddKey = AccessTools.Method(t, "Add", new[] { typeof(KeyCode) });
                 // Two-arg overload: explicit native code for keys SkyHook cannot name.
                 _ksAddKeyRaw = AccessTools.Method(t, "Add", new[] { typeof(KeyCode), typeof(ushort?) });
-                _ksGetUnityKeys = AccessTools.PropertyGetter(t, "unityKeys");
             }
             catch (Exception e)
             {
@@ -421,12 +389,6 @@ namespace Bismuth
             return set;
         }
 
-        private static HashSet<KeyCode> ReadGameKeys()
-        {
-            var set = _ksGetUnityKeys?.Invoke(_keysSetting, null) as IEnumerable<KeyCode>;
-            return set == null ? new HashSet<KeyCode>() : new HashSet<KeyCode>(set);
-        }
-
         private static void WriteGameKeys(IEnumerable<KeyCode> keys)
         {
             _ksClear.Invoke(_keysSetting, null);
@@ -436,7 +398,7 @@ namespace Bismuth
             {
                 /* Two-arg Add with the native code WE resolved: Add(KeyCode) re-derives it
                    through the mapper, which has no row for ' or ` and would store the 0xFFFF
-                   sentinel — the game's async filter then blocks a key we delegated. */
+                   sentinel — the game's async filter then blocks a key the player listed. */
                 ushort native = NativeForKey(k);
                 if (_ksAddKeyRaw == null)
                 {
@@ -491,77 +453,29 @@ namespace Bismuth
             return RawForKey(k, out ushort raw) ? raw : NativeNone;
         }
 
-        // Can the game's limiter represent this key at all? Mouse buttons aren't part of its
-        // keyboard list, so they never block delegation.
-        private static bool CanDelegate(KeyCode k)
+        /* Restore the player's own list if an older build left ours in the game's limiter.
+           An EMPTY list disables the game's limiter (filter gated on Count > 0). Mod unload /
+           master switch off calls this too, so our keys never outlive the mod. */
+        internal static void ReleaseGameLimiter()
         {
-            int ki = (int)k;
-            if (ki >= (int)KeyCode.Mouse0 && ki <= (int)KeyCode.Mouse6) return true;
-            return NativeForKey(k) != NativeNone;
-        }
-
-        /* Push our resolved key set into the game's limiter, or hand the player's own list
-           back. Safe to call repeatedly — it no-ops unless the effective list changes. */
-        private static void SyncGameLimiter(bool on, ICollection<KeyCode> keys)
-        {
+            var s = MainClass.Settings;
+            if (s == null || !s.GameLimiterOwned) return;
             EnsureGameRefl();
             if (_keysSetting == null || _ksClear == null || _ksAddKey == null) return;
             try
             {
-                var s = MainClass.Settings;
-                if (on)
-                {
-                    /* Take ownership once and record it on disk; an in-memory snapshot alone
-                       could capture our own keys from a previous session as the player's. */
-                    if (s != null && !s.GameLimiterOwned)
-                    {
-                        var existing = ReadGameKeys();
-                        // A list identical to what we would write is ours from a previous build,
-                        // not something the player set — don't preserve it as theirs.
-                        s.GameLimiterUserKeys = existing.SetEquals(keys) ? "" : string.Join(",", existing);
-                        s.GameLimiterOwned = true;
-                        MainClass.PersistNow();
-                        _gameKeysSnapshot = ParseKeyList(s.GameLimiterUserKeys);
-                    }
-                    if (_gameKeysSnapshot == null) _gameKeysSnapshot = ReadGameKeys();
-                    var current = ReadGameKeys();
-                    if (current.SetEquals(keys))
-                    {
-                        // Logged once: an already-correct list must read differently from a sync that never ran.
-                        if (!_matchLogged)
-                        {
-                            _matchLogged = true;
-                            BismuthLog.Log($"KeyLimiter: the game's limiter already holds our {keys.Count} key(s)");
-                        }
-                        return;
-                    }
-                    _matchLogged = false;
-                    WriteGameKeys(keys);
-                    BismuthLog.Log($"KeyLimiter: wrote {keys.Count} key(s) into the game's limiter " +
-                        $"[{string.Join(",", keys)}]");
-                }
-                else if (s != null && s.GameLimiterOwned)
-                {
-                    // Release: restore the player's list. An EMPTY list disables the game's
-                    // limiter (filter gated on asyncKeysCache.Count > 0).
-                    var restore = ParseKeyList(s.GameLimiterUserKeys);
-                    WriteGameKeys(restore);
-                    s.GameLimiterOwned = false;
-                    s.GameLimiterUserKeys = "";
-                    MainClass.PersistNow();
-                    _gameKeysSnapshot = null;
-                    _matchLogged = false;
-                    BismuthLog.Log($"KeyLimiter: released the game's limiter, restored {restore.Count} player key(s)");
-                }
+                var restore = ParseKeyList(s.GameLimiterUserKeys);
+                WriteGameKeys(restore);
+                s.GameLimiterOwned = false;
+                s.GameLimiterUserKeys = "";
+                MainClass.PersistNow();
+                BismuthLog.Log($"KeyLimiter: released the game's limiter, restored {restore.Count} player key(s)");
             }
             catch (Exception e)
             {
-                BismuthLog.Log("KeyLimiter: game limiter sync failed: " + e);
+                BismuthLog.Log("KeyLimiter: game limiter release failed: " + e);
             }
         }
-
-        // Mod unload / master switch off: never leave our keys in the player's settings.
-        internal static void ReleaseGameLimiter() => SyncGameLimiter(false, null);
 
         private static IEnumerable<KeyCode> GetKvKeys(Settings settings)
         {
@@ -694,9 +608,7 @@ namespace Bismuth
                     continue;
                 }
 
-                // Only when we could NOT delegate: the game already filtered upstream, and a
-                // second pass ate keys it had accepted. Ghost/chatter have no game-side equivalent.
-                if (_active && _localFilter && !allowed) continue;
+                if (_active && !allowed) continue;
 
                 // Chatter filter — skip mouse, skip entries we couldn't resolve to a KeyCode.
                 if (_chatterActive && !isMouse && resolvedKey != KeyCode.None)
@@ -762,12 +674,30 @@ namespace Bismuth
             {
                 if (BlockInputs && __0 == ButtonState.WentDown) { __result = 0; return; }
                 // Counting reflects over the press list; only worth it while WE still filter
-                // something (local filter, chatter, ghosts). Also skips re-entry — GetStateKeys
+                // something (limiter, chatter, ghosts). Also skips re-entry — GetStateKeys
                 // calls GetMain internally.
-                bool weStillFilter = (_active && _localFilter) || _chatterActive || _ghosts.Count > 0;
+                bool weStillFilter = _active || _chatterActive || _ghosts.Count > 0;
                 if (!weStillFilter || __result == 0 || __0 != ButtonState.WentDown || _inCount) return;
 
                 __result = Mathf.Min(__result, CountAllowedInPressedKeys());
+            }
+        }
+
+        // ── RDInput.useKeyLimiter — the game's own limiter gate ────────────
+        // Never both limiters: while ours is on, the game's is off whatever the player's own
+        // list holds. Its only readers are the keyboard input types' Main/MainIgnoreActive.
+        [HarmonyPatch]
+        private static class UseKeyLimiterPatch
+        {
+            static MethodBase TargetMethod()
+            {
+                var t = AccessTools.TypeByName("RDInput");
+                return t != null ? AccessTools.PropertyGetter(t, "useKeyLimiter") : null;
+            }
+
+            public static void Postfix(ref bool __result)
+            {
+                if (_active) __result = false;
             }
         }
 
@@ -855,30 +785,14 @@ namespace Bismuth
             if (__result && !RawReadExempt && key != KeyCode.B && !PrismChordHeld && BlockInputs) __result = false;
         }
 
-        // Fallback: block accuracy recording for non-allowed key presses
+        /* While the menu is open, no hits register — same gate as the GetMain block. The
+           limiter itself is GetMain's job alone: the second pass that used to sit here judged
+           over legacy UnityEngine.Input, which lags the async keyboard or misreads it (native
+           Wayland with an IME let only digits through), so all it ever did was drop hits. */
         [HarmonyPatch(typeof(scrMarginTracker), "AddHit", new[] { typeof(HitMargin) })]
         private static class AddHitBlockPatch
         {
-            public static bool Prefix()
-            {
-                // While the menu is open, no hits register — same gate as the GetMain block.
-                if (BlockInputs) return false;
-                /* Only while Bismuth still owns the filtering. With the list delegated, the
-                   game has already refused every disallowed press upstream of this, so a
-                   second pass here — over legacy UnityEngine.Input, which lags or misses the
-                   async keyboard entirely on Linux/Proton — can only drop hits it accepted. */
-                if (!_active || !_localFilter) return true;
-                if (!Input.anyKeyDown) return true;
-                // GetKey (not GetKeyDown) tolerates the 1-frame async delay here
-                foreach (var key in _allowed)
-                    if (Input.GetKey(key)) return true;
-                for (int m = (int)KeyCode.Mouse0; m <= (int)KeyCode.Mouse6; m++)
-                    if (Input.GetKeyDown((KeyCode)m)) return true;
-                if (Input.GetKey(KeyCode.Escape)) return true;
-                var sc = scrController.instance;
-                bool playing = sc != null && sc.gameworld && !sc.paused;
-                return !playing && (Input.GetKey(KeyCode.P) || Input.GetKey(KeyCode.Space));
-            }
+            public static bool Prefix() => !BlockInputs;
         }
     }
 }

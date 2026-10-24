@@ -142,6 +142,7 @@ namespace Bismuth
             catch (Exception e) { BismuthLog.Log("[Bismuth] LoadProfiler patch failed: " + e.Message); }
             try { KeyLimiter.TryPatchRawInput(harmony); }
             catch (Exception e) { BismuthLog.Log("TryPatchRawInput skipped: " + e.Message); }
+            SkyHookEvdev.Rearm();
         }
 
         /* PatchAll aborts the WHOLE batch when one patch class can't bind its target (a 3.3.0
@@ -168,6 +169,16 @@ namespace Bismuth
             }
             BismuthLog.Log("[patch] applied " + applied + " class(es)"
                 + (skipped > 0 ? ", SKIPPED " + skipped + " (see above)" : ""));
+        }
+
+        /* Undo our own patches on either Harmony the game loads: HarmonyX made UnpatchAll(id) a
+           compile error in favour of UnpatchSelf(), which native UMM's Harmony 2.3 doesn't have
+           (MissingMethodException — the master switch then failed to turn off). Per-method
+           Unpatch with our id is what both do internally, and both still have it. */
+        private static void UnpatchOwn(Harmony h)
+        {
+            foreach (var m in new List<MethodBase>(h.GetPatchedMethods()))
+                h.Unpatch(m, HarmonyPatchType.All, h.Id);
         }
 
         // Time.frameCount == 0 during koren UMM's static-ctor injection window. Calling
@@ -239,7 +250,8 @@ namespace Bismuth
             KeyLimiter.ReleaseGameLimiter();
             if (LocationEditor.IsActive) LocationEditor.Close();
             GameUiEditor.Close();
-            harmony.UnpatchSelf(); // HarmonyX 2.x: UnpatchAll(id) is obsolete; this unpatches our instance
+            SkyHookEvdev.Release();
+            UnpatchOwn(harmony);
             _patched = false;
             if (overlay != null)
             {
