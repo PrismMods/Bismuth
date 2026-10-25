@@ -213,15 +213,37 @@ namespace Bismuth
             ApplyColors();
         }
 
+        /* ApplySettings (hence this) runs on every settings notify, which fires on every
+           frame of ANY slider drag anywhere in the settings UI, not just Key Viewer ones —
+           setting an unchanged value still marks TMP text dirty for a full re-layout/mesh
+           rebuild, so this used to force that across every cell of the whole panel, every
+           frame, regardless of what the player was actually dragging. Guard each assignment
+           so unrelated drags become a cheap read-only pass instead. */
         private void ApplyColors()
         {
             foreach (var kvp in _keyCells)
                 foreach (var c in kvp.Value)
                 {
                     if (c?.Preset == null) continue;
-                    if (c.Bg    != null) { c.Bg.color = c.Preset.CellBg(false); c.Bg.BorderColor = c.Preset.CellBorder(false); }
-                    if (c.Name  != null) { c.Name.color  = c.Preset.TxtIdle.ToColor();   c.Name.fontSize  = c.Preset.LabelSize; }
-                    if (c.Count != null) { c.Count.color = c.Preset.CountIdle.ToColor(); c.Count.fontSize = c.Preset.CountSize; }
+                    if (c.Bg != null)
+                    {
+                        var bg = c.Preset.CellBg(false);
+                        if (c.Bg.color != bg) c.Bg.color = bg;
+                        var border = c.Preset.CellBorder(false);
+                        if (c.Bg.BorderColor != border) c.Bg.BorderColor = border;
+                    }
+                    if (c.Name != null)
+                    {
+                        var nameColor = c.Preset.TxtIdle.ToColor();
+                        if (c.Name.color != nameColor) c.Name.color = nameColor;
+                        if (!Mathf.Approximately(c.Name.fontSize, c.Preset.LabelSize)) c.Name.fontSize = c.Preset.LabelSize;
+                    }
+                    if (c.Count != null)
+                    {
+                        var countColor = c.Preset.CountIdle.ToColor();
+                        if (c.Count.color != countColor) c.Count.color = countColor;
+                        if (!Mathf.Approximately(c.Count.fontSize, c.Preset.CountSize)) c.Count.fontSize = c.Preset.CountSize;
+                    }
                 }
             ApplyStatColors(_kpsCells);
             ApplyStatColors(_totalCells);
@@ -232,9 +254,25 @@ namespace Bismuth
             foreach (var s in cells)
             {
                 if (s?.Preset == null) continue;
-                if (s.Bg    != null) { s.Bg.color = s.Preset.CellBg(false); s.Bg.BorderColor = s.Preset.CellBorder(false); }
-                if (s.Name  != null) { s.Name.color  = s.Preset.TxtIdle.ToColor();   s.Name.fontSize  = s.Preset.LabelSize; }
-                if (s.Value != null) { s.Value.color = s.Preset.CountIdle.ToColor(); s.Value.fontSize = s.Preset.CountSize; }
+                if (s.Bg != null)
+                {
+                    var bg = s.Preset.CellBg(false);
+                    if (s.Bg.color != bg) s.Bg.color = bg;
+                    var border = s.Preset.CellBorder(false);
+                    if (s.Bg.BorderColor != border) s.Bg.BorderColor = border;
+                }
+                if (s.Name != null)
+                {
+                    var nameColor = s.Preset.TxtIdle.ToColor();
+                    if (s.Name.color != nameColor) s.Name.color = nameColor;
+                    if (!Mathf.Approximately(s.Name.fontSize, s.Preset.LabelSize)) s.Name.fontSize = s.Preset.LabelSize;
+                }
+                if (s.Value != null)
+                {
+                    var valColor = s.Preset.CountIdle.ToColor();
+                    if (s.Value.color != valColor) s.Value.color = valColor;
+                    if (!Mathf.Approximately(s.Value.fontSize, s.Preset.CountSize)) s.Value.fontSize = s.Preset.CountSize;
+                }
             }
         }
 

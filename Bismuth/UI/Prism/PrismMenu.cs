@@ -125,7 +125,6 @@ namespace Bismuth.UI.Prism
                            "Count only attempts that started from the beginning");
             Widgets.Toggle(session, "Song duration", S.ShowSongDuration, v => { S.ShowSongDuration = v; Apply(); });
             Widgets.Toggle(session, "Level duration", S.ShowLevelDuration, v => { S.ShowLevelDuration = v; Apply(); });
-            Widgets.Toggle(session, "FPS", S.ShowFps, v => { S.ShowFps = v; Apply(); });
         }
 
         /* One readout: shown or not, plus a page of its own for the rest.

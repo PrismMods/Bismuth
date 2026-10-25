@@ -32,7 +32,7 @@ namespace Bismuth
 
         // Reflection cache (initialised once on first key press)
         private static bool       _reflReady;
-        private static MethodInfo _getStateKeys;      // RDInput.GetStateKeys(ButtonState) → List<AnyKeyCode>
+        private static MethodInfo _getStateKeys;      // RDInput.GetStateKeys — see InvokeGetStateKeys for both shapes
         private static FieldInfo  _anyKcValue;        // AnyKeyCode.value
         private static System.Type _asyncKcType;      // AsyncKeyCode
         private static FieldInfo  _asyncKcLabel;      // AsyncKeyCode.label (SkyHook.KeyLabel)
@@ -50,6 +50,10 @@ namespace Bismuth
            share: all reads are main-thread and sequential, and the _inCount guard keeps the
            GetMain postfix from re-entering GetStateKeys mid-Invoke. */
         private static readonly object[] _stateArgs = new object[1];
+        private static readonly object[] _stateArgs2 = new object[2];
+        // The List<AnyKeyCode> the fill-in GetStateKeys shape writes into; null on the older
+        // returning shape. Shared under the same main-thread, sequential guarantee as above.
+        private static IList _stateKeysBuf;
 
         // Pre-computed set of allowed SkyHook KeyLabel values (ushort) for async keyboard path.
         // Built from _allowed via UnityKeyToSkyHookKey so we compare labels directly,
@@ -89,11 +93,21 @@ namespace Bismuth
         {
             { KeyCode.Quote,     64 },  // KeyLabel.Apostrophe
             { KeyCode.BackQuote, 25 },  // KeyLabel.Grave
+            { KeyCode.Equals,    37 },  // KeyLabel.Equals — see _extraLabelToKey below
         };
         private static readonly Dictionary<ushort, KeyCode> _extraLabelToKey = new Dictionary<ushort, KeyCode>
         {
             { 64, KeyCode.Quote },
             { 25, KeyCode.BackQuote },
+            /* SkyHookKeyToUnityKey misnames label 37 as Greater on Linux: a real '=' press
+               (raw=0x3D, the X11 keysym for '=') comes back labeled 37, and the reverse
+               table hands back KeyCode.Greater for it instead of KeyCode.Equals. UnityKeyToSkyHookKey
+               agrees the forward direction is 37 for Equals, so only the reverse row is wrong —
+               override it the same way Quote/BackQuote are overridden above. */
+            { 37, KeyCode.Equals },
+            // SkyHookKeyToUnityKey maps Semicolon (63) to KeyCode.Colon — the shifted symbol —
+            // so ';' presses lit the wrong key-viewer cell and chatter-tracked as another key.
+            { 63, KeyCode.Semicolon },
         };
 
         private static Dictionary<ushort, KeyCode> BuildVkMap()
@@ -158,6 +172,8 @@ namespace Bismuth
 
             var anyKcType     = AccessTools.TypeByName("AnyKeyCode");
             _anyKcValue       = anyKcType   != null ? AccessTools.Field(anyKcType,  "value")              : null;
+            if (_getStateKeys != null && anyKcType != null && _getStateKeys.GetParameters().Length == 2)
+                _stateKeysBuf = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(anyKcType));
 
             _asyncKcType      = AccessTools.TypeByName("AsyncKeyCode");
             _asyncKcLabel     = _asyncKcType != null ? AccessTools.Field(_asyncKcType, "label")           : null;
@@ -259,6 +275,25 @@ namespace Bismuth
             return _stateDown;
         }
 
+        /* RDInput.GetStateKeys: builds before the 2026-10 update RETURN the list
+           (GetStateKeys(ButtonState)); since then it FILLS a caller-supplied one
+           (GetStateKeys(List<AnyKeyCode>, ButtonState)). Calling the old shape on the new game
+           threw TargetParameterCountException on every press — straight out of the GetMain
+           postfix while the limiter was on, and silently emptying the key viewer's async lists. */
+        private static IList InvokeGetStateKeys(object state)
+        {
+            if (_stateKeysBuf == null)
+            {
+                _stateArgs[0] = state;
+                return _getStateKeys.Invoke(null, _stateArgs) as IList;
+            }
+            _stateKeysBuf.Clear();
+            _stateArgs2[0] = _stateKeysBuf;
+            _stateArgs2[1] = state;
+            _getStateKeys.Invoke(null, _stateArgs2);
+            return _stateKeysBuf;
+        }
+
         internal static void CollectStateKeys(int state, HashSet<KeyCode> into)
         {
             EnsureReflection();
@@ -266,7 +301,7 @@ namespace Bismuth
 
             _inCount = true; // GetStateKeys re-enters GetMain; keep the postfix out of the way
             IList list;
-            try   { _stateArgs[0] = BoxedState(state); list = _getStateKeys.Invoke(null, _stateArgs) as IList; }
+            try   { list = InvokeGetStateKeys(BoxedState(state)); }
             catch { list = null; }
             finally { _inCount = false; }
             if (list == null) return;
@@ -284,8 +319,9 @@ namespace Bismuth
         {
             // Re-arm the per-session press diagnostics on every apply, so a tester can
             // refresh the log window by touching any setting before pressing keys.
-            _pressDiagLeft = 24;
+            _pressDiagLeft = 400;
             _failOpenLogged = false;
+            _heldOffLogged = false;
 
             _active = settings.KeyLimiterEnabled;
             _blockWhileOpen = settings.BlockInputsWhileMenuOpen;
@@ -503,12 +539,26 @@ namespace Bismuth
 
         private static IEnumerable<KeyCode> ParseKeys(string input)
         {
-            if (string.IsNullOrWhiteSpace(input)) yield break;
-            foreach (var tok in input.Split(new[] { ' ', ',' }, System.StringSplitOptions.RemoveEmptyEntries))
+            foreach (var tok in SplitKeyTokens(input))
             {
-                if (KeyViewer.TryParseKey(tok.Trim(), out KeyCode kc))
+                if (KeyViewer.TryParseKey(tok, out KeyCode kc))
                     yield return kc;
             }
+        }
+
+        /* Custom key lists are space-separated. ',' is a key token in its own right, so it
+           can't also be a separator (splitting on it silently dropped the Comma key); a
+           trailing comma on a longer token is still trimmed, for lists written "Tab, 1, 2". */
+        internal static List<string> SplitKeyTokens(string input)
+        {
+            var list = new List<string>();
+            if (string.IsNullOrWhiteSpace(input)) return list;
+            foreach (var raw in input.Split((char[])null, System.StringSplitOptions.RemoveEmptyEntries))
+            {
+                string tok = raw.Length > 1 ? raw.TrimEnd(',') : raw;
+                if (tok.Length > 0) list.Add(tok);
+            }
+            return list;
         }
 
         // Presses in the game's own list (GetStateKeys) this frame that pass our filters.
@@ -524,7 +574,7 @@ namespace Bismuth
 
             _inCount = true;
             IList list;
-            try   { _stateArgs[0] = _stateDown; list = _getStateKeys.Invoke(null, _stateArgs) as IList; }
+            try   { list = InvokeGetStateKeys(_stateDown); }
             finally { _inCount = false; }
 
             if (list == null) return 0;
@@ -679,8 +729,18 @@ namespace Bismuth
                 bool weStillFilter = _active || _chatterActive || _ghosts.Count > 0;
                 if (!weStillFilter || __result == 0 || __0 != ButtonState.WentDown || _inCount) return;
 
-                __result = Mathf.Min(__result, CountAllowedInPressedKeys());
+                // Fail open: a game update that moves the reflected input API must cost us the
+                // filter, never the player's input (an exception here propagates out of GetMain).
+                try { __result = Mathf.Min(__result, CountAllowedInPressedKeys()); }
+                catch (Exception e)
+                {
+                    if (_countFailLogged) return;
+                    _countFailLogged = true;
+                    BismuthLog.Log("KeyLimiter: press filter failed, passing input through — " + (e.InnerException ?? e));
+                }
             }
+
+            private static bool _countFailLogged;
         }
 
         // ── RDInput.useKeyLimiter — the game's own limiter gate ────────────
@@ -697,9 +757,15 @@ namespace Bismuth
 
             public static void Postfix(ref bool __result)
             {
-                if (_active) __result = false;
+                if (!_active || !__result) return;
+                __result = false;
+                if (_heldOffLogged) return;
+                _heldOffLogged = true;
+                BismuthLog.Debug("KeyLimiter: game's own limiter held off (Bismuth's limiter is on)");
             }
         }
+
+        private static bool _heldOffLogged;
 
         // ── RDInput.WentDown / IsDown — raw keyboard shortcut reads ────────
         [HarmonyPatch]

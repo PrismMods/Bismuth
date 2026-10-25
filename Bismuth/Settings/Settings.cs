@@ -351,6 +351,8 @@ namespace Bismuth
         [System.Xml.Serialization.XmlIgnore]
         public string EffectiveKeyViewerFont => OverlayMasterFontEnabled ? FontName : KeyViewerFontName;
         public bool ShowOverlay = true;
+        // The FPS display moved to PrismLib ("Show FPS" in Prism · Settings). Read once, to carry
+        // an existing "on" across — see PrismBridge.Wire.
         public bool ShowFps = false;
         // Master switch for the whole Optimizations group; each flag below only takes
         // effect while this is on (the Misc → Optimizations dropdown header toggle).

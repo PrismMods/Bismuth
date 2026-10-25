@@ -368,8 +368,6 @@ namespace Bismuth.UI.Pages
                 v => { s.StatRowSpacing = v; notify?.Invoke(); }, "0.0", 0.5f);
             UIBuilder.IntSlider(content, "Decimal places", s.Precision, 0, 4,
                 v => { s.Precision = v; notify?.Invoke(); });
-            UIBuilder.Collapsible(content, "FPS", s.ShowFps,
-                v => { s.ShowFps = v; notify?.Invoke(); }, null);
         }
 
         // Stat-label override input. Shows the effective label; committing empty text or

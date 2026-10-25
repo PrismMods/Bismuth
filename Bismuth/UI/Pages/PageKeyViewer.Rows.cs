@@ -557,12 +557,12 @@ namespace Bismuth.UI.Pages
 
                 UIBuilder.SectionHeader(body, "Row");
                 UIBuilder.Slider(body, "Height", row.Height, 30f, 200f,
-                    v => { row.Height = v; notify?.Invoke(); rebuild(); }, "0", 1f);
+                    v => { row.Height = v; notify?.Invoke(); }, "0", 1f, onDragEnd: rebuild);
                 UIBuilder.Collapsible(body, "Show rain", row.ShowRain,
                     v => { row.ShowRain = v; notify?.Invoke(); rebuild(); }, null);
                 // 0 = follow the preset's Width step, which can't narrow the top row.
                 UIBuilder.Slider(body, "Rain width (0 = auto)", row.RainWidth, 0f, 200f,
-                    v => { row.RainWidth = v; notify?.Invoke(); rebuild(); }, "0", 1f);
+                    v => { row.RainWidth = v; notify?.Invoke(); }, "0", 1f, onDragEnd: rebuild);
 
                 EnsureKv(ref row.RainColor, 1, 1, 1, 1);
                 BindKv(body, "Rain color", row.RainColor,
@@ -653,10 +653,10 @@ namespace Bismuth.UI.Pages
                     v => { cell.Label = string.IsNullOrEmpty(v) ? null : v; notify?.Invoke(); rebuild(); });
 
                 UIBuilder.Slider(body, "Width", cell.WidthMul, 0.25f, 4f,
-                    v => { cell.WidthMul = v; notify?.Invoke(); rebuild(); }, "0.00");
+                    v => { cell.WidthMul = v; notify?.Invoke(); }, "0.00", onDragEnd: rebuild);
                 // 0 = follow the preset's Label size (Main → Label Text).
                 UIBuilder.IntSlider(body, "Font size (0 = preset)", cell.LabelSize, 0, 48,
-                    v => { cell.LabelSize = v; notify?.Invoke(); rebuild(); });
+                    v => { cell.LabelSize = v; notify?.Invoke(); }, onDragEnd: rebuild);
 
                 UIBuilder.Spacer(body);
                 UIBuilder.DangerButton(body, "Delete this cell", () =>

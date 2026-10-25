@@ -735,22 +735,28 @@ namespace Bismuth.UI
             Transform parent,
             string label,
             int value, int min, int max,
-            Action<int> onChange)
+            Action<int> onChange,
+            Action onDragEnd = null)
         {
             return Slider(parent, label, value, min, max,
                 v => onChange?.Invoke(Mathf.RoundToInt(v)),
-                "0", 1f);
+                "0", 1f, onDragEnd);
         }
 
         // Horizontal slider — label left, draggable track + handle middle, numeric value right.
         // `step` > 0 snaps the value to multiples of step (used by IntSlider with step=1).
+        // `onDragEnd`, when given, fires once when the drag gesture ends (pointer up) rather
+        // than on every frame of the drag like `onChange` — for a commit too expensive to run
+        // continuously (e.g. KeyViewer.Rebuild's full teardown/rebuild). Typed-value edits and
+        // the undo button aren't drags, so they still commit immediately through `onChange`.
         public static GameObject Slider(
             Transform parent,
             string label,
             float value, float min, float max,
             Action<float> onChange,
             string format = "0.00",
-            float step = 0f)
+            float step = 0f,
+            Action onDragEnd = null)
         {
             SettingsSearch.Register(label);
             label = Loc.T(label);
@@ -811,24 +817,42 @@ namespace Bismuth.UI
             input.onSelect.AddListener(_ => { valFocus = true; PaintValBox(); });
             input.onDeselect.AddListener(_ => { valFocus = false; PaintValBox(); });
 
-            // Track — stretches between label and value
+            // Track — stretches between label and value. This GameObject is the drag HIT
+            // AREA, sized well beyond the visible bar (was 5px tall and the only raycastable
+            // part, since the handle graphic below has raycastTarget=false — a near-impossible
+            // target with a mouse and worse on a trackpad). The visible thin bar is the "Bar"
+            // child below; this rect only exists to catch the pointer.
             var trackGo = Rect("Track", row.transform);
             var trackRect = (RectTransform)trackGo.transform;
             trackRect.anchorMin = new Vector2(0, 0.5f);
             trackRect.anchorMax = new Vector2(1, 0.5f);
             trackRect.pivot = new Vector2(0.5f, 0.5f);
-            trackRect.sizeDelta = new Vector2(-(labelW + rightW + 24f), 5f);
+            trackRect.sizeDelta = new Vector2(-(labelW + rightW + 24f), 24f);
             trackRect.anchoredPosition = new Vector2((labelW - rightW) * 0.5f + 4f, 0);
+
+            var trackHit = trackGo.AddComponent<Image>();
+            trackHit.sprite = Theme.White;
+            trackHit.color = Color.clear;
+            trackHit.raycastTarget = true;
+
+            // Bar — the visible thin track, non-interactive (Track above handles all input).
+            var barGo = Rect("Bar", trackGo.transform);
+            var barRect = (RectTransform)barGo.transform;
+            barRect.anchorMin = new Vector2(0, 0.5f);
+            barRect.anchorMax = new Vector2(1, 0.5f);
+            barRect.pivot = new Vector2(0.5f, 0.5f);
+            barRect.sizeDelta = new Vector2(0, 5f);
+            barRect.anchoredPosition = Vector2.zero;
 
             // Sharp flat Image instead of RoundedRectGraphic — the procedural geometry's AA
             // fringe blurred visibly at UI scale > 1. Flat rect with no antialiasing stays crisp.
-            var trackBg = trackGo.AddComponent<Image>();
+            var trackBg = barGo.AddComponent<Image>();
             trackBg.sprite = Theme.White;
             trackBg.color = Theme.ToggleOff;
-            trackBg.raycastTarget = true;
+            trackBg.raycastTarget = false;
 
             // Fill (left portion)
-            var fillGo = Rect("Fill", trackGo.transform);
+            var fillGo = Rect("Fill", barGo.transform);
             var fillRect = (RectTransform)fillGo.transform;
             fillRect.anchorMin = new Vector2(0, 0);
             fillRect.anchorMax = new Vector2(0, 1);
@@ -842,7 +866,7 @@ namespace Bismuth.UI
             fillGo.AddComponent<AccentFill>();
 
             // Handle — anchored at a normalized X position (0..1)
-            var handleGo = Rect("Handle", trackGo.transform);
+            var handleGo = Rect("Handle", barGo.transform);
             var handleRect = (RectTransform)handleGo.transform;
             handleRect.anchorMin = new Vector2(0f, 0.5f);
             handleRect.anchorMax = new Vector2(0f, 0.5f);
@@ -868,6 +892,7 @@ namespace Bismuth.UI
             ctrl.Format = format;
             ctrl.Step = step;
             ctrl.OnChange = onChange;
+            ctrl.OnDragEnd = onDragEnd;
             ctrl.ApplyVisuals();
 
             // Inline undo button (left of the value field). Hidden until the value differs
@@ -901,6 +926,7 @@ namespace Bismuth.UI
                 ctrl.ApplyVisuals();
                 input.text = baseline.ToString(format);
                 onChange?.Invoke(baseline);
+                onDragEnd?.Invoke();
                 RefreshUndo();
             });
 
@@ -917,6 +943,7 @@ namespace Bismuth.UI
                         baseline = ctrl.Value;   // pre-edit value is the undo target
                         ctrl.Value = v;
                         onChange?.Invoke(v);
+                        onDragEnd?.Invoke();
                     }
                 }
                 // Always reformat the displayed text — reverts garbage input or normalizes precision.

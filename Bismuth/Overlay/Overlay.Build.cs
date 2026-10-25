@@ -51,7 +51,6 @@ namespace Bismuth
             progressBarGo = MakeProgressBar(canvasGo, out progressBarFill, out progressBarFillImg);
             judgementsRow = MakeJudgementsRow(judgementsContainer.gameObject, out judgementTexts);
             comboDisplayContainer = MakeComboDisplay(canvasGo, out comboDisplayLabel, out comboDisplayValue, out _comboLabelWrapper);
-            (fpsContainer, fpsText) = MakeFpsDisplay();
             MakeTimingGraph();
             MakeResultsScreen();
 
@@ -338,38 +337,5 @@ namespace Bismuth
             return t;
         }
 
-        private (GameObject container, TextMeshProUGUI text) MakeFpsDisplay()
-        {
-            var canvasGo = new GameObject("FpsCanvas");
-            canvasGo.transform.SetParent(transform);
-            var c = canvasGo.AddComponent<Canvas>();
-            c.renderMode = RenderMode.ScreenSpaceOverlay;
-            c.sortingOrder = 1000;
-            ConfigureScaler(canvasGo.AddComponent<CanvasScaler>());
-
-            var go = new GameObject("FpsDisplay", typeof(RectTransform));
-            go.transform.SetParent(canvasGo.transform, false);
-
-            var rect = (RectTransform)go.transform;
-            rect.anchorMin = rect.anchorMax = new Vector2(1f, 0f);
-            rect.pivot = new Vector2(1f, 0f);
-            rect.anchoredPosition = new Vector2(-10f, 10f);
-
-            var csf = go.AddComponent<ContentSizeFitter>();
-            csf.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
-            csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-
-            var t = go.AddComponent<TextMeshProUGUI>();
-            t.fontSize = 22;
-            t.color = Color.white;
-            t.alignment = TextAlignmentOptions.BottomRight;
-            t.textWrappingMode = TextWrappingModes.NoWrap;
-            t.overflowMode = TextOverflowModes.Overflow;
-            t.text = "-- FPS";
-            AddShadow(go);
-
-            canvasGo.SetActive(false);
-            return (canvasGo, t);
-        }
     }
 }

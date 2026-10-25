@@ -108,16 +108,11 @@ namespace Bismuth
         private TextMeshProUGUI comboDisplayValue;
         private TmpShadow _comboValueShadow;
         private TmpShadow _comboLabelShadow;
-        private GameObject fpsContainer;
-        private TextMeshProUGUI fpsText;
         private GameObject progressBarGo;
         private RectTransform progressBarFill;
         private UnityEngine.UI.Image progressBarFillImg;
         private float _lastBarT = -1f;
 
-        private float _fpsAccum;
-        private int _fpsFrames;
-        private const float FpsInterval = 0.2f;
 
         private const float ShadowBaseOffset     = 2f;
         private const int RowBaseFontSize        = 27;

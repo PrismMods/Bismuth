@@ -344,6 +344,13 @@ namespace Bismuth
             // uses so it disappears with the rain.
             Color bodyColor = h.Color;
             bodyColor.a *= col.BotY <= fadeStart ? 1f : FadeAt(col.BotY, fadeStart, fadeZoneH);
+            /* Once the tip becomes the column's visual bottom (tipIsBottom), it grows its own
+               soft bottom-cap (botExt below) reaching down to the same point the body's own
+               soft-bottom cap already sits at — both drawing the identical blurred region on
+               top of each other doubles the alpha there, reading as a brightness pop that
+               lasts until the column is destroyed. The tip's cap looks identical at the
+               handoff (same blur profile, same position), so just stop drawing the body's. */
+            if (tipIsBottom) bodyColor.a = 0f;
 
             // Soft ends follow the rain's: an end that meets another segment stays hard, so
             // bodyTop meets the tip at fadeStart without overlap brightening.
@@ -351,7 +358,11 @@ namespace Bismuth
             if (h.BodyImg.sprite != wantBody) h.BodyImg.sprite = wantBody;
 
             float sw = col.Width + h.Size * 2f;
-            float bodyTopExt = hasTip ? 0f : h.Size;
+            // Tapers to 0 as the body's top nears fadeStart (where the tip segment takes over)
+            // instead of snapping the instant hasTip flips true — the same discontinuity as
+            // the tip's topExt above, just at the body/tip seam. col.BotY + bodyH is the
+            // body's actual top (bodyTop), clamped at fadeStart same as bodyH itself.
+            float bodyTopExt = Mathf.Clamp(fadeStart - (col.BotY + bodyH), 0f, h.Size);
             h.BodyRt.anchoredPosition = new Vector2(h.BodyRt.anchoredPosition.x, panelTop + col.BotY - h.Size);
             h.BodyRt.sizeDelta        = new Vector2(sw, bodyH + h.Size + bodyTopExt);
             h.BodyImg.color           = bodyColor;
@@ -364,9 +375,14 @@ namespace Bismuth
                 return;
             }
 
-            // The soft ends extend past the rain so their blur renders outside it.
+            // The soft ends extend past the rain so their blur renders outside it. topExt
+            // tapers to 0 as tipTopY nears the track boundary (fadeStart + fadeZoneH) rather
+            // than snapping the instant topClipped flips true — that snap (border size jumping
+            // to 0 the same frame the sprite swaps to its hard-edge variant) flickered right
+            // before a column left the visible area. Tapered, the extension is already 0 by
+            // the time the sprite swaps.
             float botExt = tipIsBottom  ? h.Size : 0f;
-            float topExt = topClipped   ? 0f     : h.Size;
+            float topExt = Mathf.Clamp(fadeStart + fadeZoneH - tipTopY, 0f, h.Size);
             var wantTip = GetHaloBodySprite(size, h.Radius, tipIsBottom, !topClipped, h.Glow);
             if (h.TipImg.sprite != wantTip) h.TipImg.sprite = wantTip;
 

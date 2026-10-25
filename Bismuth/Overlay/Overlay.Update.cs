@@ -64,18 +64,6 @@ namespace Bismuth
             UpdateTimingGraphVisibility(settings);
             UpdateResultsScreen(settings);
 
-            if (settings.ShowFps && fpsText != null)
-            {
-                _fpsAccum  += Time.unscaledDeltaTime;
-                _fpsFrames += 1;
-                if (_fpsAccum >= FpsInterval)
-                {
-                    fpsText.text = Mathf.RoundToInt(_fpsFrames / _fpsAccum) + " FPS";
-                    _fpsAccum  = 0f;
-                    _fpsFrames = 0;
-                }
-            }
-
             if (judgementTexts != null)
             {
                 bool nf = scrController.instance?.noFail ?? false;

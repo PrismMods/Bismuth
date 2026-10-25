@@ -282,7 +282,6 @@ namespace Bismuth
             if (timingScaleValue != null)    timingScaleValue.font    = vf;
             if (comboDisplayLabel != null)   comboDisplayLabel.font   = comboLabelFont ?? font;
             if (comboDisplayValue != null)   comboDisplayValue.font   = comboValueFont ?? font;
-            if (fpsText != null)             fpsText.font             = font;
             if (judgementTexts != null)
                 foreach (var t in judgementTexts)
                     if (t != null) t.font = font;

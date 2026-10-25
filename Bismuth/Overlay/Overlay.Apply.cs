@@ -151,8 +151,6 @@ namespace Bismuth
                 if (avlg != null) avlg.childAlignment = childAlign;
             }
 
-            if (fpsContainer != null) fpsContainer.SetActive(settings.ShowFps);
-
             if (leftContainer != null)
             {
                 leftContainer.localScale = Vector3.one;
@@ -295,8 +293,44 @@ namespace Bismuth
             if (sh != null) { sh.OffsetPx = shadowOffset; sh.Apply(); }
         }
 
+        // Row positions as of the last PlaceRows that actually moved anything.
+        private bool _rowsPlacedOnce;
+        private OverlayPosition _lastProgressPos, _lastAccPos, _lastXAccPos, _lastBpmPos,
+            _lastTileBpmPos, _lastKpsPos, _lastSongDurPos, _lastLevelDurPos, _lastBestPos;
+        private bool _lastBestInAttempts;
+
+        /* ApplySettings runs on every settings notify — every frame of ANY slider drag
+           anywhere in the settings UI, not just overlay-position ones. Detach-then-reattach
+           via SetParent forces Unity to rebuild canvas/layout state, so this used to pay that
+           cost on every such frame regardless of what was actually being dragged. Skip the
+           whole dance when none of these positions changed since the last call. */
         private void PlaceRows(Settings settings)
         {
+            bool unchanged = _rowsPlacedOnce
+                && _lastProgressPos  == settings.ProgressPosition
+                && _lastAccPos       == settings.AccPosition
+                && _lastXAccPos      == settings.XAccPosition
+                && _lastBpmPos       == settings.BpmPosition
+                && _lastTileBpmPos   == settings.TileBpmPosition
+                && _lastKpsPos       == settings.KpsPosition
+                && _lastSongDurPos   == settings.SongDurationPosition
+                && _lastLevelDurPos  == settings.LevelDurationPosition
+                && _lastBestPos      == settings.BestPosition
+                && _lastBestInAttempts == settings.BestInAttempts;
+            if (unchanged) return;
+
+            _rowsPlacedOnce     = true;
+            _lastProgressPos    = settings.ProgressPosition;
+            _lastAccPos         = settings.AccPosition;
+            _lastXAccPos        = settings.XAccPosition;
+            _lastBpmPos         = settings.BpmPosition;
+            _lastTileBpmPos     = settings.TileBpmPosition;
+            _lastKpsPos         = settings.KpsPosition;
+            _lastSongDurPos     = settings.SongDurationPosition;
+            _lastLevelDurPos    = settings.LevelDurationPosition;
+            _lastBestPos        = settings.BestPosition;
+            _lastBestInAttempts = settings.BestInAttempts;
+
             if (progressRow != null)  progressRow.transform.SetParent(null, false);
             if (accRow != null)       accRow.transform.SetParent(null, false);
             if (xaccRow != null)      xaccRow.transform.SetParent(null, false);

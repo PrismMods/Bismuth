@@ -33,7 +33,7 @@ namespace Bismuth
         {
             try
             {
-                if (!PrismLib.Bootstrap.PrismBootstrap.Ensure(BismuthLog.Log, new Version(0, 2, 0))) return;
+                if (!PrismLib.Bootstrap.PrismBootstrap.Ensure(BismuthLog.Log, new Version(0, 3, 9))) return;
                 Wire(version);
                 Available = true;
             }
@@ -47,8 +47,14 @@ namespace Bismuth
             Version v;
             Version.TryParse((version ?? "0.0.0").Split('-')[0], out v);
             var me = PrismLib.Prism.Register("Bismuth", v ?? new Version(0, 0, 0));
+            // The FPS display moved into PrismLib: carry an existing "on" across, once.
+            if (MainClass.Settings != null && MainClass.Settings.ShowFps && !PrismLib.Config.Has(PrismLib.Prism.FpsKey))
+                PrismLib.Config.SetBool(PrismLib.Prism.FpsKey, true);
             _me = me;
             PrismLib.Prism.Log = BismuthLog.Log;
+            // From the start, not only once a window is built — the input gate installs on the
+            // first frame and its report would otherwise go nowhere.
+            PrismLib.UI.Toolkit.Ui.Log = m => BismuthLog.Log("[prism] " + m);
             PrismLib.Keys.KeyName = i => ((KeyCode)i).ToString();
             // So the other mods' scroll-zoom and click handling can stand down over our panels.
             me.ReportPointerOverUi(() => UI.UICore.IsOpen);
@@ -125,11 +131,16 @@ namespace Bismuth
         private static DebugPanel _debug;
         private static SettingsPanel _settings;
         private static object _debugClaim;
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static bool FpsShown() => PrismLib.Config.GetBool(PrismLib.Prism.FpsKey);
+
         // Plain bool, so TickDebug can consult it without touching a PrismLib type.
         private static bool _ownsDebug;
 
         internal static void TickDebug()
         {
+            PrismLib.UI.Toolkit.FpsCounter.Tick(Available && FpsShown());
+
             /* Alt+Shift+D and Alt+Shift+S.
 
                Plain Alt+letter does not arrive on macOS: Option+D and Option+S compose a character
@@ -224,6 +235,8 @@ namespace Bismuth
                 if (k >= KeyCode.Mouse0 && k <= KeyCode.Mouse6) continue;
                 var done = _capture;
                 _capture = null;
+                // Escape cancelled the capture; it must not also close the window this frame.
+                if (k == KeyCode.Escape) PrismLib.UI.Toolkit.Ui.ConsumeEscape();
                 done(k == KeyCode.Escape ? null : k.ToString());
                 return;
             }

@@ -193,14 +193,7 @@ namespace Bismuth.UI.Pages
             return go;
         }
 
-        private static List<string> ParseTokens(string s)
-        {
-            var list = new List<string>();
-            if (string.IsNullOrEmpty(s)) return list;
-            foreach (var t in s.Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries))
-                list.Add(t);
-            return list;
-        }
+        private static List<string> ParseTokens(string s) => KeyLimiter.SplitKeyTokens(s);
     }
 
     // Fires when its RectTransform's dimensions change (resize, scale, layout pass). Used

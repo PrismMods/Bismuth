@@ -239,8 +239,25 @@ namespace Bismuth
                 _rowPreset[globalR] = preset;
 
                 int rowNonStat = leftKeys.Count + rightKeys.Count;
-                if (rowNonStat < topKeyX.Count)
+                if (rowNonStat == topKeyX.Count)
                 {
+                    // Equal count (e.g. 16k's second row): each key has an obvious 1:1
+                    // counterpart above it, so pin its rain to that exact column x rather than
+                    // this row's own slot center. Lower rows pack cells edge to edge across the
+                    // full panel width with no gap (unlike the top row's keyWidth+gap spacing),
+                    // so their pitch drifts slightly from the top row's even at equal counts,
+                    // bowing the columns instead of running them straight top to bottom.
+                    for (int i = 0; i < leftKeys.Count; i++)
+                        _rainX[leftKeys[i]] = topKeyX[i];
+                    for (int i = 0; i < rightKeys.Count; i++)
+                        _rainX[rightKeys[i]] = topKeyX[leftKeys.Count + i];
+                }
+                else if (rowNonStat < topKeyX.Count)
+                {
+                    // Fewer keys than the top row (e.g. 10k's Space/RAlt row): no single top
+                    // column corresponds to a merged/wide key, so cluster them near center —
+                    // last leftKeys.Count top slots before the midpoint, first rightKeys.Count
+                    // top slots after it.
                     for (int i = 0; i < leftKeys.Count; i++)
                     {
                         int slot = topM - leftKeys.Count + i;

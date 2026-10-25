@@ -200,7 +200,7 @@ namespace Bismuth.UI
         }
     }
 
-    internal class SliderControl : MonoBehaviour, IPointerDownHandler, IDragHandler
+    internal class SliderControl : MonoBehaviour, IPointerDownHandler, IDragHandler, IPointerUpHandler
     {
         public float Min, Max, Value;
         public RectTransform Track;
@@ -212,9 +212,15 @@ namespace Bismuth.UI
         public Action<float> OnChange;
         public Action OnEditBegin;    // gesture start, before the first value change (undo baseline)
         public Action OnAfterChange;  // after Value changed + OnChange invoked (refresh undo button)
+        // Fires once when the drag gesture ends, on top of whatever OnChange already ran
+        // during the drag — for a caller whose real commit (e.g. a full layout rebuild) is
+        // too expensive to run on every frame of the drag itself.
+        public Action OnDragEnd;
+        private bool _dragging;
 
-        public void OnPointerDown(PointerEventData e) { OnEditBegin?.Invoke(); UpdateFromPointer(e); }
+        public void OnPointerDown(PointerEventData e) { _dragging = true; OnEditBegin?.Invoke(); UpdateFromPointer(e); }
         public void OnDrag(PointerEventData e) { UpdateFromPointer(e); }
+        public void OnPointerUp(PointerEventData e) { if (_dragging) { _dragging = false; OnDragEnd?.Invoke(); } }
 
         private void UpdateFromPointer(PointerEventData e)
         {

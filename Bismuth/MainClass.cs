@@ -44,9 +44,16 @@ namespace Bismuth
             modEntry.OnSaveGUI = OnSaveGUI;
             modEntry.OnUpdate = (_, __) =>
             {
-                UICore.HandleUpdate();
+                // Our own menu hotkeys and the Prism polls (chords, Escape, undo, wheel) read real
+                // input even while a Prism window withholds it from the game.
+                PrismLib.UI.Toolkit.InputGate.Exempt(UICore.HandleUpdate);
                 UI.UpdateToast.Tick();
-                PrismBridge.TickDebug();
+                PrismLib.UI.Toolkit.InputGate.Exempt(PrismBridge.TickDebug);
+                if (_patched)
+                {
+                    PrismLib.UI.Toolkit.InputGate.EnsureInstalled("Bismuth", GatePatch);
+                    PrismLib.UI.Toolkit.FontFix.EnsureInstalled("Bismuth", GatePatch);
+                }
                 if (PrismBridge.Available) PrismBridge.SyncInputClaim(KeyLimiter.BlockingInputs);
                 FontPacks.Tick();
                 if (_forceReloadPending) { _forceReloadPending = false; DoForceReload(); }
@@ -116,6 +123,12 @@ namespace Bismuth
             // everything downstream checks PrismBridge.Available and runs standalone without it.
             PrismBridge.Init(modEntry.Info.Version);
             harmony = new Harmony(modEntry.Info.Id);
+            // Prism windows keep keys and the wheel from the game (InputGate), except while
+            // autoplay drives hits and for our own key viewer / rebind pollers.
+            PrismLib.UI.Toolkit.InputGate.AddBypass(() => { try { return RDC.auto; } catch { return false; } });
+            PrismLib.UI.Toolkit.InputGate.AddExemption(() => KeyLimiter.RawReadExempt);
+            // Our uGUI menu stays clickable beside an open Prism window.
+            PrismLib.UI.Toolkit.InputGate.AddMouseExemption(() => UICore.IsOpen);
             // Patch at the same early point as always when the master switch is on; a
             // master-off launch stays fully hands-off until the rail switch flips.
             if (Settings.ModEnabled) PatchAllOnce();
@@ -179,6 +192,34 @@ namespace Bismuth
         {
             foreach (var m in new List<MethodBase>(h.GetPatchedMethods()))
                 h.Unpatch(m, HarmonyPatchType.All, h.Id);
+        }
+
+        // InputGate's patches go through our Harmony — PrismLib.UI has none of its own.
+        private static void GatePatch(MethodBase target, MethodInfo patch, string kind)
+        {
+            var proc = harmony.CreateProcessor(target);
+            if (kind == "redirect")
+                proc.AddTranspiler(new HarmonyMethod(typeof(MainClass).GetMethod(nameof(RedirectMouse), BindingFlags.NonPublic | BindingFlags.Static)));
+            else if (kind == "prefix") proc.AddPrefix(new HarmonyMethod(patch));
+            else if (kind == "finalizer") proc.AddFinalizer(new HarmonyMethod(patch));
+            else proc.AddPostfix(new HarmonyMethod(patch));
+            proc.Patch();
+        }
+
+        // The game's mouse-button reads are engine calls Harmony cannot patch here, so the gate
+        // redirects their callers: each call becomes InputGate's gated equivalent.
+        private static IEnumerable<CodeInstruction> RedirectMouse(IEnumerable<CodeInstruction> code)
+        {
+            foreach (var ins in code)
+            {
+                if ((ins.opcode == System.Reflection.Emit.OpCodes.Call || ins.opcode == System.Reflection.Emit.OpCodes.Callvirt)
+                    && ins.operand is MethodBase called)
+                {
+                    var to = PrismLib.UI.Toolkit.InputGate.RedirectFor(called);
+                    if (to != null) { ins.opcode = System.Reflection.Emit.OpCodes.Call; ins.operand = to; }
+                }
+                yield return ins;
+            }
         }
 
         // Time.frameCount == 0 during koren UMM's static-ctor injection window. Calling
@@ -252,6 +293,8 @@ namespace Bismuth
             GameUiEditor.Close();
             SkyHookEvdev.Release();
             UnpatchOwn(harmony);
+            PrismLib.UI.Toolkit.InputGate.Uninstalled("Bismuth");
+            PrismLib.UI.Toolkit.FontFix.Uninstalled("Bismuth");
             _patched = false;
             if (overlay != null)
             {
