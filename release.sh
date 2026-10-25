@@ -27,8 +27,17 @@ jq --arg v "$VERSION" --arg url "$DOWNLOAD_URL" \
     '.Releases[0].Version = $v | .Releases[0].DownloadUrl = $url' \
     Repository.json > Repository.json.tmp && mv Repository.json.tmp Repository.json
 
-# Build.
-xbuild Bismuth.sln > /dev/null
+# Build. ADOFAI_MANAGED / GAME_ROOT override the csproj's macOS paths (release-linux.sh sets them).
+PROPS=()
+[ -n "$ADOFAI_MANAGED" ] && PROPS+=("/p:AdofaiManaged=$ADOFAI_MANAGED")
+[ -n "$GAME_ROOT" ] && PROPS+=("/p:GameRoot=$GAME_ROOT")
+BUILD_LOG=$(xbuild Bismuth.sln "${PROPS[@]}" 2>&1) || true
+# xbuild's exit status is not reliable on every Mono; never zip a stale dll.
+if ! grep -q " 0 Error(s)" <<<"$BUILD_LOG"; then
+    grep -E "error|Error" <<<"$BUILD_LOG" >&2
+    echo "Build failed; nothing was packaged." >&2
+    exit 1
+fi
 
 # Stage the UMM payload (single Bismuth/ folder at the zip root).
 STAGE=$(mktemp -d)
@@ -43,7 +52,11 @@ cp Bismuth/Resources/BismuthSymbols.ttf Bismuth/Resources/BismuthSymbols-LICENSE
 
 # Zip it.
 rm -f "$ZIP_NAME"
-(cd "$STAGE" && zip -qr "$ZIP_NAME" Bismuth)
+if command -v zip > /dev/null; then
+    (cd "$STAGE" && zip -qr "$ZIP_NAME" Bismuth)
+else
+    (cd "$STAGE" && python3 -m zipfile -c "$ZIP_NAME" Bismuth)
+fi
 mv "$STAGE/$ZIP_NAME" .
 
 echo "Built $ZIP_NAME"
