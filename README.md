@@ -11,6 +11,9 @@
 </div>
 <br>
 
+> [!Warning]
+> Recent builds may only work on 3.4.0 and above!
+
 - Configurable in-game stats overlays: progress, accuracy, x-accuracy, BPM, tile BPM, timing scale, judgements, combo, attempts, FPS
 - Customizable key viewer: key rain, ghost keys, hand/foot presets, and per-key & total press counts
 - Key limiter and chatter blocker
@@ -21,8 +24,8 @@
 
 Tested Environments:
 
-- macOS 26.5, ADOFAI v3.3.1
-- Arch Linux, kernel 7.0, ADOFAI v3.3.1
+- macOS 26.5, ADOFAI v3.4.0
+- Arch Linux, kernel 7.0, ADOFAI v3.4.0
 
 ## Install
 
