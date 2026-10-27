@@ -4,10 +4,10 @@
   
   # Topaz
  
-  **A Dance of Fire and Ice** (3.1.0+)용 오버레이 / 편의성(QoL) 모드 — **Quartz**의 라이트(lite) 버전입니다.
+  **A Dance of Fire and Ice** (2.9.8+)용 오버레이 / 편의성(QoL) 모드 — **Quartz**의 라이트(lite) 버전입니다.
   
-  [![Latest Release](https://img.shields.io/github/v/release/QuartzTeam/Topaz?include_prereleases&sort=date&label=release&logo=github&style=flat-square)](https://github.com/QuartzTeam/Topaz/releases/latest)
-  [![Downloads](https://img.shields.io/github/downloads/QuartzTeam/Topaz/total?style=flat-square&logo=github&label=downloads)](https://github.com/QuartzTeam/Topaz/releases)
+  [![Latest Release](https://img.shields.io/github/v/release/PrismMods/Topaz?include_prereleases&sort=date&label=release&logo=github&style=flat-square)](https://github.com/PrismMods/Topaz/releases/latest)
+  [![Downloads](https://img.shields.io/github/downloads/PrismMods/Topaz/total?style=flat-square&logo=github&label=downloads)](https://github.com/PrismMods/Topaz/releases)
 </div>
 <br>
 
@@ -21,9 +21,8 @@
 
 테스트 환경:
 
-- macOS 26.5, ADOFAI v3.2.0
-- Windows 11, ADOFAI v3.2.0
-- Arch Linux, 커널 7.0, ADOFAI v3.1.2
+- macOS 26.5, ADOFAI v2.9.8, v3.3.1, v3.4.0
+- Arch Linux, 커널 7.0, ADOFAI v3.4.0
 
 ## 설치
 
