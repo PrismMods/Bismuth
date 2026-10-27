@@ -22,7 +22,7 @@ set -e
 
 SRC="${1:?usage: $0 <font-dir> [out-dir]}"
 OUT="${2:-font-packs}"
-BASE_URL="https://raw.githubusercontent.com/PrismMods/Bismuth/main/font-packs"
+BASE_URL="https://raw.githubusercontent.com/PrismMods/Topaz/main/font-packs"
 
 # Pack id | display name | note | filename glob
 PACKS=(

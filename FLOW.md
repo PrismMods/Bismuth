@@ -32,7 +32,7 @@ Game version: v2.9.8 (Mac), Unity 6 — ships TextMeshPro, but `scrController.tx
 
 ## Input Architecture (RDInput)
 
-The game reads the keyboard through **four independent layers** — blocking one does not block the others (this bit Bismuth's block-inputs-while-menu-open feature repeatedly):
+The game reads the keyboard through **four independent layers** — blocking one does not block the others (this bit Topaz's block-inputs-while-menu-open feature repeatedly):
 
 ```txt
 ButtonState enum: WentDown = 0, WentUp = 1, IsDown = 2, IsUp = 3
@@ -166,7 +166,7 @@ if RDInput.cancelPress && !paused && !lofiVersion:
   → pause logic
 ```
 
-**Conflict note:** `hideHudCheatCode` toggles `RDC.noHud` — this can conflict with Bismuth's  
+**Conflict note:** `hideHudCheatCode` toggles `RDC.noHud` — this can conflict with Topaz's  
 `HideAllUI` setting which also controls `RDC.noHud` via `ShowOrHideElements`.  
 Since `ShowOrHideElements` only runs on settings change (not every frame), the state can  
 drift if the player triggers this cheat while `HideAllUI` is on.
@@ -190,24 +190,24 @@ Physics2D.OverlapCircleAll(position, radius, layerMask)
 ```txt
 Custom level:
   LoadAndPlayLevel() sets scnGame.instance.levelPath
-  → scnGame.Play(seqID=0, isRestart=false)         ← Bismuth: OnLevelStart(false)
+  → scnGame.Play(seqID=0, isRestart=false)         ← Topaz: OnLevelStart(false)
 
 In-game retry (custom):
   scrController.ResetCustomLevel() coroutine:
-    → scrUIController.WipeToBlack()                  ← Bismuth: OnLevelEnd()
+    → scrUIController.WipeToBlack()                  ← Topaz: OnLevelEnd()
     → (yield: wipe animation)
     → scnGame.ResetScene()                           ← no Unity scene unload
-    → scnGame.Play(checkpointNum, isRestart=true)   ← Bismuth: OnLevelStart(true)
+    → scnGame.Play(checkpointNum, isRestart=true)   ← Topaz: OnLevelStart(true)
 
 Official level:
-  → scrPressToStart.ShowText()                       ← Bismuth: OnLevelStart(false)
+  → scrPressToStart.ShowText()                       ← Topaz: OnLevelStart(false)
 
 Level end (any):
-  → scrController.StartLoadingScene()               ← Bismuth: OnLevelEnd()
-  → scrUIController.WipeToBlack()                   ← Bismuth: OnLevelEnd()
-  → StateBehaviour.ChangeState(States.None)         ← Bismuth: OnLevelEnd()
-  → scnEditor.ResetScene()                          ← Bismuth: OnLevelEnd() (editor)
-  → SceneManager.sceneUnloaded                      ← Bismuth: OnSceneUnloaded()
+  → scrController.StartLoadingScene()               ← Topaz: OnLevelEnd()
+  → scrUIController.WipeToBlack()                   ← Topaz: OnLevelEnd()
+  → StateBehaviour.ChangeState(States.None)         ← Topaz: OnLevelEnd()
+  → scnEditor.ResetScene()                          ← Topaz: OnLevelEnd() (editor)
+  → SceneManager.sceneUnloaded                      ← Topaz: OnSceneUnloaded()
 ```
 
 `scrMistakesManager.Reset` fires only in `scrController.Awake` and `scnEditor.SwitchToEditMode`  
@@ -231,7 +231,7 @@ is the only reliable retry signal.
 
 `RDConstants.data` — singleton; holds:
 
-- `hitMarginColoursUI` — colors per `HitMargin` value (used by Bismuth's `MarginColor`)
+- `hitMarginColoursUI` — colors per `HitMargin` value (used by Topaz's `MarginColor`)
 - `rabbitSpritesArr` / `snailSpritesArr` — 10-sprite arrays for animated planet icons  
   (index = `1 + 2*isFirstBeat + 5*isRabbit + beatPhase`)
 

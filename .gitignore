@@ -429,6 +429,7 @@ crashlytics-build.properties
 /UnityProject/[Aa]ssets/[Ss]treamingAssets/aa/*
 *.DS_Store
 .claude
+Topaz.zip
 Bismuth.zip
 RELEASE_NOTES.md
 RELEASE_NOTES_kr.md

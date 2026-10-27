@@ -4,7 +4,7 @@
 
 Static class that persists per-level attempt counts across sessions.
 
-**File:** `<ModPath>/BismuthAttempts.txt` — one `key=value` line per level. Sits alongside the other Bismuth-owned files in the mod folder.
+**File:** `<ModPath>/TopazAttempts.txt` — one `key=value` line per level. Sits alongside the other Topaz-owned files in the mod folder.
 
 **Key format:** Computed by `GetLevelKey()` in `Overlay.cs`:
 

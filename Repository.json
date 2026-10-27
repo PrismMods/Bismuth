@@ -1,9 +1,9 @@
 {
   "Releases": [
     {
-      "Id": "Bismuth",
+      "Id": "Topaz",
       "Version": "1.3.6",
-      "DownloadUrl": "https://github.com/PrismMods/Bismuth/releases/download/v1.3.6/Bismuth.zip"
+      "DownloadUrl": "https://github.com/PrismMods/Topaz/releases/download/v1.3.6/Topaz.zip"
     }
   ]
 }

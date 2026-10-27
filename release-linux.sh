@@ -1,11 +1,11 @@
 #!/bin/bash
-# Build Bismuth on Linux against the Steam (native Linux) copy of the game.
-# Usage: ./release-linux.sh             build only (Bismuth/bin/Debug/Bismuth.dll)
+# Build Topaz on Linux against the Steam (native Linux) copy of the game.
+# Usage: ./release-linux.sh             build only (Topaz/bin/Debug/Topaz.dll)
 #        ./release-linux.sh <version>   full release via release.sh, e.g. 1.3.6-b2
 #
 # The csproj points at the macOS install with a MelonLoader layout. On Linux:
 #   - game assemblies come from <game>/ADanceOfFireAndIce_Data/Managed;
-#   - Bismuth compiles against HarmonyX (not the Harmony 2.3.6 UMM ships), so its 0Harmony.dll is
+#   - Topaz compiles against HarmonyX (not the Harmony 2.3.6 UMM ships), so its 0Harmony.dll is
 #     fetched from NuGet once into lib/linux/ and laid out where the csproj expects it, together
 #     with a link to UMM's UnityModManager.dll.
 # Set ADOFAI_ROOT to use a game install other than the default Steam library.
@@ -44,10 +44,10 @@ if [ -n "$1" ]; then
     exec ./release.sh "$1"
 fi
 
-BUILD_LOG=$(xbuild Bismuth.sln "/p:AdofaiManaged=$ADOFAI_MANAGED" "/p:GameRoot=$GAME_ROOT" 2>&1) || true
+BUILD_LOG=$(xbuild Topaz.sln "/p:AdofaiManaged=$ADOFAI_MANAGED" "/p:GameRoot=$GAME_ROOT" 2>&1) || true
 if ! grep -q " 0 Error(s)" <<<"$BUILD_LOG"; then
     grep -E "error|Error" <<<"$BUILD_LOG" >&2
     echo "Build failed." >&2
     exit 1
 fi
-echo "Built Bismuth/bin/Debug/Bismuth.dll"
+echo "Built Topaz/bin/Debug/Topaz.dll"

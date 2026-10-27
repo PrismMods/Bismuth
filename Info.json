@@ -1,11 +1,11 @@
 {
-  "Id": "Bismuth",
-  "DisplayName": "Bismuth",
+  "Id": "Topaz",
+  "DisplayName": "Topaz",
   "Author": "PrismMods",
   "Version": "1.3.6",
   "ManagerVersion": "0.32.4.0",
-  "AssemblyName": "Bismuth.dll",
-  "EntryMethod": "Bismuth.Startup.Load",
-  "HomePage": "https://github.com/PrismMods/Bismuth",
-  "Repository": "https://raw.githubusercontent.com/PrismMods/Bismuth/main/Repository.json"
+  "AssemblyName": "Topaz.dll",
+  "EntryMethod": "Topaz.Startup.Load",
+  "HomePage": "https://github.com/PrismMods/Topaz",
+  "Repository": "https://raw.githubusercontent.com/PrismMods/Topaz/main/Repository.json"
 }

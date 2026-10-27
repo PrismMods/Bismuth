@@ -31,11 +31,11 @@
 | `OttoButtonController.Update` | Postfix | Hides Otto debug button (`HideAllUI`) |
 | `scrRing.Update` | Postfix | `line.enabled = !HidePlanetRings` — hides the dotted orbit ring. The game never writes `line.enabled`, so this one write owns it and re-applies across reloads/retries with no apply hook |
 | `PreviewSongPlayer.<FadePreview>b__13_1` | Postfix | CLS preview-volume — rescales the fade envelope's volume writes toward `ClsPreviewVolume` (resolved via `TargetMethod`) |
-| `RDInput.GetMain(ButtonState)` | Postfix | Key Limiter — clamps press count to allowed-key count when state=WentDown; zeroes it entirely while the Bismuth menu is open |
+| `RDInput.GetMain(ButtonState)` | Postfix | Key Limiter — clamps press count to allowed-key count when state=WentDown; zeroes it entirely while the Topaz menu is open |
 | `RDInput.WentDown(KeyCode)` / `RDInput.IsDown(KeyCode)` | Postfix | Menu input block — raw shortcut-key reads return false while the menu is open |
 | `RDInput.GetState(InputAction, ButtonState)` | Postfix | Menu input block — Rewired action reads return false while the menu is open |
 | `UnityEngine.Input.GetKeyDown(KeyCode)` | Postfix | Menu input block — direct polls (menu number-nav) return false while open, except KeyCode.B and `RawReadExempt` reads. Applied separately via `TryPatchRawInput` |
-| `RDInput.useKeyLimiter` (getter) | Postfix | Key Limiter — false while Bismuth's limiter is on, so the game's own limiter never runs alongside it |
+| `RDInput.useKeyLimiter` (getter) | Postfix | Key Limiter — false while Topaz's limiter is on, so the game's own limiter never runs alongside it |
 | `scrMarginTracker.AddHit(HitMargin)` | Prefix | Menu input block — suppresses every hit while the menu is open |
 | `SkyHook.SkyHookManager._StartHook` | Prefix + Finalizer | Linux only (`SkyHookEvdev.cs`) — hides `DISPLAY` from the native hook so it reads `/dev/input` (kernel timestamps; works for native Wayland windows), restores it once the devices are open, restarts on X11 if they can't be. `Rearm()` after patching restarts a hook started before us; `Release()` on master-off hands it back |
 | `SkyHook.SkyHookEvent.GetTimeInTicks` | Prefix | Linux evdev only — SkyHook stores `tv_usec` in `TimeSubsecNano` and stamps UTC; rescale and convert to local so ticks line up with the game's `DateTime.Now` frame clock (otherwise every hit judges TooEarly) |

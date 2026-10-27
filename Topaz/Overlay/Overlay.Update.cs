@@ -1,0 +1,509 @@
+using System;
+using UnityEngine;
+
+namespace Topaz
+{
+    public partial class Overlay
+    {
+        // Debug-mode frame-cost sampling (total vs the font/layout ticks). Kept permanently:
+        // every perf question so far was settled by these numbers. Off = one bool per frame.
+        private static readonly System.Diagnostics.Stopwatch _frameWatch = new System.Diagnostics.Stopwatch();
+        private static readonly System.Diagnostics.Stopwatch _tickWatch = new System.Diagnostics.Stopwatch();
+        private static int _framesSampled;
+        private static float _nextFrameReport;
+
+        // Timed from a wrapper so the body's early returns can't leave the watch running.
+        private void Update()
+        {
+            if (MainClass.Settings == null || !MainClass.Settings.DebugMode) { UpdateBody(); return; }
+            _frameWatch.Start();
+            try { UpdateBody(); }
+            finally { _frameWatch.Stop(); }
+        }
+
+        private void UpdateBody()
+        {
+            _tickWatch.Start();
+            GameFontApplier.Tick();
+            GameUiLayout.Tick();
+            // Queues/schedules pre-mixed hit-sound segments; no-ops unless the setting is on.
+            HitSoundRenderer.Pump();
+            _tickWatch.Stop();
+            LoadProfiler.Tick();   // closes out a finished level load (debug mode only)
+            if (inLevel && scrController.instance == null)
+                inLevel = false;
+
+            _framesSampled++;
+            if (inLevel && LoadProfiler.Active && Time.unscaledTime >= _nextFrameReport)
+            {
+                _nextFrameReport = Time.unscaledTime + 5f;
+                if (_framesSampled > 0)
+                    TopazLog.Debug($"[dbg] Topaz frame cost: " +
+                        $"{_frameWatch.Elapsed.TotalMilliseconds / _framesSampled:0.000}ms/frame total, " +
+                        $"{_tickWatch.Elapsed.TotalMilliseconds / _framesSampled:0.000}ms in font/layout ticks " +
+                        $"({_framesSampled} frames)");
+                _frameWatch.Reset(); _tickWatch.Reset(); _framesSampled = 0;
+            }
+
+            var settings = MainClass.Settings;
+            bool showOverlayStats = settings.ShowOverlay &&
+                (settings.ShowProgress || settings.ShowAttempts || settings.ShowFullAttempts ||
+                 settings.ShowBestProgress || settings.ShowAcc || settings.ShowXAcc ||
+                 settings.ShowXScore || settings.ShowHitError ||
+                 settings.ShowBpm || settings.ShowTileBpm || settings.ShowKps ||
+                 settings.ShowSongDuration || settings.ShowLevelDuration ||
+                 settings.ShowProgressBar || settings.ShowTimingScale || settings.ShowJudgements);
+            bool paused = scrController.instance?.paused ?? false;
+            // Combo rides the same master Enable as the stats — it's an overlay part too.
+            bool showCombo = settings.ShowOverlay && settings.ShowComboDisplay;
+            bool show = _editMode ||
+                (inLevel && !paused && !settings.ActiveHideAllUI && !Settings.EditorSuppressed
+                 && (showOverlayStats || showCombo));
+            if (canvas.gameObject.activeSelf != show)
+                canvas.gameObject.SetActive(show);
+            UpdateTimingGraphVisibility(settings);
+            UpdateResultsScreen(settings);
+
+            if (judgementTexts != null)
+            {
+                bool nf = scrController.instance?.noFail ?? false;
+                if (nf != _lastNoFail)
+                {
+                    _lastNoFail = nf;
+                    // Locate the fail columns by their column code — they were indices 0 and 8
+                    // until XPerfect's split started shifting everything after Perfect.
+                    var cols = JudgementColumns;
+                    for (int i = 0; i < cols.Length && i < judgementTexts.Length; i++)
+                        if (cols[i] == (int)Margins.FailOverload || cols[i] == (int)Margins.FailMiss)
+                            judgementTexts[i]?.gameObject.SetActive(nf);
+                }
+            }
+
+            if (settings.ShowComboDisplay && comboDisplayValue != null)
+            {
+                if (_combo != _lastComboDisplay)
+                {
+                    _lastComboDisplay = _combo;
+                    comboDisplayValue.text = _combo.ToString();
+                    float ct = settings.ComboGradientMax > 0f
+                        ? Mathf.Clamp01(_combo / settings.ComboGradientMax)
+                        : 0f;
+                    comboDisplayValue.color = settings.ActiveComboGradient?.Evaluate(ct) ?? Color.white;
+                }
+            }
+
+            if (_comboPulseT > 0f)
+            {
+                _comboPulseT = Mathf.Max(0f, _comboPulseT - Time.deltaTime / settings.ComboPulseDuration);
+                // Drive both the label offset and the count's pulse-bumped size off ComboDisplaySize
+                // so the pulse stays proportional and the count re-rasterizes at the larger size
+                // instead of stretching the texture.
+                if (_comboLabelWrapper != null)
+                    _comboLabelWrapper.anchoredPosition = new Vector2(0f,
+                        (settings.ComboLabelY + settings.ComboPulseOffsetY * _comboPulseT) * settings.ComboDisplaySize);
+                if (comboDisplayValue != null)
+                    comboDisplayValue.fontSize = Mathf.RoundToInt(
+                        ComboValueBaseFontSize * settings.ComboDisplaySize * settings.ComboCountSize
+                        * (1f + settings.ComboPulseScale * _comboPulseT));
+            }
+
+            if (settings.Precision != _lastPrecision)
+            {
+                _lastPrecision = settings.Precision;
+                _fmt = "F" + settings.Precision;
+                _lastProgressT = -1f;
+                _lastBpm = -1f;
+                _lastTileBpmVal = -1f;
+                _lastKpsVal = -1f;
+                _lastTimingScale = -1f;
+            }
+
+            if (!inLevel || scrController.instance == null) return;
+
+            // Best % advances on full attempts even while the overlay is hidden, so track it
+            // before the visibility gate below.
+            if (_isFullAttempt)
+            {
+                float bp = Mathf.Floor(Mathf.Clamp01(scrController.instance.percentComplete) * 10000f) / 10000f;
+                if (bp > _bestPct)
+                {
+                    _bestPct = bp;
+                    _bestDirty = true;
+                    UpdateBestText();
+                }
+            }
+
+            // Nothing below is visible when the overlay/combo canvas is hidden (off, paused,
+            // hide-all) — skip the whole per-frame stat pipeline. `show` already includes
+            // _editMode, so the layout editor still renders.
+            if (!show) return;
+
+            string fmt = _fmt;
+
+            if (settings.ShowProgress && progressValue != null)
+            {
+                float t = Mathf.Clamp01(scrController.instance.percentComplete);
+                float tQ = Mathf.Floor(t * 10000f) / 10000f;
+                if (tQ != _lastProgressT)
+                {
+                    _lastProgressT = tQ;
+                    progressValue.text = tQ >= 1f ? "100%" : (tQ * 100f).ToString(fmt) + "%";
+                    progressValue.color = settings.ActiveProgressGradient?.Evaluate(tQ) ?? Color.white;
+                }
+            }
+
+            if (settings.ShowProgressBar && progressBarFill != null)
+            {
+                float t = Mathf.Clamp01(scrController.instance.percentComplete);
+                if (t != _lastBarT)
+                {
+                    _lastBarT = t;
+                    progressBarFill.anchorMax = new Vector2(t, 1f);
+                    if (progressBarFillImg != null)
+                        progressBarFillImg.color = ProgressBarFillColor(settings, t);
+                }
+            }
+
+            if ((settings.ShowBpm || settings.ShowTileBpm || settings.ShowKps) && scrConductor.instance != null)
+            {
+                float pitch = scrConductor.instance.song != null ? scrConductor.instance.song.pitch : 1f;
+                float bpm = scrConductor.instance.bpm * (float)GameCompat.PlayerOneSpeed() * pitch;
+
+                if (bpmValue != null && settings.ShowBpm)
+                {
+                    if (bpm != _lastBpm)
+                    {
+                        _lastBpm = bpm;
+                        bpmValue.text = TrimZeros(bpm.ToString(fmt));
+                        bpmValue.color = settings.ActiveBpmGradient?.Evaluate(bpm / 10000f) ?? Color.white;
+                    }
+                }
+
+                if (settings.ShowTileBpm || settings.ShowKps)
+                {
+                    if (Time.time - _lastTileBpmTime >= 0.01666f)
+                    {
+                        var floor = scrController.instance?.currFloor;
+                        _lastTileBpm = floor != null && floor.angleLength > 0
+                            ? bpm * Mathf.PI / (float)floor.angleLength
+                            : bpm;
+                        _lastTileBpmTime = Time.time;
+                    }
+                    if (tileBpmValue != null && settings.ShowTileBpm && _lastTileBpm != _lastTileBpmVal)
+                    {
+                        _lastTileBpmVal = _lastTileBpm;
+                        tileBpmValue.text = TrimZeros(_lastTileBpm.ToString(fmt));
+                        tileBpmValue.color = settings.ActiveTileBpmGradient?.Evaluate(_lastTileBpm / 10000f) ?? Color.white;
+                    }
+                    // KPS = tile hits per second = TBPM / 60. The gradient is evaluated in
+                    // the same t-domain as Tile BPM (tbpm/10000) so "Use colors from
+                    // Tile BPM" matches that row's color exactly.
+                    if (kpsValue != null && settings.ShowKps && _lastTileBpm != _lastKpsVal)
+                    {
+                        _lastKpsVal = _lastTileBpm;
+                        kpsValue.text = TrimZeros((_lastTileBpm / 60f).ToString(fmt));
+                        kpsValue.color = settings.ActiveKpsGradient?.Evaluate(_lastTileBpm / 10000f) ?? Color.white;
+                    }
+                }
+            }
+
+            if (settings.ShowTimingScale && timingScaleValue != null)
+            {
+                var nextFloor = scrController.instance.currFloor?.nextfloor;
+                if (nextFloor != null)
+                {
+                    float scale = (float)nextFloor.marginScale;
+                    if (scale != _lastTimingScale)
+                    {
+                        _lastTimingScale = scale;
+                        timingScaleValue.text = $"{scale * 100f:F0}%";
+                        timingScaleValue.color = Color.white;
+                    }
+                }
+            }
+
+            // Duration rows ("0:31/3:34"): totals lazily once clip/floors exist, all scaled by
+            // pitch. Both rows share the chart clock so their seconds flip together.
+            if ((settings.ShowSongDuration || settings.ShowLevelDuration) && scrConductor.instance != null)
+            {
+                var cond = scrConductor.instance;
+                float pitch = cond.song != null ? cond.song.pitch : 1f;
+                if (pitch <= 0f) pitch = 1f;
+                float tReal = Mathf.Max(0f, (float)cond.songposition_minusi / pitch);
+
+                // Once the clock passes a total, show exactly the total's rounded text —
+                // flooring against a rounded total left the last second unreachable
+                // (7.6s total displayed 0:08 but elapsed capped at floor(7.6) = 0:07).
+                int ElapsedFor(float total) =>
+                    tReal >= total ? Mathf.RoundToInt(total) : Mathf.FloorToInt(tReal);
+
+                if (settings.ShowSongDuration && songDurValue != null)
+                {
+                    var clip = cond.song != null ? cond.song.clip : null;
+                    // Songless levels: hide the row entirely instead of a stuck "-:--"
+                    // (ApplySettings re-activates it on settings edits; this re-hides).
+                    bool wantRow = clip != null && settings.ShowOverlay;
+                    if (songDurRow != null && songDurRow.activeSelf != wantRow)
+                        songDurRow.SetActive(wantRow);
+                    if (clip != null && _songDurTotal < 0f)
+                    {
+                        _songDurTotal = clip.length / pitch;
+                        _songDurTotalText = FormatDuration(_songDurTotal);
+                        _lastSongElapsed = -1;
+                    }
+                    if (_songDurTotal >= 0f)
+                    {
+                        int e = ElapsedFor(_songDurTotal);
+                        if (e != _lastSongElapsed)
+                        {
+                            _lastSongElapsed = e;
+                            songDurValue.text = FormatDuration(e) + "/" + _songDurTotalText;
+                            songDurValue.color = settings.StatValueColor("songduration");
+                        }
+                    }
+                }
+
+                if (settings.ShowLevelDuration && levelDurValue != null)
+                {
+                    if (_levelDurTotal < 0f)
+                    {
+                        // Chart length = last floor's entry time (seconds of song time).
+                        var floors = ADOBase.lm != null ? ADOBase.lm.listFloors : null;
+                        var last = floors != null && floors.Count > 0 ? floors[floors.Count - 1] : null;
+                        if (last != null)
+                        {
+                            _levelDurTotal = (float)last.entryTime / pitch;
+                            _levelDurTotalText = FormatDuration(_levelDurTotal);
+                            _lastLevelElapsed = -1;
+                        }
+                    }
+                    if (_levelDurTotal >= 0f)
+                    {
+                        int e = ElapsedFor(_levelDurTotal);
+                        if (e != _lastLevelElapsed)
+                        {
+                            _lastLevelElapsed = e;
+                            levelDurValue.text = FormatDuration(e) + "/" + _levelDurTotalText;
+                            levelDurValue.color = settings.StatValueColor("levelduration");
+                        }
+                    }
+                }
+            }
+        }
+
+        private void UpdateBestText()
+        {
+            if (bestValue == null) return;
+            var s = MainClass.Settings;
+            bestValue.text = _bestPct >= 1f ? "100%" : (_bestPct * 100f).ToString("F" + s.Precision) + "%";
+            bestValue.color = s.StatValueColor("best");
+        }
+
+        // Per-style fill color. Style 1 (default): white fill; the progress gradient's
+        // perfect color still fires at 100%. Theme mode overrides: solid fill in the
+        // theme's 100% color throughout (user call — no ramp). Styles 2/3 reserved.
+        private static Color ProgressBarFillColor(Settings s, float t)
+        {
+            switch (s.ProgressBarStyle)
+            {
+                default:
+                    var g = s.ActiveProgressGradient;
+                    if (s.AccentAsTheme && g != null && g.HasPerfectColor)
+                        return new Color(g.PR, g.PG, g.PB, g.PA);
+                    if (t >= 1f && g != null && g.HasPerfectColor)
+                        return new Color(g.PR, g.PG, g.PB, g.PA);
+                    return Color.white;
+            }
+        }
+
+        private static string FormatDuration(float seconds)
+        {
+            if (float.IsNaN(seconds) || float.IsInfinity(seconds) || seconds < 0f) return "-:--";
+            int total = Mathf.RoundToInt(seconds);
+            int h = total / 3600;
+            int m = (total % 3600) / 60;
+            int s = total % 60;
+            return h > 0
+                ? h + ":" + m.ToString("00") + ":" + s.ToString("00")
+                : m + ":" + s.ToString("00");
+        }
+
+        /* Called from the UpdateHitErrorMeter prefix. That runs AFTER the hit was judged and
+           after UpdateDisplay already repainted — so the timing value is refreshed here, on
+           arrival, or it would always show the previous hit's offset. */
+        internal void OnHitOffset(float ms, HitMargin margin)
+        {
+            Offsets.Add(ms, margin);
+            RefreshHitError();
+            RedrawTimingGraph();
+        }
+
+        /* Last hit's timing offset. Sign is oriented by HitOffsets (negative = early), and the
+           colour comes from the same data-derived ramp the graph uses, so the number and the
+           bar agree. */
+        private void RefreshHitError()
+        {
+            if (hitErrorValue == null) return;
+            if (!Offsets.HasLast)
+            {
+                hitErrorValue.text = "--";
+                hitErrorValue.color = MainClass.Settings.StatValueColor("hiterror");
+                return;
+            }
+            float ms = Offsets.LastMs;
+            hitErrorValue.text = (ms >= 0f ? "+" : "") + ms.ToString("0") + "ms";
+            hitErrorValue.color = Offsets.ColorAt(ms);
+        }
+
+        public void UpdateDisplay(float percentAcc, float percentXAcc, HitMargin margin)
+        {
+            var s = MainClass.Settings;
+
+            bool extends = Margins.ExtendsCombo(margin) || (margin == Margins.Auto && s.ComboCountAuto);
+            if (extends)
+            {
+                _combo++;
+                _comboPulseT = 1f;
+            }
+            else if (!Margins.IsComboNeutral(margin))
+            {
+                /* Log the BREAK only, never the extends — one file append per hit would
+                   stutter a rhythm game. The raw int matters as much as the name: the enum
+                   renumbers between game builds, and a stale number looks exactly like a
+                   logic bug from the outside. */
+                TopazLog.Debug($"[combo] BREAK on {margin}({(int)margin}) "
+                    + $"perfect={Margins.IsPerfect(margin)} band=[{string.Join(",", Array.ConvertAll(Margins.PerfectBand, x => (int)x))}]"
+                    + $" was={_combo}");
+                _combo = 0;
+            }
+
+            int mi = (int)margin;
+            if (mi >= 0 && mi < _judgementCounts.Length) _judgementCounts[mi]++;
+
+            RefreshDisplay(hitColumn: mi);
+        }
+
+        // includeAccuracy=false skips the acc/xacc repaint (SyncFromTracker holds the
+        // "--.--%" placeholder until the player's first hit). hitColumn limits the judgement
+        // repaint to the one column a hit changed; the default repaints them all.
+        private void RefreshDisplay(bool includeAccuracy = true, int hitColumn = int.MinValue)
+        {
+            var s = MainClass.Settings;
+            string fmt = _fmt;
+            var trackers = GameCompat.Trackers();
+            int playerCount = trackers.Length;
+
+            // Mixed alive/dead state in coop: paint dead players gray + tag them.
+            bool anyAlive = false, anyDead = false;
+            for (int i = 0; i < playerCount; i++)
+            {
+                bool alive = GameCompat.Alive(i);
+                if (alive) anyAlive = true; else anyDead = true;
+            }
+            bool mixedState = playerCount > 1 && anyAlive && anyDead;
+            Color deadColor = Color.gray;
+
+            if (includeAccuracy && accValue != null && playerCount > 0)
+            {
+                if (playerCount > 1)
+                {
+                    var sb = new System.Text.StringBuilder();
+                    for (int i = 0; i < playerCount; i++)
+                    {
+                        if (i > 0) sb.Append(", ");
+                        float a = GameCompat.PercentAcc(trackers[i]);
+                        bool alive = GameCompat.Alive(i);
+                        bool dead = mixedState && !alive;
+                        Color c = dead ? deadColor : (s.ActiveAccGradient?.Evaluate(a) ?? Color.white);
+                        sb.Append("<color=#").Append(ColorUtility.ToHtmlStringRGBA(c)).Append('>');
+                        sb.Append((a * 100f).ToString(fmt)).Append('%');
+                        if (dead) sb.Append(" (dead)");
+                        sb.Append("</color>");
+                    }
+                    accValue.text = sb.ToString();
+                    accValue.color = Color.white;
+                }
+                else
+                {
+                    float a = GameCompat.PercentAcc(trackers[0]);
+                    accValue.text = (a * 100f).ToString(fmt) + "%";
+                    accValue.color = s.ActiveAccGradient?.Evaluate(a) ?? Color.white;
+                }
+            }
+            if (includeAccuracy && xaccValue != null && playerCount > 0)
+            {
+                if (playerCount > 1)
+                {
+                    var sb = new System.Text.StringBuilder();
+                    for (int i = 0; i < playerCount; i++)
+                    {
+                        if (i > 0) sb.Append(", ");
+                        float x = GameCompat.PercentXAcc(trackers[i]);
+                        bool alive = GameCompat.Alive(i);
+                        bool dead = mixedState && !alive;
+                        Color c = dead ? deadColor : (s.ActiveXAccGradient?.Evaluate(x) ?? Color.white);
+                        sb.Append("<color=#").Append(ColorUtility.ToHtmlStringRGBA(c)).Append('>');
+                        sb.Append(x >= 1f ? "100" : (x * 100f).ToString(fmt)).Append('%');
+                        if (dead) sb.Append(" (dead)");
+                        sb.Append("</color>");
+                    }
+                    xaccValue.text = sb.ToString();
+                    xaccValue.color = Color.white;
+                }
+                else
+                {
+                    float x = GameCompat.PercentXAcc(trackers[0]);
+                    xaccValue.text = x >= 1f ? "100%" : (x * 100f).ToString(fmt) + "%";
+                    xaccValue.color = s.ActiveXAccGradient?.Evaluate(x) ?? Color.white;
+                }
+            }
+
+            /* Raw running X-score off the tracker. No gradient: the score is an unbounded
+               integer with no natural 0-1 to colour against, so it takes a flat override like
+               the duration rows. Coop lists every player with dead ones greyed, same as
+               accuracy. */
+            if (includeAccuracy && xScoreValue != null && playerCount > 0)
+            {
+                if (playerCount > 1)
+                {
+                    var sb = new System.Text.StringBuilder();
+                    for (int i = 0; i < playerCount; i++)
+                    {
+                        if (i > 0) sb.Append(", ");
+                        bool alive = GameCompat.Alive(i);
+                        bool dead = mixedState && !alive;
+                        Color c = dead ? deadColor : s.StatValueColor("xscore");
+                        sb.Append("<color=#").Append(ColorUtility.ToHtmlStringRGBA(c)).Append('>');
+                        sb.Append(Margins.XScore(trackers[i]));
+                        if (dead) sb.Append(" (dead)");
+                        sb.Append("</color>");
+                    }
+                    xScoreValue.text = sb.ToString();
+                    xScoreValue.color = Color.white;   // per-player colours are inline
+                }
+                else
+                {
+                    xScoreValue.text = Margins.XScore(trackers[0]).ToString();
+                    xScoreValue.color = s.StatValueColor("xscore");
+                }
+            }
+
+            if (includeAccuracy) RefreshHitError();
+
+            if (s.ShowJudgements && judgementTexts != null)
+            {
+                var cols = JudgementColumns;
+                for (int i = 0; i < cols.Length && i < judgementTexts.Length; i++)
+                {
+                    var t = judgementTexts[i];
+                    if (t == null) continue;
+                    // XPerfect's split columns (negative ids) all belong to Perfect.
+                    if (hitColumn != int.MinValue && cols[i] != hitColumn
+                        && !(cols[i] < 0 && Margins.IsPerfect((HitMargin)hitColumn))) continue;
+                    t.text = ColumnCount(cols[i]).ToString();
+                    t.color = ColumnColor(cols[i]);
+                }
+            }
+        }
+    }
+}

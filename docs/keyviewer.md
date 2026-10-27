@@ -2,7 +2,7 @@
 
 ## KeyViewer lifecycle
 
-The KeyViewer is created once per session as a `DontDestroyOnLoad` `GameObject` named `BismuthKeyViewer` and holds its own `ScreenSpaceOverlay` canvas (`sortingOrder = 100`). It owns no scene-level hooks of its own — all lifecycle calls fan out from `MainClass`.
+The KeyViewer is created once per session as a `DontDestroyOnLoad` `GameObject` named `TopazKeyViewer` and holds its own `ScreenSpaceOverlay` canvas (`sortingOrder = 100`). It owns no scene-level hooks of its own — all lifecycle calls fan out from `MainClass`.
 
 | Method | Called by | Action |
 | ------ | --------- | ------ |

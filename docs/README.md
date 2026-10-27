@@ -1,16 +1,16 @@
-# Bismuth — Developer Documentation
+# Topaz — Developer Documentation
 
 A HarmonyX / UnityModManager overlay mod for **A Dance of Fire and Ice (ADOFAI)**.
-Build: `xbuild Bismuth.sln` (Mono, .NET 4.8) — never `dotnet build`. A handful of expected warnings (toolset version, obsolete Unity APIs).
+Build: `xbuild Topaz.sln` (Mono, .NET 4.8) — never `dotnet build`. A handful of expected warnings (toolset version, obsolete Unity APIs).
 
-The game is Unity 6 and ships TextMeshPro. **Everything Bismuth draws renders via TMP** — the HUD (Overlay + KeyViewer), the settings panel, *and* the game's own text. The game keeps its legacy `UnityEngine.UI.Text` / 3D `TextMesh` components (its scripts hold typed references), but Bismuth hides each original (`canvasRenderer` alpha 0) and draws a synced TMP child over it (`GameTextShadow` / `GameTextMeshShadow`), so the legacy `Font` is gone from the render path entirely. Fonts are `TMP_FontAsset`s built at runtime from the bundle and from user-dropped `.ttf`/`.otf` files. New `.cs` files must be added to `Bismuth.csproj`'s explicit `<Compile>` list.
+The game is Unity 6 and ships TextMeshPro. **Everything Topaz draws renders via TMP** — the HUD (Overlay + KeyViewer), the settings panel, *and* the game's own text. The game keeps its legacy `UnityEngine.UI.Text` / 3D `TextMesh` components (its scripts hold typed references), but Topaz hides each original (`canvasRenderer` alpha 0) and draws a synced TMP child over it (`GameTextShadow` / `GameTextMeshShadow`), so the legacy `Font` is gone from the render path entirely. Fonts are `TMP_FontAsset`s built at runtime from the bundle and from user-dropped `.ttf`/`.otf` files. New `.cs` files must be added to `Topaz.csproj`'s explicit `<Compile>` list.
 
 Project philosophy: **minimal and lightweight, but highly customizable.**
 
 ## Getting oriented
 
 - **[Project Layout](project-layout.md)** — the folder/file map: what lives where, how pages register.
-- **[Logging](logging.md)** — where the logs are under each loader stack, `BismuthLog`, and the in-game LogViewer.
+- **[Logging](logging.md)** — where the logs are under each loader stack, `TopazLog`, and the in-game LogViewer.
 
 ## The settings panel
 

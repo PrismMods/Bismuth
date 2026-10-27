@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build Bismuth/Resources/BismuthSymbols.ttf — the keycap-symbol fallback font.
+"""Build Topaz/Resources/TopazSymbols.ttf — the keycap-symbol fallback font.
 
 Key viewer labels use symbols (⇥ ⎵ ⏎ ⇧ ↵ …) that display fonts almost never carry.
 Without a fallback we control, TMP borrows them from the game's own CJK asset, whose
@@ -18,7 +18,7 @@ from fontTools.pens.boundsPen import BoundsPen
 
 SRC = sys.argv[1] if len(sys.argv) > 1 else "DejaVuSans.ttf"
 DST = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                   "..", "Bismuth", "Resources", "BismuthSymbols.ttf")
+                   "..", "Topaz", "Resources", "TopazSymbols.ttf")
 
 # Whole blocks, not a hand-picked list: users retype key labels with whatever symbol they
 # like (a tester picked ↵ U+21B5 over our default ⏎), and every one we miss looks like a
@@ -26,9 +26,9 @@ DST = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 # control pictures; absent codepoints are simply skipped by the subsetter.
 RANGES = list(range(0x2190, 0x2200)) + list(range(0x2300, 0x2400)) + list(range(0x2400, 0x2440))
 
-NAMES = [(1, "Bismuth Symbols"), (2, "Regular"),
-         (3, "Bismuth Symbols; derived from DejaVu Sans"), (4, "Bismuth Symbols"),
-         (6, "BismuthSymbols-Regular"), (16, "Bismuth Symbols"), (17, "Regular")]
+NAMES = [(1, "Topaz Symbols"), (2, "Regular"),
+         (3, "Topaz Symbols; derived from DejaVu Sans"), (4, "Topaz Symbols"),
+         (6, "TopazSymbols-Regular"), (16, "Topaz Symbols"), (17, "Regular")]
 
 
 def main():

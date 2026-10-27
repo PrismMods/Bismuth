@@ -55,7 +55,7 @@ All HUD text is `TextMeshProUGUI`; every text carries a `TmpShadow` component (s
 | `SetFont(font, label, value, comboLabel, comboValue)` | `MainClass.ApplySelectedFont` | Routes TMP font assets to stat labels/values and combo label/count (nulls = base); judgements/FPS use base; re-applies every `TmpShadow` (font change replaces materials) |
 | `SetLevelNameFont(font)` | `MainClass.ApplySelectedFont` | Stores the `TMP_FontAsset` for the song title and re-runs `ApplyLevelNameTransform` |
 | `ShowOrHideElements()` | Scene change / settings change | Toggles game-native UI visibility (noFail, difficulty, autoplay, song title, error meter) |
-| `ApplyLevelNameTransform()` | `ShowOrHideElements()` + `LevelNameTextRestorePatch` | Applies `LevelNameScale` and additive `LevelNameY` to `txtLevelName.rectTransform`; swaps font + Bismuth shadow when `LevelNameUseOverlayFont` (see [fonts.md](fonts.md)) |
+| `ApplyLevelNameTransform()` | `ShowOrHideElements()` + `LevelNameTextRestorePatch` | Applies `LevelNameScale` and additive `LevelNameY` to `txtLevelName.rectTransform`; swaps font + Topaz shadow when `LevelNameUseOverlayFont` (see [fonts.md](fonts.md)) |
 
 ### Canvas show condition (checked every `Update`)
 

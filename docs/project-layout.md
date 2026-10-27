@@ -2,10 +2,10 @@
 
 ## Files
 
-Sources live in subfolders under `Bismuth/`. Several classes are split into `partial`s; each part is a separate file. Folder map:
+Sources live in subfolders under `Topaz/`. Several classes are split into `partial`s; each part is a separate file. Folder map:
 
 ```text
-Bismuth/
+Topaz/
 ├── MainClass.cs              UMM entry point — loads settings, creates Overlay + KeyViewer, wires GUI callbacks
 ├── Startup.cs                Early-init hooks (font preload, etc.)
 ├── KeyViewer/
@@ -40,7 +40,7 @@ Bismuth/
 │   ├── LocationEditor.cs     Drag-to-position edit mode (own SSO canvas, LocHandle per movable element, axis snapping)
 │   ├── GameUiEditor.cs       Same edit mode for the GAME's HUD elements (drag/scroll/right-click-reset, dimmed handles for inactive elements)
 │   ├── UpdatePopup.cs        "Update available" popup + DuplicateInstallPopup (Mods/ vs UMMMods/ resolution)
-│   ├── LogViewer.cs          In-game BismuthLog viewer (Misc → View log): scroll, Refresh, Open in Finder, [dbg] filter
+│   ├── LogViewer.cs          In-game TopazLog viewer (Misc → View log): scroll, Refresh, Open in Finder, [dbg] filter
 │   └── Pages/
 │       ├── KeyTokens.cs      Shared TokenFromKeyCode / PrettyTokenLabel helpers
 │       ├── PageOverlay.cs    Overlay root list (NavRows) + per-stat/combo/attempts subpages, separator/weight rows, FPS
@@ -53,12 +53,12 @@ Bismuth/
 │       ├── PageTweaks.cs     "Tweaks" tab — editor autoplay-pause enable toggle + key rebind
 │       └── PageMisc.cs       Read-only stats (RAM savings), Force reload, View log, Optimizations NavRow → subpage, Debug (GameProbe dumps + sweep trace)
 └── Util/
-    ├── AttemptsStore.cs      Persists per-level attempt counts to `BismuthAttempts.txt`
-    ├── BismuthLog.cs         File-based session logger → `BismuthLog.txt`
+    ├── AttemptsStore.cs      Persists per-level attempt counts to `TopazAttempts.txt`
+    ├── TopazLog.cs         File-based session logger → `TopazLog.txt`
     ├── FontLoader.cs         Font scan (bundle + loose .ttf/.otf in Fonts/) → FontEntry list; lazy TMP_FontAsset (dynamic SDF, weight table); family/weight linking; name matching
     ├── GameFontApplier.cs    Repaints ALL game text with the chosen font: legacy Text + 3D TextMesh via shadows, game TMP swapped in place; sweeps, apply, restore
     ├── GameFontApplier.Rules.cs  partial: bold/weight/fit decisions per element (titles, credits, CLS, per-element weights)
-    ├── GameFontApplier.Scope.cs  partial: what a sweep skips — editor UI, Bismuth's own panel, other mods' roots
+    ├── GameFontApplier.Scope.cs  partial: what a sweep skips — editor UI, Topaz's own panel, other mods' roots
     ├── GameTextShadow.cs     Per-legacy-Text shadow renderer: hides the original, mirrors it into a TMP child (FitMode, strip-size, bold-label lines, collapse-newlines, no-wrap, explicit drop shadow)
     ├── GameTextMeshShadow.cs Same idea for 3D `TextMesh` (world-space) — TMP child matched to the mesh's world size
     ├── TmpShadow.cs          TMP drop-shadow component — drives the SDF underlay (legacy Shadow doesn't affect TMP)

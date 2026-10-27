@@ -2,12 +2,12 @@
 
   English | [한국어](README_kr.md)
   
-  # Bismuth
+  # Topaz
 
   An overlay / QoL mod for **A Dance of Fire and Ice** (3.3.0+) — the lite version of **Quartz**.
   
-  [![Latest Release](https://img.shields.io/github/v/release/PrismMods/Bismuth?include_prereleases&sort=date&label=release&logo=github&style=flat-square)](https://github.com/PrismMods/Bismuth/releases/latest)
-  [![Downloads](https://img.shields.io/github/downloads/PrismMods/Bismuth/total?style=flat-square&logo=github&label=downloads)](https://github.com/PrismMods/Bismuth/releases)
+  [![Latest Release](https://img.shields.io/github/v/release/PrismMods/Topaz?include_prereleases&sort=date&label=release&logo=github&style=flat-square)](https://github.com/PrismMods/Topaz/releases/latest)
+  [![Downloads](https://img.shields.io/github/downloads/PrismMods/Topaz/total?style=flat-square&logo=github&label=downloads)](https://github.com/PrismMods/Topaz/releases)
 </div>
 <br>
 
@@ -17,7 +17,7 @@
 - Configurable in-game stats overlays: progress, accuracy, x-accuracy, BPM, tile BPM, timing scale, judgements, combo, attempts, FPS
 - Customizable key viewer: key rain, ghost keys, hand/foot presets, and per-key & total press counts
 - Key limiter and chatter blocker
-- Custom fonts for the whole game — restyle the game's own text (menus, HUD, level titles) and the mod's own UI. The download ships no fonts: install a font pack from Appearance → Font packs, or drop your own `.ttf`/`.otf` into `…/Bismuth/Fonts/` and pick it in the settings
+- Custom fonts for the whole game — restyle the game's own text (menus, HUD, level titles) and the mod's own UI. The download ships no fonts: install a font pack from Appearance → Font packs, or drop your own `.ttf`/`.otf` into `…/Topaz/Fonts/` and pick it in the settings
 - Game UI editor: move, scale, hide, or re-weight individual game HUD elements (death %, congrats, countdown, hit error meter, autoplay text, …)
 - Hide-UI toggles: (HUD, hit error meter, autoplay text/icon, no-fail, difficulty selector, judgement texts, song title, alpha/beta build text)
 - Performance optimizations and QoL tools: in-game log viewer and one-click reload
@@ -29,10 +29,10 @@ Tested Environments:
 
 ## Install
 
-1. Make sure Bismuth is enabled in the in-game UMM menu.
-2. Download the latest `Bismuth.zip` from [Releases](https://github.com/QuartzTeam/Bismuth/releases).
+1. Make sure Topaz is enabled in the in-game UMM menu.
+2. Download the latest `Topaz.zip` from [Releases](https://github.com/QuartzTeam/Topaz/releases).
 3. Extract into `…/A Dance of Fire and Ice/Mods/`.
-4. Launch and toggle **Bismuth** on in the mods menu.
+4. Launch and toggle **Topaz** on in the mods menu.
 
 ### If you are using MelonLoader
 

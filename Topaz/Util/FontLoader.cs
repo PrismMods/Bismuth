@@ -1,0 +1,398 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using TMPro;
+using UnityEngine;
+using UnityEngine.TextCore.LowLevel;
+
+namespace Topaz
+{
+    internal static class FontLoader
+    {
+        /* A TMP_FontAsset from a font FILE on every game build. Unity 6's TMP (ADOFAI 3.x) has a path
+           overload that keeps the path and reloads faces on demand; 2.9's Unity 2022 TMP has only
+           CreateFontAsset(Font), and there a Font built from a path does the same job (its ctor loads
+           from disk when the name has a directory). Found by reflection: naming the path overload
+           would bind the dll to Unity 6. A .ttc's other faces need the path overload; 2.9 gets face 0. */
+        private static readonly System.Reflection.MethodInfo _fromPath = typeof(TMP_FontAsset).GetMethod(
+            "CreateFontAsset", new[] { typeof(string), typeof(int), typeof(int), typeof(int), typeof(GlyphRenderMode), typeof(int), typeof(int) });
+
+        internal static TMP_FontAsset FromFile(string path, int faceIndex = 0)
+        {
+            if (_fromPath != null)
+                return (TMP_FontAsset)_fromPath.Invoke(null, new object[] { path, faceIndex, 90, 9, GlyphRenderMode.SDFAA, 1024, 1024 });
+            return TMP_FontAsset.CreateFontAsset(new Font(path), 90, 9, GlyphRenderMode.SDFAA, 1024, 1024);
+        }
+
+        internal class FontEntry
+        {
+            public readonly string Name;
+            private readonly string _filePath; // .ttf/.otf on disk
+            // Same family Bold weight, wired by LinkFamilies after scan
+            internal FontEntry BoldSibling;
+            private TMP_FontAsset _tmp;
+
+            /* Every font is a file on disk now — shipped none, installed as font packs, or
+               dropped in by hand. Unity 6 TMP's CreateFontAsset(filePath) keeps the path and
+               reloads the face on demand, so glyphs (incl. CJK) populate dynamically. */
+            public FontEntry(string name, string filePath) { Name = name; _filePath = filePath; }
+
+            /* A .ttc holds several faces in one file, which is most of what macOS ships as
+               system fonts. TMP's CreateFontAsset takes a face index, so a collection is
+               loadable — face 0 unless told otherwise. */
+            public FontEntry(string name, string filePath, int faceIndex, bool system)
+            {
+                Name = name; _filePath = filePath; _faceIndex = faceIndex; IsSystem = system;
+            }
+
+            private readonly int _faceIndex;
+            // Installed on the machine rather than shipped or dropped in by the player.
+            public readonly bool IsSystem;
+
+            /* Created on first use: dynamic SDF atlas, with family real Bold in weight
+               table so <b>/FontStyles.Bold doesn't fall back to synthetic bold */
+            public TMP_FontAsset TmpFont
+            {
+                get
+                {
+                    if (_tmp == null)
+                    {
+                        /* Timed because this is the expensive step — a 1024² SDF atlas per font —
+                           and the cost only shows up as "the panel is slow to open". The log says
+                           which font and how long, so a regression has a name. */
+                        var watch = System.Diagnostics.Stopwatch.StartNew();
+                        if (!string.IsNullOrEmpty(_filePath))
+                            // 90pt, 9 padding, SDFAA, 1024² — the defaults TMP builds an asset with.
+                            _tmp = FromFile(_filePath, _faceIndex);
+                        if (_tmp != null)
+                        {
+                            _tmp.name = Name + " (TMP)";
+                            EnsureSymbolFallback(_tmp);
+                            EnsureCjkFallback(_tmp);
+                            if (BoldSibling != null && BoldSibling != this)
+                                _tmp.fontWeightTable[7].regularTypeface = BoldSibling.TmpFont;
+                        }
+                        watch.Stop();
+                        TopazLog.Debug($"[font] built '{Name}' in {watch.ElapsedMilliseconds}ms"
+                            + (_tmp == null ? " (FAILED)" : ""));
+                    }
+                    return _tmp;
+                }
+            }
+
+            internal void DestroyTmp()
+            {
+                if (_tmp == null) return;
+                var atlases = _tmp.atlasTextures;
+                if (atlases != null)
+                    foreach (var tex in atlases)
+                        if (tex != null) UnityEngine.Object.Destroy(tex);
+                var mat = GameCompat.MaterialOf(_tmp);
+                if (mat != null) UnityEngine.Object.Destroy(mat);
+                UnityEngine.Object.Destroy(_tmp);
+                _tmp = null;
+            }
+        }
+
+        /* Keycap symbols (⇥ ␣ ⏎ ⇧ …) are missing from nearly every display font, so TMP
+           borrows them from whatever fallback has them — the game's CJK asset normalizes
+           its metrics differently and draws them tiny and off-baseline. This bundled subset
+           carries them at matching metrics. It is a fallback, never a pickable font, so it
+           stays out of the scanned list. */
+        internal const string SymbolFontName = "TopazSymbols";
+        private static string _symbolFontPath;
+        private static TMP_FontAsset _symbolFont;
+
+        private static bool _symbolFontLogged;
+
+        internal static TMP_FontAsset SymbolFont
+        {
+            get
+            {
+                if (_symbolFont == null && !string.IsNullOrEmpty(_symbolFontPath))
+                {
+                    _symbolFont = FromFile(_symbolFontPath);
+                    if (_symbolFont != null) _symbolFont.name = SymbolFontName + " (TMP)";
+                }
+                /* Logged once, because every way this can fail looks identical in game — a
+                   keycap symbol drawn small and low — and the cause is on disk, not in the
+                   code: an install that copied only the dll has no Resources/TopazSymbols.ttf,
+                   so the symbols go back to being borrowed from the game's font. */
+                if (!_symbolFontLogged)
+                {
+                    _symbolFontLogged = true;
+                    if (_symbolFont != null)
+                        MainClass.Logger.Log("[Topaz] Keycap symbol font loaded from " + _symbolFontPath);
+                    else if (string.IsNullOrEmpty(_symbolFontPath))
+                        MainClass.Logger.Warning("[Topaz] " + SymbolFontName +
+                            ".ttf missing from Resources — keycap symbols (⇥ ⎵ ⏎) fall back to the game font");
+                    else
+                        MainClass.Logger.Warning("[Topaz] Could not build a font asset from " + _symbolFontPath);
+                }
+                return _symbolFont;
+            }
+        }
+
+        /* One shared CJK fallback for every font we build, the way Quartz does it.
+
+           Without it each font rasterises Korean/Japanese glyphs into its OWN atlas, so a
+           panel font, an overlay font and a game font each pay for the same several hundred
+           glyphs. Pointed at a font the GAME already loaded and already populated, so the
+           glyphs are rasterised once for the process rather than once per font.
+
+           Appended AFTER the symbol fallback: keycap glyphs must still win, which is the whole
+           reason TopazSymbols exists. */
+        private static TMP_FontAsset _cjkFallback;
+        private static bool _cjkProbed;
+
+        private static readonly int[] CjkProbe = { 0xAC00, 0x3042, 0x4E00 };   // 가 あ 一
+
+        internal static void EnsureCjkFallback(TMP_FontAsset target)
+        {
+            if (target == null) return;
+            if (!_cjkProbed)
+            {
+                _cjkProbed = true;
+                try
+                {
+                    foreach (var f in Resources.FindObjectsOfTypeAll<TMP_FontAsset>())
+                    {
+                        if (f == null || f == target) continue;
+                        int hit = 0;
+                        foreach (int cp in CjkProbe)
+                            if (f.HasCharacter((char)cp, false, false)) hit++;
+                        // Two of three: a Korean-only face should still qualify.
+                        if (hit >= 2) { _cjkFallback = f; break; }
+                    }
+                }
+                catch { }
+                TopazLog.Log(_cjkFallback != null
+                    ? "[font] CJK fallback: " + _cjkFallback.name
+                    : "[font] no CJK fallback found — each font rasterises its own CJK glyphs");
+            }
+            if (_cjkFallback == null || _cjkFallback == target) return;
+            var fb = target.fallbackFontAssetTable;
+            if (fb == null) target.fallbackFontAssetTable = fb = new List<TMP_FontAsset>();
+            if (!fb.Contains(_cjkFallback)) fb.Add(_cjkFallback);
+        }
+
+        // First in the table: GameFontApplier appends the game's own asset here, and that
+        // one has the symbols too — at the metrics that started this.
+        internal static void EnsureSymbolFallback(TMP_FontAsset target)
+        {
+            var sym = SymbolFont;
+            if (target == null || sym == null || target == sym) return;
+            var fb = target.fallbackFontAssetTable;
+            if (fb == null) target.fallbackFontAssetTable = fb = new List<TMP_FontAsset>();
+            if (fb.Count > 0 && fb[0] == sym) return;
+            fb.Remove(sym);
+            fb.Insert(0, sym);
+        }
+
+        /* Canonical ordering for weight cycle. Names not in this list sort last, in
+           scan order */
+        internal static readonly string[] WeightOrder =
+        {
+            "Thin", "ExtraLight", "UltraLight", "Light", "Regular", "Medium",
+            "SemiBold", "DemiBold", "Bold", "ExtraBold", "UltraBold", "Heavy", "Black",
+        };
+
+        /* "Pretendard SemiBold" / "Pretendard-SemiBold" maps to ("Pretendard",
+           "SemiBold"). Some families prefix the weight with an ordinal to force file
+           ordering ("Paperlogy-7Bold", "Paperlogy-4Regular") — the leading digits are
+           stripped before matching. A last token that still isn't a known weight is a
+           single-weight family, shown under its full name. */
+        internal static void SplitWeight(string name, out string family, out string weight)
+        {
+            family = name;
+            weight = "Regular";
+            if (string.IsNullOrEmpty(name)) return;
+            int sp = name.LastIndexOfAny(new[] { ' ', '-' });
+            if (sp <= 0) return;
+            string last = name.Substring(sp + 1).TrimStart('0', '1', '2', '3', '4', '5', '6', '7', '8', '9');
+            foreach (var w in WeightOrder)
+            {
+                if (string.Equals(last, w, StringComparison.OrdinalIgnoreCase))
+                {
+                    family = name.Substring(0, sp);
+                    weight = w;
+                    return;
+                }
+            }
+        }
+
+        internal static int WeightRank(string weight)
+        {
+            for (int i = 0; i < WeightOrder.Length; i++)
+                if (string.Equals(WeightOrder[i], weight, StringComparison.OrdinalIgnoreCase)) return i;
+            return WeightOrder.Length;
+        }
+
+        /* Weight-override sentinel: resolves to family heaviest weight at apply time, so
+           it tracks family switches instead of pinning specific name */
+        internal const string WeightHeaviest = "Heaviest";
+
+        /* Saved settings may spell font with spaces ("Maplestory Bold") while bundle
+           asset uses hyphens ("Maplestory-Bold"), match ignoring both */
+        private static string NormalizeName(string s) =>
+            s == null ? "" : s.Replace(" ", "").Replace("-", "").ToLowerInvariant();
+
+        internal static FontEntry Find(IList<FontEntry> fonts, string name)
+        {
+            if (fonts == null || string.IsNullOrEmpty(name)) return null;
+            string norm = NormalizeName(name);
+            foreach (var e in fonts)
+                if (NormalizeName(e.Name) == norm) return e;
+            return null;
+        }
+
+        /* The build ships no fonts. Fonts arrive as installed font packs (FontPacks, one
+           subfolder per pack) or dropped in by hand, so both roots are scanned recursively.
+           An empty result is normal and handled: the panel and overlay fall back to the
+           game's own font (GameFontApplier.GameFont). */
+        public static List<FontEntry> ScanFonts(string modPath)
+        {
+            DropStaleBundle(modPath);
+            var result = new List<FontEntry>();
+            ScanLooseFonts(Path.Combine(modPath, "Fonts"), result);
+            ScanLooseFonts(Path.Combine(modPath, "Resources"), result);
+            /* Shared packs, installed once under PrismLib and seen by every Prism mod. After the
+               mod's own folders, so a font dropped in here still wins its name. */
+            if (PrismBridge.Available)
+            {
+                string shared = PrismBridge.FontDir();
+                if (!string.IsNullOrEmpty(shared)) ScanLooseFonts(shared, result);
+            }
+            // Last, so a pack or a hand-dropped file always wins a name clash.
+            if (MainClass.Settings != null && MainClass.Settings.IncludeSystemFonts)
+                ScanSystemFonts(result);
+            LinkFamilies(result);
+            return result;
+        }
+
+        /* Fonts installed on the machine. Off by default: a desktop can carry hundreds, and
+           they'd swamp every font dropdown for someone who only wants the packs.
+
+           Only paths are taken, never Font.CreateDynamicFontFromOSFont — a TMP_FontAsset is
+           built from the file exactly like a pack font, so system fonts get the same dynamic
+           SDF atlas and CJK glyph population as everything else. */
+        private static void ScanSystemFonts(List<FontEntry> result)
+        {
+            string[] paths;
+            try { paths = Font.GetPathsToOSFonts(); }
+            catch (Exception e)
+            {
+                MainClass.Logger.Warning("[Topaz] System fonts unavailable: " + e.Message);
+                return;
+            }
+            if (paths == null) return;
+
+            int added = 0, skipped = 0;
+            Array.Sort(paths, StringComparer.OrdinalIgnoreCase);
+            foreach (string filePath in paths)
+            {
+                string ext = Path.GetExtension(filePath).ToLowerInvariant();
+                // .ttc/.otc are collections; face 0 is the family's regular in practice.
+                if (ext != ".ttf" && ext != ".otf" && ext != ".ttc" && ext != ".otc") { skipped++; continue; }
+                string name = Path.GetFileNameWithoutExtension(filePath);
+                if (string.IsNullOrEmpty(name) || Find(result, name) != null) { skipped++; continue; }
+                result.Add(new FontEntry(name, filePath, 0, system: true));
+                added++;
+            }
+            MainClass.Logger.Log($"[Topaz] System fonts: {added} added, {skipped} skipped");
+        }
+
+        /* Up to 1.3.x the fonts shipped as a 5.6 MB AssetBundle in Resources/. Updates extract
+           over the install and never delete, so without this the orphan sits there forever on
+           every existing install, doing nothing. Our own file, by exact name: the mod was still
+           called Bismuth then, so the bundle keeps that name. */
+        private static void DropStaleBundle(string modPath)
+        {
+            try
+            {
+                string old = Path.Combine(Path.Combine(modPath, "Resources"), "bismuth-fonts");
+                if (!File.Exists(old)) return;
+                File.Delete(old);
+                MainClass.Logger.Log("[Topaz] Removed the old font bundle — fonts are packs now");
+            }
+            catch { /* read-only install, locked file: harmless, it just stays */ }
+        }
+
+        // Register .ttf/.otf files. The file name (minus extension) is the entry name, so
+        // "Foo-Bold.ttf" splits into family Foo / weight Bold and bold-links to its siblings.
+        // Recursive: font packs install into Fonts/<PackId>/, and it lets a hand-managed
+        // Fonts/ folder be organised. First name seen wins.
+        private static void ScanLooseFonts(string dir, List<FontEntry> result)
+        {
+            if (!Directory.Exists(dir)) return;
+            foreach (string filePath in Directory.GetFiles(dir, "*", SearchOption.AllDirectories))
+            {
+                string ext = Path.GetExtension(filePath).ToLowerInvariant();
+                if (ext != ".ttf" && ext != ".otf") continue;
+                string name = Path.GetFileNameWithoutExtension(filePath);
+                if (string.Equals(name, SymbolFontName, StringComparison.OrdinalIgnoreCase))
+                {
+                    _symbolFontPath = filePath;   // fallback only, never offered as a choice
+                    continue;
+                }
+                if (Find(result, name) != null) continue;
+                result.Add(new FontEntry(name, filePath));
+                MainClass.Logger.Log($"[Topaz] Found custom font '{name}' ({Path.GetFileName(filePath)})");
+            }
+        }
+
+        /* Pick each family's "bold" weight for <b>/FontStyles.Bold (TMP otherwise faux-bolds).
+           Prefer an exact "Bold"; if the family has none, fall back to its heaviest weight that
+           is still ≥ Bold (ExtraBold/Black), so a family shipped without a plain Bold still gets
+           a REAL bold rather than synthetic. A regular gets the family's bold; the bold weight
+           itself gets no sibling. */
+        private static void LinkFamilies(List<FontEntry> entries)
+        {
+            var byFamily = new Dictionary<string, List<FontEntry>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var e in entries)
+            {
+                SplitWeight(e.Name, out string fam, out _);
+                if (!byFamily.TryGetValue(fam, out var list)) byFamily[fam] = list = new List<FontEntry>();
+                list.Add(e);
+            }
+            int boldRank = WeightRank("Bold");
+            foreach (var e in entries)
+            {
+                SplitWeight(e.Name, out string fam, out string w);
+                if (!byFamily.TryGetValue(fam, out var family)) continue;
+
+                FontEntry exact = null, heaviest = null;
+                int heaviestRank = -1;
+                foreach (var c in family)
+                {
+                    SplitWeight(c.Name, out _, out string cw);
+                    if (string.Equals(cw, "Bold", StringComparison.OrdinalIgnoreCase)) exact = c;
+                    int r = WeightRank(cw);
+                    if (r > heaviestRank) { heaviestRank = r; heaviest = c; }
+                }
+
+                FontEntry bold = exact;
+                // No plain Bold → use the heaviest weight if it's at least Bold and heavier than us.
+                if (bold == null && heaviest != null && heaviestRank >= boldRank && heaviestRank > WeightRank(w))
+                    bold = heaviest;
+                if (bold != null && bold != e) e.BoldSibling = bold;
+            }
+        }
+
+        internal static void DestroyTmpAssets(List<FontEntry> entries)
+        {
+            if (entries != null)
+                foreach (var e in entries) e.DestroyTmp();
+            if (_symbolFont == null) return;
+            var atlases = _symbolFont.atlasTextures;
+            if (atlases != null)
+                foreach (var tex in atlases)
+                    if (tex != null) UnityEngine.Object.Destroy(tex);
+            var mat = GameCompat.MaterialOf(_symbolFont);
+            if (mat != null) UnityEngine.Object.Destroy(mat);
+            UnityEngine.Object.Destroy(_symbolFont);
+            _symbolFont = null;
+        }
+
+    }
+}
