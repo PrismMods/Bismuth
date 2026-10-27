@@ -52,7 +52,7 @@ namespace Bismuth
             new FieldDef { Key = "xAccuracy", Label = "X-Accuracy", X = ColM, Y = 0.32f,
                 Value = o => Tracker(t => (t.percentXAcc * 100f).ToString("0.00") + "%") },
             new FieldDef { Key = "xScore", Label = "X-Score", X = ColR, Y = 0.32f,
-                Value = o => Tracker(t => t.xScore.ToString()) },
+                Value = o => Margins.HasXScore ? Tracker(t => Margins.XScore(t).ToString()) : "" },
 
             new FieldDef { Key = "checkpoints", Label = "Checkpoints", X = ColL, Y = 0.26f,
                 Value = o => Safe(() => scrController.checkpointsUsed.ToString()) },

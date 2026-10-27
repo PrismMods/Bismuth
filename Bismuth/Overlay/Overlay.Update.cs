@@ -475,7 +475,7 @@ namespace Bismuth
                         bool dead = mixedState && !alive;
                         Color c = dead ? deadColor : s.StatValueColor("xscore");
                         sb.Append("<color=#").Append(ColorUtility.ToHtmlStringRGBA(c)).Append('>');
-                        sb.Append(trackers[i]?.xScore ?? 0);
+                        sb.Append(Margins.XScore(trackers[i]));
                         if (dead) sb.Append(" (dead)");
                         sb.Append("</color>");
                     }
@@ -484,7 +484,7 @@ namespace Bismuth
                 }
                 else
                 {
-                    xScoreValue.text = (trackers[0]?.xScore ?? 0).ToString();
+                    xScoreValue.text = Margins.XScore(trackers[0]).ToString();
                     xScoreValue.color = s.StatValueColor("xscore");
                 }
             }

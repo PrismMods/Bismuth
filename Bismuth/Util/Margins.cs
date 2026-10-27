@@ -143,5 +143,24 @@ namespace Bismuth
             }
             return XPerfectBridge.XColor;
         }
+
+        /* Tracker fields that only exist on 3.4+, read by name for the same reason. On older
+           builds the last judged margin is the tail of hitMargins (AddHit appends to it), and
+           there is no X-score at all — HasXScore lets callers hide it instead of showing 0. */
+        private static readonly FieldInfo _lastAdded = AccessTools.Field(typeof(scrMarginTracker), "lastAddedHitMargin");
+        private static readonly FieldInfo _xScore = AccessTools.Field(typeof(scrMarginTracker), "xScore");
+
+        internal static bool HasXScore => _xScore != null;
+
+        internal static int XScore(scrMarginTracker t)
+            => _xScore != null && t != null ? (int)_xScore.GetValue(t) : 0;
+
+        internal static HitMargin? LastAdded(scrMarginTracker t)
+        {
+            if (t == null) return null;
+            if (_lastAdded != null) return (HitMargin?)_lastAdded.GetValue(t);
+            var hm = t.hitMargins;
+            return hm != null && hm.Count > 0 ? hm[hm.Count - 1] : (HitMargin?)null;
+        }
     }
 }

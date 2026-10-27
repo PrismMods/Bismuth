@@ -19,7 +19,7 @@ namespace Bismuth
             if (attemptsFullRow != null) attemptsFullRow.SetActive(ovr && settings.ShowFullAttempts);
             if (accRow != null)          accRow.SetActive(ovr && settings.ShowAcc);
             if (xaccRow != null)         xaccRow.SetActive(ovr && settings.ShowXAcc);
-            if (xScoreRow != null)       xScoreRow.SetActive(ovr && settings.ShowXScore);
+            if (xScoreRow != null)       xScoreRow.SetActive(ovr && settings.ShowXScore && Margins.HasXScore);
             if (hitErrorRow != null)     hitErrorRow.SetActive(ovr && settings.ShowHitError);
             if (bpmRow != null)          bpmRow.SetActive(ovr && settings.ShowBpm);
             if (tileBpmRow != null)      tileBpmRow.SetActive(ovr && settings.ShowTileBpm);

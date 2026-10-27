@@ -56,7 +56,14 @@ namespace Bismuth
         [HarmonyPatch(typeof(scrController), "UpdateHitErrorMeter")]
         private static class HitTimingPatch
         {
+            internal static readonly bool Exists = AccessTools.Method(typeof(scrController), "UpdateHitErrorMeter") != null;
+
+            private static bool Prepare() => Exists;
+
             public static void Prefix(scrController __instance, scrFloor hitFloor, scrPlayer player,
+                scrPlanet priorChosenPlanet) => Record(__instance, hitFloor, player, priorChosenPlanet);
+
+            internal static void Record(scrController __instance, scrFloor hitFloor, scrPlayer player,
                 scrPlanet priorChosenPlanet)
             {
                 var overlay = Overlay.Instance;
@@ -64,12 +71,53 @@ namespace Bismuth
 
                 // By the time this runs the hit has been judged — SwitchChosen came first.
                 var tracker = player != null ? player.marginTracker : null;
-                var last = tracker != null ? tracker.lastAddedHitMargin : null;
+                var last = Margins.LastAdded(tracker);
                 if (!last.HasValue || !Margins.IsTimed(last.Value)) return;
 
                 if (HitOffsets.TryAngle(hitFloor, priorChosenPlanet, out float angle)
                     && HitOffsets.TryToMs(angle, priorChosenPlanet, out float ms))
                     overlay.OnHitOffset(ms, last.Value);
+            }
+        }
+
+        /* 3.3 and older have no UpdateHitErrorMeter: scrPlayer.Hit inlines the same meter code
+           right after SwitchChosen, reading the floor and planet it held BEFORE the switch.
+           Capture those on entry and record from the SwitchChosen postfix — the same moment. */
+        [HarmonyPatch(typeof(scrPlayer), "Hit")]
+        private static class HitTimingLegacyPatch
+        {
+            internal static scrPlayer Player;
+            internal static scrFloor Floor;
+            internal static scrPlanet Planet;
+
+            private static bool Prepare() => !HitTimingPatch.Exists;
+
+            public static void Prefix(scrPlayer __instance)
+            {
+                Player = null;
+                try
+                {
+                    Floor = __instance.currFloor;
+                    Planet = __instance.planetarySystem.chosenPlanet;   // the private chosenPlanet getter
+                    Player = __instance;
+                }
+                catch { }
+            }
+
+            public static void Postfix() => Player = null;
+        }
+
+        [HarmonyPatch(typeof(scrPlanet), "SwitchChosen")]
+        private static class SwitchChosenHitTimingPatch
+        {
+            private static bool Prepare() => !HitTimingPatch.Exists;
+
+            public static void Postfix(scrPlanet __instance)
+            {
+                var p = HitTimingLegacyPatch.Player;
+                if (p == null || __instance != HitTimingLegacyPatch.Planet) return;
+                HitTimingLegacyPatch.Player = null;
+                HitTimingPatch.Record(scrController.instance, HitTimingLegacyPatch.Floor, p, __instance);
             }
         }
 
@@ -372,16 +420,26 @@ namespace Bismuth
         /* Hiding the meter with SetActive in the same frame the game shows it means its ticks
            never run Start — the only place they get their colour scheme — and every later hit
            NREs in ErrorMeterTick.Show, inside scrPlayer.Hit. That kills the rest of Hit, which
-           froze the follow camera under autoplay. Assign what Start would have. */
-        [HarmonyPatch(typeof(ADOFAI.ErrorMeterTick), "Show")]
+           froze the follow camera under autoplay. Assign what Start would have.
+
+           Everything is looked up by NAME: 3.3 has no ErrorMeterTick, and a typeof() in the
+           attribute throws TypeLoadException while the patch class is decoded. Prepare() skips
+           the patch where the members are missing. */
+        [HarmonyPatch]
         private static class ErrorMeterTickColoursPatch
         {
-            private static readonly AccessTools.FieldRef<ADOFAI.ErrorMeterTick, ColourSchemeHitMargin> _colours =
-                AccessTools.FieldRefAccess<ADOFAI.ErrorMeterTick, ColourSchemeHitMargin>("_hitMarginColors");
+            private static readonly System.Type _tick = AccessTools.TypeByName("ADOFAI.ErrorMeterTick");
+            private static readonly System.Reflection.FieldInfo _colours =
+                _tick != null ? AccessTools.Field(_tick, "_hitMarginColors") : null;
+            private static readonly System.Reflection.FieldInfo _source = AccessTools.Field(typeof(RDConstants), "hitMarginColoursUI");
 
-            private static void Prefix(ADOFAI.ErrorMeterTick __instance)
+            private static bool Prepare() => _colours != null && _source != null && AccessTools.Method(_tick, "Show") != null;
+
+            private static System.Reflection.MethodBase TargetMethod() => AccessTools.Method(_tick, "Show");
+
+            private static void Prefix(object __instance)
             {
-                try { if (_colours(__instance) == null) _colours(__instance) = RDConstants.data.hitMarginColoursUI; }
+                try { if (_colours.GetValue(__instance) == null) _colours.SetValue(__instance, _source.GetValue(RDConstants.data)); }
                 catch { }
             }
         }
