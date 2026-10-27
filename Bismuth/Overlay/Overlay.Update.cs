@@ -167,7 +167,7 @@ namespace Bismuth
             if ((settings.ShowBpm || settings.ShowTileBpm || settings.ShowKps) && scrConductor.instance != null)
             {
                 float pitch = scrConductor.instance.song != null ? scrConductor.instance.song.pitch : 1f;
-                float bpm = scrConductor.instance.bpm * (float)scrController.instance.playerOne.planetarySystem.speed * pitch;
+                float bpm = scrConductor.instance.bpm * (float)GameCompat.PlayerOneSpeed() * pitch;
 
                 if (bpmValue != null && settings.ShowBpm)
                 {
@@ -390,15 +390,14 @@ namespace Bismuth
         {
             var s = MainClass.Settings;
             string fmt = _fmt;
-            var trackers = scrMistakesManager.marginTrackers;
-            int playerCount = trackers?.Length ?? 0;
+            var trackers = GameCompat.Trackers();
+            int playerCount = trackers.Length;
 
             // Mixed alive/dead state in coop: paint dead players gray + tag them.
-            var players = scrPlayerManager.instance?.players;
             bool anyAlive = false, anyDead = false;
             for (int i = 0; i < playerCount; i++)
             {
-                bool alive = players != null && i < players.Length && players[i] != null && players[i].alive;
+                bool alive = GameCompat.Alive(i);
                 if (alive) anyAlive = true; else anyDead = true;
             }
             bool mixedState = playerCount > 1 && anyAlive && anyDead;
@@ -412,8 +411,8 @@ namespace Bismuth
                     for (int i = 0; i < playerCount; i++)
                     {
                         if (i > 0) sb.Append(", ");
-                        float a = trackers[i]?.percentAcc ?? 0f;
-                        bool alive = players != null && i < players.Length && players[i] != null && players[i].alive;
+                        float a = GameCompat.PercentAcc(trackers[i]);
+                        bool alive = GameCompat.Alive(i);
                         bool dead = mixedState && !alive;
                         Color c = dead ? deadColor : (s.ActiveAccGradient?.Evaluate(a) ?? Color.white);
                         sb.Append("<color=#").Append(ColorUtility.ToHtmlStringRGBA(c)).Append('>');
@@ -426,7 +425,7 @@ namespace Bismuth
                 }
                 else
                 {
-                    float a = trackers[0]?.percentAcc ?? 0f;
+                    float a = GameCompat.PercentAcc(trackers[0]);
                     accValue.text = (a * 100f).ToString(fmt) + "%";
                     accValue.color = s.ActiveAccGradient?.Evaluate(a) ?? Color.white;
                 }
@@ -439,8 +438,8 @@ namespace Bismuth
                     for (int i = 0; i < playerCount; i++)
                     {
                         if (i > 0) sb.Append(", ");
-                        float x = trackers[i]?.percentXAcc ?? 0f;
-                        bool alive = players != null && i < players.Length && players[i] != null && players[i].alive;
+                        float x = GameCompat.PercentXAcc(trackers[i]);
+                        bool alive = GameCompat.Alive(i);
                         bool dead = mixedState && !alive;
                         Color c = dead ? deadColor : (s.ActiveXAccGradient?.Evaluate(x) ?? Color.white);
                         sb.Append("<color=#").Append(ColorUtility.ToHtmlStringRGBA(c)).Append('>');
@@ -453,7 +452,7 @@ namespace Bismuth
                 }
                 else
                 {
-                    float x = trackers[0]?.percentXAcc ?? 0f;
+                    float x = GameCompat.PercentXAcc(trackers[0]);
                     xaccValue.text = x >= 1f ? "100%" : (x * 100f).ToString(fmt) + "%";
                     xaccValue.color = s.ActiveXAccGradient?.Evaluate(x) ?? Color.white;
                 }
@@ -471,7 +470,7 @@ namespace Bismuth
                     for (int i = 0; i < playerCount; i++)
                     {
                         if (i > 0) sb.Append(", ");
-                        bool alive = players != null && i < players.Length && players[i] != null && players[i].alive;
+                        bool alive = GameCompat.Alive(i);
                         bool dead = mixedState && !alive;
                         Color c = dead ? deadColor : s.StatValueColor("xscore");
                         sb.Append("<color=#").Append(ColorUtility.ToHtmlStringRGBA(c)).Append('>');

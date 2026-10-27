@@ -477,7 +477,7 @@ namespace Bismuth.UI
             title.color = Theme.Text;
             title.fontStyle = FontStyles.Bold;
             title.alignment = TextAlignmentOptions.Left;
-            title.textWrappingMode = TextWrappingModes.NoWrap;
+            title.enableWordWrapping = false;
             title.overflowMode = TextOverflowModes.Overflow;
             title.raycastTarget = false;
 

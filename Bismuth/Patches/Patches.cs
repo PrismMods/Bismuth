@@ -11,11 +11,13 @@ namespace Bismuth
 {
     internal static class Patches
     {
-        // Reset display text when a level (re)starts.
-        [HarmonyPatch(typeof(scrMarginTracker), "Reset")]
+        // Reset display text when a level (re)starts. scrMarginTracker on 3.x, scrMistakesManager on 2.9.
+        [HarmonyPatch]
         private static class MistakesResetPatch
         {
-            public static void Postfix() { BismuthLog.Debug("[hook] scrMarginTracker.Reset"); Overlay.Instance?.OnAttempt(); }
+            private static System.Reflection.MethodBase TargetMethod() => AccessTools.Method(GameCompat.TrackerType, "Reset");
+
+            public static void Postfix() { BismuthLog.Debug("[hook] tracker Reset"); Overlay.Instance?.OnAttempt(); }
         }
 
         // Multiple entry points because Start doesn't always fire and LoadCheckpointProgress
@@ -35,16 +37,25 @@ namespace Bismuth
         [HarmonyPatch(typeof(scrMistakesManager), "LoadCheckpointProgress")]
         private static class LoadCheckpointProgressPatch
         {
+            // 3.x only; 2.9 restores checkpoints through the controller.
+            private static bool Prepare() => GameCompat.CoopEra;
+
             public static void Postfix() { BismuthLog.Debug("[hook] scrMistakesManager.LoadCheckpointProgress"); Overlay.Instance?.OnAttempt(); }
         }
 
         // Update display after every hit.
-        [HarmonyPatch(typeof(scrMarginTracker), "AddHit", new[] { typeof(HitMargin) })]
+        [HarmonyPatch]
         private static class AddHitPatch
         {
-            public static void Postfix(scrMarginTracker __instance, HitMargin hit)
+            private static System.Reflection.MethodBase TargetMethod()
+                => AccessTools.Method(GameCompat.TrackerType, "AddHit", new[] { typeof(HitMargin) });
+
+            public static void Postfix(object __instance, HitMargin hit)
             {
-                Overlay.Instance?.UpdateDisplay(__instance.percentAcc, __instance.percentXAcc, hit);
+                var overlay = Overlay.Instance;
+                if (overlay == null) return;
+                overlay.EnsureLevelStarted(fromHit: true);
+                overlay.UpdateDisplay(GameCompat.PercentAcc(__instance), GameCompat.PercentXAcc(__instance), hit);
             }
         }
 
@@ -56,22 +67,23 @@ namespace Bismuth
         [HarmonyPatch(typeof(scrController), "UpdateHitErrorMeter")]
         private static class HitTimingPatch
         {
-            internal static readonly bool Exists = AccessTools.Method(typeof(scrController), "UpdateHitErrorMeter") != null;
+            internal static readonly bool Exists = typeof(scrController).GetMethod("UpdateHitErrorMeter",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance) != null;
 
             private static bool Prepare() => Exists;
 
-            public static void Prefix(scrController __instance, scrFloor hitFloor, scrPlayer player,
+            // `object player`: scrPlayer does not exist on 2.9, and naming it would fail the build there.
+            public static void Prefix(scrController __instance, scrFloor hitFloor, object player,
                 scrPlanet priorChosenPlanet) => Record(__instance, hitFloor, player, priorChosenPlanet);
 
-            internal static void Record(scrController __instance, scrFloor hitFloor, scrPlayer player,
+            internal static void Record(scrController __instance, scrFloor hitFloor, object player,
                 scrPlanet priorChosenPlanet)
             {
                 var overlay = Overlay.Instance;
                 if (overlay == null || __instance == null || !__instance.gameworld) return;
 
                 // By the time this runs the hit has been judged — SwitchChosen came first.
-                var tracker = player != null ? player.marginTracker : null;
-                var last = Margins.LastAdded(tracker);
+                var last = Margins.LastAdded(GameCompat.TrackerOf(player));
                 if (!last.HasValue || !Margins.IsTimed(last.Value)) return;
 
                 if (HitOffsets.TryAngle(hitFloor, priorChosenPlanet, out float angle)
@@ -80,26 +92,29 @@ namespace Bismuth
             }
         }
 
-        /* 3.3 and older have no UpdateHitErrorMeter: scrPlayer.Hit inlines the same meter code
-           right after SwitchChosen, reading the floor and planet it held BEFORE the switch.
-           Capture those on entry and record from the SwitchChosen postfix — the same moment. */
-        [HarmonyPatch(typeof(scrPlayer), "Hit")]
+        /* 3.3 and older have no UpdateHitErrorMeter: Hit (scrPlayer's on 3.3, scrController's on
+           2.9) inlines the same meter code around SwitchChosen, reading the floor and planet it
+           held BEFORE the switch. Capture those on entry and record from the SwitchChosen postfix,
+           once the hit has been judged. */
+        [HarmonyPatch]
         private static class HitTimingLegacyPatch
         {
-            internal static scrPlayer Player;
+            internal static object Player;
             internal static scrFloor Floor;
             internal static scrPlanet Planet;
 
             private static bool Prepare() => !HitTimingPatch.Exists;
 
-            public static void Prefix(scrPlayer __instance)
+            private static System.Reflection.MethodBase TargetMethod() => AccessTools.Method(GameCompat.HitterType, "Hit");
+
+            public static void Prefix(object __instance)
             {
                 Player = null;
                 try
                 {
-                    Floor = __instance.currFloor;
-                    Planet = __instance.planetarySystem.chosenPlanet;   // the private chosenPlanet getter
-                    Player = __instance;
+                    Floor = GameCompat.CurrFloor(__instance);
+                    Planet = GameCompat.ChosenPlanet(__instance);
+                    if (Floor != null && Planet != null) Player = __instance;
                 }
                 catch { }
             }
@@ -121,12 +136,18 @@ namespace Bismuth
             }
         }
 
-        /* Results screen appeared. DetailedResults never deactivates its GameObject — Show()
+        /* Results screen appeared. DetailedResults (3.x) never deactivates its GameObject — Show()
            just fills the strings and flips `enabled` — so "is it on screen" cannot be read
-           from the hierarchy. This call is the signal. */
-        [HarmonyPatch(typeof(DetailedResults), "Show")]
+           from the hierarchy. This call is the signal. By name: 2.9 has no DetailedResults. */
+        private static readonly Type DetailedResultsT = typeof(scrController).Assembly.GetType("DetailedResults");
+
+        [HarmonyPatch]
         private static class DetailedResultsShowPatch
         {
+            private static bool Prepare() => DetailedResultsT != null;
+
+            private static System.Reflection.MethodBase TargetMethod() => AccessTools.Method(DetailedResultsT, "Show");
+
             public static void Postfix() => Overlay.Instance?.OnResultsShown();
         }
 
@@ -134,14 +155,34 @@ namespace Bismuth
            hides the legacy Text and draws a TMP shadow that MIRRORS its string, so alpha on
            the original changes nothing visible — an empty string blanks both. ShowForPlayer is
            where the text is written, including per-player in coop. */
-        [HarmonyPatch(typeof(DetailedResults), "ShowForPlayer")]
+        [HarmonyPatch]
         private static class DetailedResultsTextPatch
         {
-            public static void Postfix(DetailedResults __instance)
+            private static bool Prepare() => DetailedResultsT != null;
+
+            private static System.Reflection.MethodBase TargetMethod() => AccessTools.Method(DetailedResultsT, "ShowForPlayer");
+
+            public static void Postfix(object __instance)
             {
                 if (MainClass.Settings == null || !MainClass.Settings.CustomResults) return;
-                if (__instance != null && __instance.textComponent != null)
-                    __instance.textComponent.text = "";
+                var text = __instance != null ? GameCompat.Get(__instance, "textComponent") as Text : null;
+                if (text != null) text.text = "";
+            }
+        }
+
+        /* 2.9 writes the results into scrController.txtResults (a plain Text) and activates it at
+           the end of OnLandOnPortal — the same two signals the DetailedResults hooks give on 3.x. */
+        [HarmonyPatch(typeof(scrController), "OnLandOnPortal")]
+        private static class ResultsLegacyPatch
+        {
+            private static bool Prepare() => DetailedResultsT == null;
+
+            public static void Postfix(scrController __instance)
+            {
+                var text = __instance != null ? GameCompat.Get(__instance, "txtResults") as Text : null;
+                if (text == null || !text.gameObject.activeInHierarchy) return;
+                Overlay.Instance?.OnResultsShown();
+                if (MainClass.Settings != null && MainClass.Settings.CustomResults) text.text = "";
             }
         }
 
@@ -338,6 +379,13 @@ namespace Bismuth
             }
         }
 
+        // Editor playtest started; see Overlay.EnsureLevelStarted for why scnGame.Play isn't enough.
+        [HarmonyPatch(typeof(scnEditor), "Play")]
+        private static class EditorPlayPatch
+        {
+            public static void Postfix() => Overlay.Instance?.EnsureLevelStarted(fromHit: false);
+        }
+
         // Editor stopped playback — reset scene fires when the user presses stop.
         [HarmonyPatch(typeof(scnEditor), "ResetScene")]
         private static class EditorResetScenePatch
@@ -372,7 +420,7 @@ namespace Bismuth
                 if (txt == null) return;
                 txt.enabled = true;
                 if (string.IsNullOrEmpty(txt.text))
-                    txt.text = RDString.Get("status.autoplay");
+                    txt.text = GameCompat.Str("status.autoplay");
             }
         }
 
@@ -428,7 +476,7 @@ namespace Bismuth
         [HarmonyPatch]
         private static class ErrorMeterTickColoursPatch
         {
-            private static readonly System.Type _tick = AccessTools.TypeByName("ADOFAI.ErrorMeterTick");
+            private static readonly System.Type _tick = typeof(scrController).Assembly.GetType("ADOFAI.ErrorMeterTick");   // silent: AccessTools logs a miss
             private static readonly System.Reflection.FieldInfo _colours =
                 _tick != null ? AccessTools.Field(_tick, "_hitMarginColors") : null;
             private static readonly System.Reflection.FieldInfo _source = AccessTools.Field(typeof(RDConstants), "hitMarginColoursUI");
@@ -463,6 +511,9 @@ namespace Bismuth
         [HarmonyPatch(typeof(scrController), "UpdateErrorMeterVisibility")]
         private static class ErrorMeterVisibilityPatch
         {
+            private static bool Prepare() => typeof(scrController).GetMethod("UpdateErrorMeterVisibility",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance) != null;
+
             public static void Postfix() => HideErrorMeter();
         }
 
@@ -512,7 +563,7 @@ namespace Bismuth
 
             public static void Postfix(scnEditor __instance)
             {
-                var tip = __instance.controlsTip;
+                var tip = GameCompat.ControlsTip(__instance);
                 if (tip == null) return;
                 bool hide = MainClass.Settings.ActiveHideControlsTip || MainClass.Settings.ActiveHideAllUI;
                 if (hide)
@@ -570,8 +621,8 @@ namespace Bismuth
         {
             public static void Postfix(scrRing __instance)
             {
-                if (__instance.line != null)
-                    __instance.line.enabled = !MainClass.Settings.HidePlanetRings;
+                var line = GameCompat.RingLine(__instance);
+                if (line != null) line.enabled = !MainClass.Settings.HidePlanetRings;
             }
         }
 

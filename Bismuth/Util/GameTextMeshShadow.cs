@@ -60,7 +60,7 @@ namespace Bismuth
             rt.sizeDelta = Vector2.zero;            // unbounded; alignment positions the text
             rt.pivot = new Vector2(0.5f, 0.5f);
             _tmp = go.AddComponent<TextMeshPro>();
-            _tmp.textWrappingMode = TextWrappingModes.NoWrap;
+            _tmp.enableWordWrapping = false;
             _tmp.overflowMode = TextOverflowModes.Overflow;
             _tmp.enableAutoSizing = false;
             _tmp.fontSize = RefFontSize;

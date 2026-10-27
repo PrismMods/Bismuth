@@ -393,7 +393,7 @@ namespace Bismuth
                 var rt = c.transform as RectTransform;
                 if (rt != null) extra = " pos=" + rt.anchoredPosition + " size=" + rt.rect.size + " scale=" + rt.localScale.x;
                 if (c is Text tt) extra += " hOver=" + tt.horizontalOverflow + " vOver=" + tt.verticalOverflow + " fs=" + tt.fontSize + " bestFit=" + tt.resizeTextForBestFit + " raw=[" + tt.text.Trim() + "]";
-                if (c is TMP_Text mm) extra += " over=" + mm.overflowMode + " wrap=" + mm.textWrappingMode + " fs=" + mm.fontSize + " autoSize=" + mm.enableAutoSizing;
+                if (c is TMP_Text mm) extra += " over=" + mm.overflowMode + " wrap=" + mm.enableWordWrapping + " fs=" + mm.fontSize + " autoSize=" + mm.enableAutoSizing;
             }
             catch { }
             BismuthLog.Debug("GameFontDiag '" + text.Trim() + "' " + type + " path=" + DiagPath(c.transform) +
@@ -583,7 +583,7 @@ namespace Bismuth
                 if (orig != null && orig.fontSize > 0 && orig.lineHeight > 0 && _tmpFont != null)
                 {
                     float o = (float)orig.lineHeight / orig.fontSize;
-                    float u = _tmpFont.faceInfo.lineHeight / _tmpFont.faceInfo.pointSize;
+                    float u = GameCompat.FaceInfoOf(_tmpFont).lineHeight / GameCompat.PointSize(GameCompat.FaceInfoOf(_tmpFont));
                     if (o > 0f && u > 0f) return Mathf.Clamp(o / u, 0.6f, 1.1f);
                 }
             }
@@ -597,8 +597,8 @@ namespace Bismuth
             {
                 if (orig != null && _tmpFont != null)
                 {
-                    float o = orig.faceInfo.lineHeight / orig.faceInfo.pointSize;
-                    float u = _tmpFont.faceInfo.lineHeight / _tmpFont.faceInfo.pointSize;
+                    float o = GameCompat.FaceInfoOf(orig).lineHeight / GameCompat.PointSize(GameCompat.FaceInfoOf(orig));
+                    float u = GameCompat.FaceInfoOf(_tmpFont).lineHeight / GameCompat.PointSize(GameCompat.FaceInfoOf(_tmpFont));
                     if (o > 0f && u > 0f) return Mathf.Clamp(o / u, 0.6f, 1.1f);
                 }
             }
@@ -726,8 +726,8 @@ namespace Bismuth
             }
             // CLS "신규!" badges (TMP) must not wrap — set before the early-out below so it
             // applies even when the font is already swapped.
-            if (IsClsNoWrap(t) && t.textWrappingMode != TextWrappingModes.NoWrap)
-                t.textWrappingMode = TextWrappingModes.NoWrap;
+            if (IsClsNoWrap(t) && t.enableWordWrapping)
+                t.enableWordWrapping = false;
             bool bold = ShouldBold(t, t.text, (st.Style & FontStyles.Bold) != 0,
                 st.Font != null ? st.Font.name : null);
             bool explicitWeight = elem != null && elem.TmpFont != null;
@@ -770,8 +770,8 @@ namespace Bismuth
             float emLine = 100f;
             try
             {
-                if (_tmpFont.faceInfo.pointSize > 0)
-                    emLine = _tmpFont.faceInfo.lineHeight / _tmpFont.faceInfo.pointSize * 100f;
+                if (GameCompat.PointSize(GameCompat.FaceInfoOf(_tmpFont)) > 0)
+                    emLine = GameCompat.FaceInfoOf(_tmpFont).lineHeight / GameCompat.PointSize(GameCompat.FaceInfoOf(_tmpFont)) * 100f;
             }
             catch { }
             t.lineSpacing = editorUi ? st.LineSpacing : st.LineSpacing + (UserLineSpacing - 1f) * emLine;

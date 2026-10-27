@@ -25,11 +25,11 @@ namespace Bismuth
         private static List<FontLoader.FontEntry> availableFonts = new List<FontLoader.FontEntry>();
         // Retry init on first scene load when koren UMM loaded us before game statics were ready.
         private static bool _deferredApplyPending;
-        // Force-reload request (Misc → Debug). Deferred to OnUpdate so the panel isn't rebuilt
+        // Force-reload request (Misc → Debug). Deferred to Tick so the panel isn't rebuilt
         // inside its own button's click handler.
         private static bool _forceReloadPending;
         // Old font assets pending destruction after a force reload (dropped a few frames later,
-        // once re-apply has settled — see OnUpdate). Time.frameCount to destroy at, or -1.
+        // once re-apply has settled — see Tick). Time.frameCount to destroy at, or -1.
         private static List<FontLoader.FontEntry> _oldFonts;
         private static int _destroyOldFontsFrame = -1;
 
@@ -42,32 +42,6 @@ namespace Bismuth
             modEntry.OnToggle = OnToggle;
             modEntry.OnGUI = OnGUI;
             modEntry.OnSaveGUI = OnSaveGUI;
-            modEntry.OnUpdate = (_, __) =>
-            {
-                // Our own menu hotkeys and the Prism polls (chords, Escape, undo, wheel) read real
-                // input even while a Prism window withholds it from the game.
-                PrismLib.UI.Toolkit.InputGate.Exempt(UICore.HandleUpdate);
-                UI.UpdateToast.Tick();
-                PrismLib.UI.Toolkit.InputGate.Exempt(PrismBridge.TickDebug);
-                if (_patched)
-                {
-                    PrismLib.UI.Toolkit.InputGate.EnsureInstalled("Bismuth", GatePatch);
-                    PrismLib.UI.Toolkit.FontFix.EnsureInstalled("Bismuth", GatePatch);
-                }
-                if (PrismBridge.Available) PrismBridge.SyncInputClaim(KeyLimiter.BlockingInputs);
-                FontPacks.Tick();
-                if (_forceReloadPending) { _forceReloadPending = false; DoForceReload(); }
-                // Drop the previous font assets a beat after a force reload — only once every
-                // re-apply (incl. GameFontApplier's frame-spread sweep) has re-pointed text off
-                // them, so nothing renders against a just-destroyed material.
-                if (_destroyOldFontsFrame > 0 && Time.frameCount >= _destroyOldFontsFrame)
-                {
-                    _destroyOldFontsFrame = -1;
-                    FontLoader.DestroyTmpAssets(_oldFonts);
-                    _oldFonts = null;
-                    overlay?.DumpDebug("post-font-destroy");
-                }
-            };
             // Opting into OnUnload makes the mod hot-reloadable: UMM watches the dll and
             // reloads in-place when it changes, instead of requiring a game restart.
             modEntry.OnUnload = OnUnload;
@@ -231,12 +205,63 @@ namespace Bismuth
             catch { return false; }
         }
 
+        /* Per-frame work rides our own DDOL ticker, not UMM's OnUpdate: on 2.9 under MelonLoader's
+           UMM bridge, UMM's own Update never runs (Ctrl+F10 is dead too), so OnUpdate never
+           fired and the panel hotkey with it. Created with the panel, destroyed in StopMod. */
+        private static GameObject _tickerGo;
+        private static bool _tickFailed;
+
+        private sealed class BismuthTicker : MonoBehaviour
+        {
+            private void Update()
+            {
+                try { Tick(); }
+                catch (Exception e)
+                {
+                    if (!_tickFailed) { _tickFailed = true; BismuthLog.Log("[tick] per-frame tick threw: " + e); }
+                }
+            }
+        }
+
+        private static void Tick()
+        {
+            // Our own menu hotkeys and the Prism polls (chords, Escape, undo, wheel) read real
+            // input even while a Prism window withholds it from the game.
+            PrismLib.UI.Toolkit.InputGate.Exempt(UICore.HandleUpdate);
+            UI.UpdateToast.Tick();
+            PrismLib.UI.Toolkit.InputGate.Exempt(PrismBridge.TickDebug);
+            if (_patched)
+            {
+                PrismLib.UI.Toolkit.InputGate.EnsureInstalled("Bismuth", GatePatch);
+                PrismLib.UI.Toolkit.FontFix.EnsureInstalled("Bismuth", GatePatch);
+            }
+            if (PrismBridge.Available) PrismBridge.SyncInputClaim(KeyLimiter.BlockingInputs);
+            FontPacks.Tick();
+            if (_forceReloadPending) { _forceReloadPending = false; DoForceReload(); }
+            // Drop the previous font assets a beat after a force reload — only once every
+            // re-apply (incl. GameFontApplier's frame-spread sweep) has re-pointed text off
+            // them, so nothing renders against a just-destroyed material.
+            if (_destroyOldFontsFrame > 0 && Time.frameCount >= _destroyOldFontsFrame)
+            {
+                _destroyOldFontsFrame = -1;
+                FontLoader.DestroyTmpAssets(_oldFonts);
+                _oldFonts = null;
+                overlay?.DumpDebug("post-font-destroy");
+            }
+        }
+
         private static bool TryEagerInit()
         {
             try
             {
                 availableFonts = FontLoader.ScanFonts(_modEntry.Path);
                 BuildUI();
+                if (_tickerGo == null)
+                {
+                    _tickerGo = new GameObject("BismuthTicker");
+                    UnityEngine.Object.DontDestroyOnLoad(_tickerGo);
+                    _tickerGo.AddComponent<BismuthTicker>();
+                }
                 if (Settings.ModEnabled) EnableFeatures();
                 if (Settings.DebugMode) DmNotePreset.SelfCheck();
                 UpdateChecker.Begin(_modEntry);
@@ -373,7 +398,7 @@ namespace Bismuth
 
         // Misc → Debug "Force reload": re-scan fonts (pick up newly dropped files), rebuild the
         // panel so the pickers show them, and reapply everything — without a UMM reload. Set via
-        // a flag and run from OnUpdate so the panel isn't torn down inside its button's handler.
+        // a flag and run from Tick so the panel isn't torn down inside its button's handler.
         internal static void RequestForceReload() => _forceReloadPending = true;
 
         private static void DoForceReload()
@@ -382,7 +407,7 @@ namespace Bismuth
             {
                 bool wasOpen = UICore.IsOpen;
                 // Keep the OLD assets alive; re-scan into fresh entries, re-apply everything onto
-                // the new fonts, THEN drop the old ones (deferred in OnUpdate) so no text — panel,
+                // the new fonts, THEN drop the old ones (deferred in Tick) so no text — panel,
                 // overlay, or the incrementally-swept game text — is left on a destroyed material.
                 var oldFonts = availableFonts;
                 availableFonts = FontLoader.ScanFonts(_modEntry.Path);
@@ -562,6 +587,7 @@ namespace Bismuth
             UI.UpdateToast.Dispose();
             DuplicateInstallPopup.Close();
             UICore.Dispose();
+            if (_tickerGo != null) { UnityEngine.Object.Destroy(_tickerGo); _tickerGo = null; }
         }
     }
 }

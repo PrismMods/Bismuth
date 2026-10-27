@@ -37,7 +37,7 @@ namespace Bismuth
             new TargetDef { Key = "percent",      Label = "Death %",        Get = () => Rect(Uic?.txtPercent) },
             new TargetDef { Key = "congrats",     Label = "Congrats",       Get = () => Rect(Uic?.txtCongrats) },
             new TargetDef { Key = "strictclear",  Label = "Strict Clear",   Get = () => Rect(Uic?.txtAllStrictClear) },
-            new TargetDef { Key = "results",      Label = "Results",        Get = () => Rect(Uic?.txtResults) },
+            new TargetDef { Key = "results",      Label = "Results",        Get = () => Rect(GameCompat.ResultsComponent(Uic)) },
             new TargetDef { Key = "presstostart", Label = "Press To Start", Get = () => Rect(Uic?.txtPressToStart) },
             new TargetDef { Key = "countdown",    Label = "Countdown",      Get = () => Rect(Uic?.txtCountdown) },
             new TargetDef { Key = "difficulty",   Label = "Difficulty",     Get = () => Uic?.difficultyContainer },
@@ -121,8 +121,8 @@ namespace Bismuth
            by alpha rather than deactivating it — killing it would destroy that signal. */
         internal static UnityEngine.UI.Text ResultsText()
         {
-            // txtResults is the DetailedResults component; the drawn text is its textComponent.
-            try { return Uic?.txtResults?.textComponent; }
+            // 3.x: txtResults is a DetailedResults and the drawn text its textComponent; 2.9: the Text itself.
+            try { return GameCompat.ResultsText(Uic); }
             catch { return null; }
         }
 

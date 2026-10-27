@@ -384,7 +384,7 @@ namespace Bismuth
             // 3.3.0: the autoplay HUD label (scrShowIfDebug.hideWithNoAuto) hides on
             // RDC.noAutoHud — the game's own "hide autoplay HUD" flag (hideAutoHudCheatCode).
             // Set it here instead of flipping RDC.auto, which corrupted the autoplay toggle.
-            RDC.noAutoHud = hideAll || settings.ActiveHideAutoplayText;
+            GameCompat.SetNoAutoHud(hideAll || settings.ActiveHideAutoplayText);
 
             var ctrl = scrController.instance;
             if (ctrl?.errorMeter != null && ctrl.gameworld && scnEditor.instance == null)

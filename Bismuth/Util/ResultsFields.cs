@@ -45,20 +45,19 @@ namespace Bismuth
             Margin("missFails",     "Miss Fails",     ColL, 0.38f, () => Margins.FailMiss),
             Margin("overloadFails", "Overload Fails", ColM, 0.38f, () => Margins.FailOverload),
             new FieldDef { Key = "deaths", Label = "Deaths", X = ColR, Y = 0.38f,
-                Value = o => Tracker(t => t.deaths.ToString()) },
+                Value = o => Tracker(t => GameCompat.Deaths(t).ToString()) },
 
             new FieldDef { Key = "accuracy", Label = "Accuracy", X = ColL, Y = 0.32f,
-                Value = o => Tracker(t => (t.percentAcc * 100f).ToString("0.00") + "%") },
+                Value = o => Tracker(t => (GameCompat.PercentAcc(t) * 100f).ToString("0.00") + "%") },
             new FieldDef { Key = "xAccuracy", Label = "X-Accuracy", X = ColM, Y = 0.32f,
-                Value = o => Tracker(t => (t.percentXAcc * 100f).ToString("0.00") + "%") },
+                Value = o => Tracker(t => (GameCompat.PercentXAcc(t) * 100f).ToString("0.00") + "%") },
             new FieldDef { Key = "xScore", Label = "X-Score", X = ColR, Y = 0.32f,
                 Value = o => Margins.HasXScore ? Tracker(t => Margins.XScore(t).ToString()) : "" },
 
             new FieldDef { Key = "checkpoints", Label = "Checkpoints", X = ColL, Y = 0.26f,
                 Value = o => Safe(() => scrController.checkpointsUsed.ToString()) },
             new FieldDef { Key = "maximumUsedKeys", Label = "Max Used Keys", X = ColM, Y = 0.26f,
-                Value = o => Safe(() => scrController.instance != null
-                    ? scrController.instance.maximumUsedKeys.ToString() : "") },
+                Value = o => Safe(GameCompat.MaxUsedKeys) },
             // The game only shows this in practice mode; Bismuth's own counter is the source,
             // since it already tracks attempts per level and the game's is not exposed.
             new FieldDef { Key = "practiceAttempts", Label = "Attempts", X = ColR, Y = 0.26f,
@@ -87,10 +86,9 @@ namespace Bismuth
                 },
             };
 
-        private static string Tracker(Func<scrMarginTracker, string> read) => Safe(() =>
+        private static string Tracker(Func<object, string> read) => Safe(() =>
         {
-            var trackers = scrMistakesManager.marginTrackers;
-            var t = trackers != null && trackers.Length > 0 ? trackers[0] : null;
+            var t = GameCompat.Tracker(0);
             return t != null ? read(t) : "";
         });
 

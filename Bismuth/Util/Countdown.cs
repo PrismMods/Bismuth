@@ -188,9 +188,7 @@ namespace Bismuth
             float pitch = conductor.song.pitch;
             if (pitch <= 0f || float.IsNaN(pitch) || float.IsInfinity(pitch)) return;
             conductor.dspTimeSong -= shift / pitch;
-            if (ADOBase.playerManager == null) return;
-            foreach (scrPlayer player in ADOBase.playerManager)
-                if (player != null) player.lastHit += shift;
+            GameCompat.ShiftLastHit(shift);
         }
 
         internal static void OnScrubCompleted()

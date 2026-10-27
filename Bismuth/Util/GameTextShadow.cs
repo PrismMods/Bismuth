@@ -238,8 +238,8 @@ namespace Bismuth
                 // the whole block down to fit the rect, so portal credits stop overflowing their
                 // boxes and breaking names mid-word (the font shrinks until each word fits).
                 bool box = _fit == FitMode.Box;
-                var wrap = box ? TextWrappingModes.Normal : TextWrappingModes.NoWrap;
-                if (_tmp.textWrappingMode != wrap) _tmp.textWrappingMode = wrap;
+                bool wrap = box;
+                if (_tmp.enableWordWrapping != wrap) _tmp.enableWordWrapping = wrap;
                 float natural = (_src.resizeTextForBestFit ? _src.resizeTextMaxSize : _src.fontSize) * _scale;
                 float max = Mathf.Max(1f, natural * _fitShrink);
                 // Box credits use tiny world-space fontSizes, so the shrink floor must be
@@ -258,9 +258,8 @@ namespace Bismuth
                 // Compare against the TMP's ACTUAL mode, not a cached flag: the TMP defaults to
                 // wrap-on, so a cached _lastWrap (starts false) made "want NoWrap" a no-op
                 // (false != false) and the text kept wrapping.
-                var wantWrap = (!_noWrap && _src.horizontalOverflow == HorizontalWrapMode.Wrap)
-                    ? TextWrappingModes.Normal : TextWrappingModes.NoWrap;
-                if (_tmp.textWrappingMode != wantWrap) _tmp.textWrappingMode = wantWrap;
+                bool wantWrap = (!_noWrap && _src.horizontalOverflow == HorizontalWrapMode.Wrap);
+                if (_tmp.enableWordWrapping != wantWrap) _tmp.enableWordWrapping = wantWrap;
 
                 // Best-fit originals auto-size between bounds (TMP's analog); others use fontSize.
                 if (_src.resizeTextForBestFit)

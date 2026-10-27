@@ -126,7 +126,7 @@ namespace Bismuth
             if (planet == null || hitFloor == null) return false;
             try
             {
-                angleDiff = (float)(planet.cachedAngle - planet.targetExitAngle);
+                angleDiff = (float)(planet.cachedAngle - GameCompat.TargetExitAngle(planet));
                 if (hitFloor.isCCW) angleDiff = -angleDiff;
                 return !float.IsNaN(angleDiff) && !float.IsInfinity(angleDiff);
             }
@@ -145,11 +145,10 @@ namespace Bismuth
             try
             {
                 var conductor = planet.conductor;
-                var system = planet.planetarySystem;
-                if (conductor == null || system == null) return false;
+                if (conductor == null) return false;
 
                 double pitch = conductor.song != null ? conductor.song.pitch : 1.0;
-                double denom = Math.PI * conductor.bpm * system.speed * pitch;
+                double denom = Math.PI * conductor.bpm * GameCompat.Speed(planet) * pitch;
                 if (Math.Abs(denom) < 1e-9) return false;
 
                 ms = (float)(angleDiff * 60000.0 / denom);

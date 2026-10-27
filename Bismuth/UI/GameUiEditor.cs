@@ -287,18 +287,16 @@ namespace Bismuth.UI
         // The real results screen is a multi-line colored breakdown
         // (DetailedResults.GenerateResults), so a plain placeholder looks nothing like it.
         // Generate the authentic string from the current margin tracker. GenerateResults is
-        // private, hence the reflection call.
+        // private, hence the reflection call. 2.9 has no DetailedResults: the placeholder stands.
         private static string ResultsSample(string fallback)
         {
             try
             {
-                var dr = scrUIController.instance?.txtResults;
-                var players = ADOBase.playerManager?.players;
-                var tracker = players != null && players.Length > 0 && players[0] != null
-                    ? players[0].marginTracker : null;
+                var dr = GameCompat.ResultsComponent(scrUIController.instance);
+                var tracker = GameCompat.TrackerOf(GameCompat.Players().Length > 0 ? GameCompat.Players()[0] : null);
                 if (dr != null && tracker != null)
                 {
-                    var m = typeof(DetailedResults).GetMethod("GenerateResults",
+                    var m = dr.GetType().GetMethod("GenerateResults",
                         BindingFlags.Instance | BindingFlags.NonPublic);
                     var s = m?.Invoke(dr, new object[] { tracker }) as string;
                     if (!string.IsNullOrEmpty(s)) return s;

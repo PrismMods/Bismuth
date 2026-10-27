@@ -122,7 +122,7 @@ namespace Bismuth.UI.Pages
             vlg.padding = new RectOffset(10, 4, 0, 6);
 
             var t = UIBuilder.Label(wrap.transform, text, (int)UIBuilder.LabelFontSize - 2, TextAnchor.UpperLeft, Theme.TextMuted);
-            t.textWrappingMode = TextWrappingModes.Normal;
+            t.enableWordWrapping = true;
         }
         // Stored in Settings.UpdateChannel, so these stay English; the selector shows Loc.T of
         // each (UpdateChecker.Channel matches the enum name, never the displayed text).

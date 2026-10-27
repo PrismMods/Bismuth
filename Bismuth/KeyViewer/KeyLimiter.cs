@@ -749,11 +749,12 @@ namespace Bismuth
         [HarmonyPatch]
         private static class UseKeyLimiterPatch
         {
+            // 3.x only: 2.9 has no limiter of its own to hold off.
+            static bool Prepare() => TargetMethod() != null;
+
             static MethodBase TargetMethod()
-            {
-                var t = AccessTools.TypeByName("RDInput");
-                return t != null ? AccessTools.PropertyGetter(t, "useKeyLimiter") : null;
-            }
+                => typeof(scrController).Assembly.GetType("RDInput")?.GetProperty("useKeyLimiter",
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance)?.GetGetMethod(true);
 
             public static void Postfix(ref bool __result)
             {
@@ -855,9 +856,11 @@ namespace Bismuth
            limiter itself is GetMain's job alone: the second pass that used to sit here judged
            over legacy UnityEngine.Input, which lags the async keyboard or misreads it (native
            Wayland with an IME let only digits through), so all it ever did was drop hits. */
-        [HarmonyPatch(typeof(scrMarginTracker), "AddHit", new[] { typeof(HitMargin) })]
+        [HarmonyPatch]
         private static class AddHitBlockPatch
         {
+            private static MethodBase TargetMethod() => AccessTools.Method(GameCompat.TrackerType, "AddHit", new[] { typeof(HitMargin) });
+
             public static bool Prefix() => !BlockInputs;
         }
     }

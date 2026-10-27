@@ -120,6 +120,7 @@
         <Compile Include="Util\PrismBridge.cs" />
         <Compile Include="Util\FontPacks.cs" />
         <Compile Include="Util\Margins.cs" />
+        <Compile Include="Util\GameCompat.cs" />
         <Compile Include="Util\HitOffsets.cs" />
         <Compile Include="Util\ResultsFields.cs" />
         <Compile Include="Util\Countdown.cs" />

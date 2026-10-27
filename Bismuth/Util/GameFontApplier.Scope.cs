@@ -19,7 +19,7 @@ namespace Bismuth
                 // The autoplay controls-tip (pan/stop-autoplay help, new in 3.3.0) is a
                 // HUD-style overlay, not a hand-fitted editor form panel, so it takes the
                 // normal game-text downscale like gameplay HUD text.
-                try { if (ReferenceEquals(c, scnEditor.instance?.controlsTip)) return false; } catch { }
+                try { if (ReferenceEquals(c, GameCompat.ControlsTip(scnEditor.instance))) return false; } catch { }
                 return true;
             }
             catch { return false; }

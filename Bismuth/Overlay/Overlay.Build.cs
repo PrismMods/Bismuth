@@ -222,7 +222,7 @@ namespace Bismuth
                 t.fontSize = RowBaseFontSize;
                 t.color = Color.white;
                 t.alignment = TextAlignmentOptions.Center;
-                t.textWrappingMode = TextWrappingModes.NoWrap;
+                t.enableWordWrapping = false;
                 t.overflowMode = TextOverflowModes.Overflow;
                 t.text = "0";
                 AddShadow(go);
@@ -285,7 +285,7 @@ namespace Bismuth
             t.fontSize = fontSize;
             t.color = Color.white;
             t.alignment = TextAlignmentOptions.Center;
-            t.textWrappingMode = TextWrappingModes.NoWrap;
+            t.enableWordWrapping = false;
             t.overflowMode = TextOverflowModes.Overflow;
             AddShadow(go);
             return t;
@@ -331,7 +331,7 @@ namespace Bismuth
             // center of the rendered glyph bounds, so "TimingScale -" (descender on g)
             // and "100%" (none) would sit at different heights.
             t.alignment = TextAlignmentOptions.Left;
-            t.textWrappingMode = TextWrappingModes.NoWrap;
+            t.enableWordWrapping = false;
             t.overflowMode = TextOverflowModes.Overflow;
             AddShadow(go);
             return t;

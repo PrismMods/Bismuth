@@ -37,8 +37,7 @@ namespace Bismuth
             _lastTimingScale = -1f;
             _lastComboDisplay = -1;
 
-            var trackers = scrMistakesManager.marginTrackers;
-            var tracker = (trackers != null && trackers.Length > 0) ? trackers[0] : null;
+            var tracker = GameCompat.Tracker(0);
             if (tracker == null) return;
 
             /* Walk saved prefix (hitMargins[0..lastHitMarginsSize]), not live hitMarginsCount:
@@ -49,8 +48,8 @@ namespace Bismuth
             ClearResultsShown();
             RedrawTimingGraph();
 
-            var hm = tracker.hitMargins;
-            int depth = tracker.lastHitMarginsSize;
+            var hm = GameCompat.HitMargins(tracker);
+            int depth = GameCompat.LastHitMarginsSize(tracker);
             int cap = hm != null ? System.Math.Min(depth, hm.Count) : 0;
             for (int i = 0; i < cap; i++)
             {
@@ -85,6 +84,19 @@ namespace Bismuth
 
         // fromCheckpoint == the game's startedFromCheckpoint (Play's seqID > 0): this attempt
         // began partway in, so it doesn't count toward the from-0% "full" total.
+        /* For a start no level hook reported. On 2.9 nothing of ours on scnGame.Play ever ran in
+           testing (Quartz's patch on it fails to build there — the likely cause), so an editor
+           playtest showed no overlay until the first hit. Called from scnEditor.Play and, as a last
+           resort, the first hit in a real level. A no-op once a hook has started the level, which on
+           3.x is always first. */
+        internal void EnsureLevelStarted(bool fromHit)
+        {
+            if (inLevel) return;
+            var c = scrController.instance;
+            if (fromHit && (c == null || !c.gameworld)) return;
+            OnLevelStart(false, false);
+        }
+
         public void OnLevelStart(bool isRestart, bool fromCheckpoint)
         {
             var id = LevelKey.Resolve();

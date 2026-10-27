@@ -376,7 +376,7 @@ namespace Bismuth
             t.fontStyle = FontStyles.Normal;
             t.alignment = TextAlignmentOptions.Center;
             t.color = color;
-            t.textWrappingMode = TextWrappingModes.NoWrap;
+            t.enableWordWrapping = false;
             t.overflowMode = TextOverflowModes.Overflow;
             return t;
         }

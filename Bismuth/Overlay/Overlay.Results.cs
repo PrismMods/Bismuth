@@ -89,7 +89,7 @@ namespace Bismuth
             var t = go.AddComponent<TextMeshProUGUI>();
             t.fontSize = 22;
             t.raycastTarget = false;
-            t.textWrappingMode = TextWrappingModes.NoWrap;
+            t.enableWordWrapping = false;
             return t;
         }
 
