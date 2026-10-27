@@ -4,15 +4,12 @@
   
   # Topaz
 
-  An overlay / QoL mod for **A Dance of Fire and Ice** (3.3.0+) — the lite version of **Quartz**.
+  An overlay / QoL mod for **A Dance of Fire and Ice** (2.9.8+) — the lite version of **Quartz**.
   
   [![Latest Release](https://img.shields.io/github/v/release/PrismMods/Topaz?include_prereleases&sort=date&label=release&logo=github&style=flat-square)](https://github.com/PrismMods/Topaz/releases/latest)
   [![Downloads](https://img.shields.io/github/downloads/PrismMods/Topaz/total?style=flat-square&logo=github&label=downloads)](https://github.com/PrismMods/Topaz/releases)
 </div>
 <br>
-
-> [!Warning]
-> Recent builds may only work on 3.4.0 and above!
 
 - Configurable in-game stats overlays: progress, accuracy, x-accuracy, BPM, tile BPM, timing scale, judgements, combo, attempts, FPS
 - Customizable key viewer: key rain, ghost keys, hand/foot presets, and per-key & total press counts
