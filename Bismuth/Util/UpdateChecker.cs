@@ -423,8 +423,42 @@ namespace Bismuth
 
             string dest = Path.Combine(targetDir, rel);
             Directory.CreateDirectory(Path.GetDirectoryName(dest));
-            entry.ExtractToFile(dest, overwrite: true);
+            if (SameAsOnDisk(entry, dest)) return;
+            /* Windows refuses to overwrite a file the game holds open — PrismLib.UI.dll once loaded,
+               a font TextCore has open — and an overwrite in place then failed the install halfway.
+               Extract beside it and swap; when the old file can't be deleted, rename it aside. */
+            string tmp = dest + ".new";
+            entry.ExtractToFile(tmp, overwrite: true);
+            if (File.Exists(dest))
+            {
+                try { File.Delete(dest); }
+                catch
+                {
+                    string old = dest + ".old";
+                    try { if (File.Exists(old)) File.Delete(old); } catch { }
+                    File.Move(dest, old);
+                }
+            }
+            File.Move(tmp, dest);
             BismuthLog.Log("Updated file: " + dest);
+        }
+
+        // Identical files are left alone: fonts and PrismLib.UI rarely change between releases, and
+        // not touching them is what keeps a locked one from mattering.
+        private static bool SameAsOnDisk(ZipArchiveEntry entry, string dest)
+        {
+            try
+            {
+                if (!File.Exists(dest) || new FileInfo(dest).Length != entry.Length) return false;
+                var buf = new byte[entry.Length];
+                using (var s = entry.Open())
+                    for (int n = 0, r; n < buf.Length; n += r)
+                        if ((r = s.Read(buf, n, buf.Length - n)) == 0) return false;
+                var disk = File.ReadAllBytes(dest);
+                for (int i = 0; i < buf.Length; i++) if (buf[i] != disk[i]) return false;
+                return true;
+            }
+            catch { return false; }
         }
 
         // ── Duplicate install handling ─────────────────────────────────────

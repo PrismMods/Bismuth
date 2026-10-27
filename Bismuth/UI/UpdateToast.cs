@@ -19,6 +19,7 @@ namespace Bismuth.UI
     internal static class UpdateToast
     {
         private static Toast _toast;
+        private static bool _restartOffered;
 
         internal static void Tick()
         {
@@ -36,6 +37,11 @@ namespace Bismuth.UI
             // Unset = TMP's default, which is the game's own font and unreadable at toast size.
             // Read once, when the card is first built.
             _toast.Theme.Font = Theme.TmpFont;
+            if (UpdateChecker.Status == UpdateChecker.State.Installed && !_restartOffered)
+            {
+                _restartOffered = true;
+                PrismBridge.PromptRestart("Bismuth");
+            }
             _toast.Set(Current());
             _toast.Tick();
         }
