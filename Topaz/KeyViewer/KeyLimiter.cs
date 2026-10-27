@@ -846,10 +846,10 @@ namespace Topaz
         private static bool PrismChordHeld =>
             Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt) || Input.GetKey(KeyCode.AltGr);
 
-        // KeyCode.B stays readable so Ctrl+B still closes the panel.
+        // KeyCode.T stays readable so Ctrl+T still closes the panel.
         private static void GetKeyDownPostfix(KeyCode key, ref bool __result)
         {
-            if (__result && !RawReadExempt && key != KeyCode.B && !PrismChordHeld && BlockInputs) __result = false;
+            if (__result && !RawReadExempt && key != KeyCode.T && !PrismChordHeld && BlockInputs) __result = false;
         }
 
         /* While the menu is open, no hits register — same gate as the GetMain block. The

@@ -100,7 +100,7 @@ namespace Topaz.UI
 
     internal static class UICore
     {
-        private const string ToggleHint = "Ctrl + B";
+        private const string ToggleHint = "Ctrl + T";
         private static readonly Vector2 ReferenceResolution = new Vector2(1920, 1080);
 
         private static GameObject _canvasGo;
@@ -152,7 +152,7 @@ namespace Topaz.UI
                 ApplyScale(_settings.UiScale);
                 PrewarmGlyphs();
                 _canvasGo.SetActive(false);
-                TopazLog.Log("[UI] Initialized — hotkey Ctrl+B armed");
+                TopazLog.Log("[UI] Initialized — hotkey Ctrl+T armed");
             }
             catch (Exception ex)
             {
@@ -577,7 +577,7 @@ namespace Topaz.UI
         {
             if (_canvasGo == null) return;
             bool ctrl = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
-            if (ctrl && Input.GetKeyDown(KeyCode.B)) Toggle();
+            if (ctrl && Input.GetKeyDown(KeyCode.T)) Toggle();
         }
 
         public static void Toggle() { if (_isOpen) Close(); else Open(); }

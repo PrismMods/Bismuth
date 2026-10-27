@@ -59,7 +59,7 @@ namespace Topaz
 
         private static void OnGUI(UnityModManager.ModEntry modEntry)
         {
-            GUILayout.Label("Settings live in the in-game panel (Ctrl+B).");
+            GUILayout.Label("Settings live in the in-game panel (Ctrl+T).");
             if (GUILayout.Button("Open Settings Panel", GUILayout.ExpandWidth(false)))
                 UICore.Open();
         }

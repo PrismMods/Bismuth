@@ -51,9 +51,9 @@ Subpage bodies are built **at push time**, so they always read current runtime s
 
 ## Hotkey
 
-Toggle: **Ctrl + B** only, in `UICore.HandleUpdate`.
+Toggle: **Ctrl + T** only, in `UICore.HandleUpdate`.
 
-**macOS dead-key gotcha:** the original `Alt + B` binding does not work on macOS. Option (Unity's `LeftAlt`) is a system-level dead-key modifier — Option+B is reserved for typing `∫`, and the B keystroke is swallowed before reaching `Input.GetKeyDown(KeyCode.B)`. Diagnosed via `Input.anyKeyDown` logging: Alt-alone fired, Space fired, but a B keydown was never observed during Option+B chords. Cmd and Ctrl have no such behavior. Function keys (F1–F12) bypass the issue entirely since no modifier is held.
+**macOS dead-key gotcha:** the original `Alt + B` binding does not work on macOS. Option (Unity's `LeftAlt`) is a system-level dead-key modifier — Option+B is reserved for typing `∫`, and the B keystroke is swallowed before reaching `Input.GetKeyDown(KeyCode.T)`. Diagnosed via `Input.anyKeyDown` logging: Alt-alone fired, Space fired, but a B keydown was never observed during Option+B chords. Cmd and Ctrl have no such behavior. Function keys (F1–F12) bypass the issue entirely since no modifier is held.
 
 This applies to all future hotkeys: **never bind Option + letter on macOS.** Cmd, Ctrl, Shift, or single function keys only.
 
@@ -65,7 +65,7 @@ This applies to all future hotkeys: **never bind Option + letter on macOS.** Cmd
 
 ## Master switch (rail)
 
-`TabRail.AddMasterSwitch` pins a toggle row to the bottom of the tab rail (wired in `MainClass.BuildUI` → `MainClass.SetMasterEnabled`). It drives `Settings.ModEnabled` (persisted) and flips `MainClass.EnableFeatures()` / `DisableFeatures()` — the same feature set the UMM checkbox controls, split so the **shell survives**: panel, Ctrl+B hotkey, fonts, and update checker stay alive while everything the mod does *to the game* (Harmony patches, Overlay, KeyViewer, `GameUiLayout` wrappers, `GameFontApplier` restyle) is torn down and restored. `MainClass.FeaturesOn` is the runtime gate: `GameFontApplier.Enabled`, `GameUiLayout.Reapply/ApplyOne/ApplyErrorMeter`, and the scene-unload optimization all check it, so editing settings in a master-off panel never touches game objects. A master-off state persists across restarts (a master-off launch never patches at all); the UMM toggle (`StopMod`) additionally disposes the shell.
+`TabRail.AddMasterSwitch` pins a toggle row to the bottom of the tab rail (wired in `MainClass.BuildUI` → `MainClass.SetMasterEnabled`). It drives `Settings.ModEnabled` (persisted) and flips `MainClass.EnableFeatures()` / `DisableFeatures()` — the same feature set the UMM checkbox controls, split so the **shell survives**: panel, Ctrl+T hotkey, fonts, and update checker stay alive while everything the mod does *to the game* (Harmony patches, Overlay, KeyViewer, `GameUiLayout` wrappers, `GameFontApplier` restyle) is torn down and restored. `MainClass.FeaturesOn` is the runtime gate: `GameFontApplier.Enabled`, `GameUiLayout.Reapply/ApplyOne/ApplyErrorMeter`, and the scene-unload optimization all check it, so editing settings in a master-off panel never touches game objects. A master-off state persists across restarts (a master-off launch never patches at all); the UMM toggle (`StopMod`) additionally disposes the shell.
 
 ## Settings UI pages (`UI/Pages/`)
 

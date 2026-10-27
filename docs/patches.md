@@ -34,7 +34,7 @@
 | `RDInput.GetMain(ButtonState)` | Postfix | Key Limiter — clamps press count to allowed-key count when state=WentDown; zeroes it entirely while the Topaz menu is open |
 | `RDInput.WentDown(KeyCode)` / `RDInput.IsDown(KeyCode)` | Postfix | Menu input block — raw shortcut-key reads return false while the menu is open |
 | `RDInput.GetState(InputAction, ButtonState)` | Postfix | Menu input block — Rewired action reads return false while the menu is open |
-| `UnityEngine.Input.GetKeyDown(KeyCode)` | Postfix | Menu input block — direct polls (menu number-nav) return false while open, except KeyCode.B and `RawReadExempt` reads. Applied separately via `TryPatchRawInput` |
+| `UnityEngine.Input.GetKeyDown(KeyCode)` | Postfix | Menu input block — direct polls (menu number-nav) return false while open, except KeyCode.T and `RawReadExempt` reads. Applied separately via `TryPatchRawInput` |
 | `RDInput.useKeyLimiter` (getter) | Postfix | Key Limiter — false while Topaz's limiter is on, so the game's own limiter never runs alongside it |
 | `scrMarginTracker.AddHit(HitMargin)` | Prefix | Menu input block — suppresses every hit while the menu is open |
 | `SkyHook.SkyHookManager._StartHook` | Prefix + Finalizer | Linux only (`SkyHookEvdev.cs`) — hides `DISPLAY` from the native hook so it reads `/dev/input` (kernel timestamps; works for native Wayland windows), restores it once the devices are open, restarts on X11 if they can't be. `Rearm()` after patching restarts a hook started before us; `Release()` on master-off hands it back |

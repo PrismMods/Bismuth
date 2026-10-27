@@ -58,7 +58,7 @@ namespace Topaz
             PrismLib.Keys.KeyName = i => ((KeyCode)i).ToString();
             // So the other mods' scroll-zoom and click handling can stand down over our panels.
             me.ReportPointerOverUi(() => UI.UICore.IsOpen);
-            me.BindKey("SettingsPanel", (int)KeyCode.B, PrismLib.KeyMods.Ctrl, "Open the settings panel");
+            me.BindKey("SettingsPanel", (int)KeyCode.T, PrismLib.KeyMods.Ctrl, "Open the settings panel");
             me.BindKey("DebugPanel", (int)KeyCode.D, PrismLib.KeyMods.Alt, "Open the debug panel");
             me.BindKey("SettingsPanelPrism", (int)KeyCode.S, PrismLib.KeyMods.Alt, "Open the Prism settings panel");
 
@@ -328,7 +328,7 @@ namespace Topaz
         }
 
         /* Topaz's OWN menu, separate from the Prism settings window above. Alt+Shift+S is the
-           library's; this is the mod's, and it is what Ctrl+B will open once every page has moved
+           library's; this is the mod's, and it is what Ctrl+T will open once every page has moved
            across. Its own panel instance, so the two do not fight over one window. */
         private static SettingsPanel _menu;
 
@@ -343,7 +343,7 @@ namespace Topaz
                     PrismLib.UI.Toolkit.Ui.Log = m => TopazLog.Log("[prism] " + m);
                     if (Available) UseSharedScorer();
                     _menu = new SettingsPanel("Topaz", () => UI.Prism.PrismMenu.Build());
-                    _menu.SetFooter("Ctrl + B to open or close", _version);
+                    _menu.SetFooter("Ctrl + T to open or close", _version);
                 }
                 _menu.Toggle();
             }
