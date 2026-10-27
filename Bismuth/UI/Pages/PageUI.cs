@@ -115,6 +115,10 @@ namespace Bismuth.UI.Pages
 
         private static int WeightRank(string weight) => FontLoader.WeightRank(weight);
 
+        /* Above this many options the dropdown renders in the panel font instead of each row
+           in its own face. Sized to the packs: a few families preview, a font library does not. */
+        private const int MaxPreviewRows = 24;
+
         private static int FindWeight(IList<FontLoader.FontEntry> entries, string weight)
         {
             for (int i = 0; i < entries.Count; i++)
@@ -190,8 +194,18 @@ namespace Bismuth.UI.Pages
                 }
                 familyReps.Add(rep);
             }
+            /* A preview is a nicety and must never cost more than the list it decorates.
+               Each one is a 1024² SDF atlas, and the dropdown builds every row at once, so a
+               machine's few hundred system fonts froze the game outright on open. Two bounds:
+               never preview a system font (they are the volume), and skip previews entirely
+               once the list is long enough that the cost would be felt. */
+            bool previewFamilies = familyReps.Count <= MaxPreviewRows;
             Func<int, TMPro.TMP_FontAsset> familyFonts = i =>
-                i >= 0 && i < familyReps.Count ? familyReps[i]?.TmpFont : null;
+            {
+                if (!previewFamilies) return null;
+                var e = i >= 0 && i < familyReps.Count ? familyReps[i] : null;
+                return e == null || e.IsSystem ? null : e.TmpFont;
+            };
 
             // Weight row container — sized by its own layout group so the page VLG picks
             // up the row when present and collapses it when empty.
@@ -219,9 +233,13 @@ namespace Bismuth.UI.Pages
                     weightNames.Add(w);
                     if (string.Equals(w, preferredWeight, StringComparison.OrdinalIgnoreCase)) weightIdx = i;
                 }
-                // Each weight shown in that weight, built when the row is drawn.
+                // Each weight shown in that weight, built when the row is drawn. A family's
+                // weight list is short, so only the system-font rule applies here.
                 Func<int, TMPro.TMP_FontAsset> weightFonts = i =>
-                    i >= 0 && i < entries.Count ? entries[i].TmpFont : null;
+                {
+                    var e = i >= 0 && i < entries.Count ? entries[i] : null;
+                    return e == null || e.IsSystem ? null : e.TmpFont;
+                };
 
                 UIBuilder.Dropdown(weightHost.transform, "  Weight", weightNames, weightIdx,
                     idx =>
